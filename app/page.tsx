@@ -2,7 +2,7 @@
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
 import { addDoc, collection, doc, limit, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebaseClient";
+import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
 import { DEFAULT_CONFIG, type AppConfig, type LatestDoc, type TradeDoc } from "@/lib/types";
 import Chart from "./Chart";
@@ -18,14 +18,14 @@ export default function Page() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => onAuthStateChanged(auth, setUser), []);
+  useEffect(() => (firebaseConfigured ? onAuthStateChanged(auth(), setUser) : setUser(null)), []);
 
   useEffect(() => {
     if (!user) return;
     const onErr = (e: Error) => setError(e.message.includes("permission") ? "Este e-mail nao tem acesso (veja firestore.rules)." : e.message);
-    const u1 = onSnapshot(doc(db, "config/main"), (s) => s.exists() && setCfg({ ...DEFAULT_CONFIG, ...(s.data() as AppConfig) }), onErr);
-    const u2 = onSnapshot(collection(db, "latest"), (s) => setLatest(s.docs.map((d) => d.data() as LatestDoc)), onErr);
-    const u3 = onSnapshot(query(collection(db, "trades"), orderBy("t", "desc"), limit(20)),
+    const u1 = onSnapshot(doc(db(), "config/main"), (s) => s.exists() && setCfg({ ...DEFAULT_CONFIG, ...(s.data() as AppConfig) }), onErr);
+    const u2 = onSnapshot(collection(db(), "latest"), (s) => setLatest(s.docs.map((d) => d.data() as LatestDoc)), onErr);
+    const u3 = onSnapshot(query(collection(db(), "trades"), orderBy("t", "desc"), limit(20)),
       (s) => setTrades(s.docs.map((d) => ({ id: d.id, ...(d.data() as TradeDoc) }))), onErr);
     return () => { u1(); u2(); u3(); };
   }, [user]);
@@ -41,13 +41,15 @@ export default function Page() {
     }
   }
 
+  if (!firebaseConfigured)
+    return <main className="wrap center"><h1>Robo de Sinais</h1><p className="error">Firebase nao configurado: cadastre as variaveis NEXT_PUBLIC_FIREBASE_* na Vercel e faca Redeploy.</p></main>;
   if (user === undefined) return <main className="wrap"><p>Carregando...</p></main>;
   if (!user)
     return (
       <main className="wrap center">
         <h1>Robo de Sinais</h1>
         <p className="muted">Estrategia diaria SMA 150 + HMA 100 + alvo de vol. So sinais: voce opera manualmente.</p>
-        <button onClick={() => signInWithPopup(auth, new GoogleAuthProvider())}>Entrar com Google</button>
+        <button onClick={() => signInWithPopup(auth(), new GoogleAuthProvider())}>Entrar com Google</button>
       </main>
     );
 
@@ -57,7 +59,7 @@ export default function Page() {
         <h1>Robo de Sinais</h1>
         <div className="row">
           <button onClick={refresh} disabled={busy}>{busy ? "Calculando..." : "Recalcular agora"}</button>
-          <button className="ghost" onClick={() => signOut(auth)}>Sair</button>
+          <button className="ghost" onClick={() => signOut(auth())}>Sair</button>
         </div>
       </header>
       {error && <p className="error">{error}</p>}
@@ -139,8 +141,8 @@ function TradeForm({ cfg, latest }: { cfg: AppConfig; latest: LatestDoc[] }) {
     if (!(q > 0)) return setMsg("Informe a quantidade.");
     const cur = cfg.positions[symbol] ?? 0;
     const next = Math.max(0, side === "compra" ? cur + q : cur - q);
-    await addDoc(collection(db, "trades"), { symbol, side, qty: q, price: p, t: Date.now() } satisfies TradeDoc);
-    await setDoc(doc(db, "config/main"), { positions: { [symbol]: next } }, { merge: true });
+    await addDoc(collection(db(), "trades"), { symbol, side, qty: q, price: p, t: Date.now() } satisfies TradeDoc);
+    await setDoc(doc(db(), "config/main"), { positions: { [symbol]: next } }, { merge: true });
     setQty("");
     setPrice("");
     setMsg(`Registrado. Posicao em ${symbol}: ${fmt(next, 4)}`);
@@ -168,7 +170,7 @@ function ConfigForm({ cfg }: { cfg: AppConfig }) {
   const num = (v: string) => Number(v.replace(",", ".")) || 0;
 
   async function save() {
-    await setDoc(doc(db, "config/main"), draft);
+    await setDoc(doc(db(), "config/main"), draft);
     setMsg("Salvo. Os cartoes ja usam os novos valores.");
   }
 

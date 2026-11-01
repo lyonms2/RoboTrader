@@ -1,5 +1,4 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
 // FIREBASE_SERVICE_ACCOUNT = conteudo do JSON da conta de servico (Firebase > Configuracoes > Contas de servico)
@@ -21,4 +20,3 @@ function app() {
 }
 
 export const adminDb = () => getFirestore(app());
-export const adminAuth = () => getAuth(app());

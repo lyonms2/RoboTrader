@@ -100,6 +100,8 @@ function AssetCard({ l, cfg }: { l: LatestDoc; cfg: AppConfig }) {
   const d = decide(s, capital, pos, { ...DEFAULT_PARAMS, reentry: cfg.reentry });
   const tone = d.kind === "VENDER_TUDO" || d.kind === "VENDER_PARTE" ? "sell" : d.qty > 0 ? "buy" : "hold";
   const buf = DEFAULT_PARAMS.bufferPct / 100;
+  const ps = l.preview?.state;
+  const pd = ps ? decide(ps, capital, pos, { ...DEFAULT_PARAMS, reentry: cfg.reentry }) : null;
   return (
     <section className="card">
       <div className="row between">
@@ -110,6 +112,13 @@ function AssetCard({ l, cfg }: { l: LatestDoc; cfg: AppConfig }) {
         {d.label}
         {d.qty > 0 && <span> {fmt(d.qty, 4)} {coin} (~{fmt(d.qty * s.close, 0)} USDT)</span>}
       </div>
+      {pd && ps && (
+        <p className={`preview small ${pd.kind !== d.kind ? "warn" : "muted"}`}>
+          Previa (candle de hoje, aberto) a {fmt(ps.close)}: se fechar agora, {pd.kind !== d.kind ? <b>{pd.label}</b> : "sem mudanca"}.
+          {" "}Vale so no fechamento das 21:00.
+        </p>
+      )}
+      <p className="muted small">Atualizado ha {Math.max(0, Math.round((Date.now() - l.updatedAt) / 60000))} min</p>
       <Chart chart={l.chart} />
       <p className="legend small"><i className="k-close" /> preco <i className="k-sma" /> SMA {DEFAULT_PARAMS.sma} <i className="k-hma" /> HMA {DEFAULT_PARAMS.hma} <i className="k-band" /> comprado</p>
       <dl>

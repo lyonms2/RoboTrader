@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "nao autorizado" }, { status: 401 });
   }
   try {
-    return NextResponse.json({ ok: true, results: await runJob({ notify: false }) });
+    return NextResponse.json({ ok: true, results: await runJob({ force: true }) });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

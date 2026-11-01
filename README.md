@@ -54,7 +54,24 @@ A ação mostrada no painel compara a exposição alvo com a **posição registr
 4. Volte ao Firebase, em **Authentication → Configurações → Domínios autorizados**, e adicione o domínio da Vercel (`seu-projeto.vercel.app`).
 5. Abra o site, entre com o Google, clique em **Recalcular agora** e ajuste capital e posição em **Configuração**.
 
-O cron (`vercel.json`) roda uma vez por dia. No plano gratuito, a Vercel pode executá-lo em qualquer momento dentro da hora agendada (00:10–00:59 UTC).
+### 4. Recálculo a cada 15 minutos (GitHub Actions)
+No plano gratuito, a Vercel só permite um cron por dia. O recálculo frequente vem do workflow
+[`.github/workflows/recalcular.yml`](.github/workflows/recalcular.yml), que chama `/api/cron` a cada 15 minutos.
+No GitHub, vá em **Settings → Secrets and variables → Actions → New repository secret** e crie:
+- `SITE_URL`: o endereço do site, sem barra no final (ex.: `https://robotrader.vercel.app`)
+- `CRON_SECRET`: o mesmo valor cadastrado na Vercel
+
+Depois, em **Actions → Recalcular sinais → Run workflow**, rode uma vez para testar.
+
+O que cada execução faz:
+- Recalcula o **sinal oficial** (candles fechados). Ele só muda depois das 21:00 de Brasília ou quando você registra uma operação.
+- Calcula a **prévia**: o candle de hoje, ainda aberto, como se fechasse agora. É um alerta antecipado, e o sinal só vale no fechamento.
+- Avisa no Telegram **uma vez por candle**, nunca a cada 15 minutos. Com `TELEGRAM_PREVIEW_ALERTS=1`, também avisa (uma vez por dia) quando a prévia mudaria a ação.
+- Segurança: exige o `CRON_SECRET`, comparado em tempo constante. Chamadas com menos de 5 minutos de intervalo são ignoradas. O workflow não tem permissão nenhuma no repositório (`permissions: {}`).
+
+O GitHub pode atrasar execuções agendadas em alguns minutos e desativa agendamentos em repositórios sem commits há 60 dias. Se isso acontecer, reative em **Actions**.
+
+O cron (`vercel.json`) roda uma vez por dia e fica de reserva. No plano gratuito, a Vercel pode executá-lo em qualquer momento dentro da hora agendada (00:10–00:59 UTC).
 
 ## Desenvolvimento local
 

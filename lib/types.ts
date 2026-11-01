@@ -25,6 +25,8 @@ export type LatestDoc = {
   decision: Decision;
   changes: Change[];
   chart: { t: number[]; close: number[]; sma: (number | null)[]; hma: (number | null)[]; on: boolean[] };
+  // Candle de hoje (ainda aberto) como se fechasse agora: so um alerta, o sinal vale no fechamento
+  preview?: { state: BarState; decision: Decision } | null;
   updatedAt: number;
 };
 

@@ -9,6 +9,9 @@ import Chart from "./Chart";
 import { usePrices, type Prices } from "./usePrices";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+// Sem arredondar: quantidades com ate 8 casas (precisao da corretora) e precos com 2 a 8 casas
+const fmtQty = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 8 });
+const fmtPx = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 8 });
 const day = (t: number) => new Date(t).toLocaleDateString("pt-BR", { timeZone: "UTC" });
 const ago = (t: number) => {
   const m = Math.max(0, Math.round((Date.now() - t) / 60000));
@@ -163,7 +166,7 @@ export default function Page() {
             <thead><tr><th>Data</th><th>Ativo</th><th>Lado</th><th>Qtd</th><th>Preco</th></tr></thead>
             <tbody>
               {trades.map((t) => (
-                <tr key={t.id}><td>{new Date(t.t).toLocaleString("pt-BR")}</td><td>{t.symbol}</td><td>{t.side}</td><td>{fmt(t.qty, 4)}</td><td>{fmt(t.price)}</td></tr>
+                <tr key={t.id}><td>{new Date(t.t).toLocaleString("pt-BR")}</td><td>{t.symbol}</td><td>{t.side}</td><td>{fmtQty(t.qty)}</td><td>{fmtPx(t.price)}</td></tr>
               ))}
             </tbody>
           </table>
@@ -207,8 +210,8 @@ function Summary({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[];
           <tbody>
             {rows.map((r) => (
               <tr key={r.symbol}>
-                <td>{r.symbol.replace("USDT", "")}</td><td>{fmt(r.pos, 4)}</td>
-                <td>{r.avg > 0 ? fmt(r.avg) : "-"}</td><td>{fmt(r.price)}</td>
+                <td>{r.symbol.replace("USDT", "")}</td><td>{fmtQty(r.pos)}</td>
+                <td>{r.avg > 0 ? fmtPx(r.avg) : "-"}</td><td>{fmtPx(r.price)}</td>
                 <td className={pnlClass(r.usdt)}>{r.avg > 0 ? `${signed(r.usdt)} USDT (${signed(r.pct, 1)}%)` : "informe o preco medio"}</td>
               </tr>
             ))}
@@ -243,18 +246,18 @@ function AssetCard({ l, cfg, prices }: { l: LatestDoc; cfg: AppConfig; prices: P
       </div>
       <div className={`action ${tone}`}>
         {d.label}
-        {d.qty > 0 && <span> {fmt(d.qty, 4)} {coin} (~{fmt(d.qty * s.close, 0)} USDT)</span>}
+        {d.qty > 0 && <span> {fmtQty(d.qty)} {coin} (~{fmt(d.qty * s.close)} USDT)</span>}
       </div>
       {pd && ps && (
         <p className={`preview small ${pd.kind !== d.kind ? "warn" : "muted"}`}>
-          Previa (candle de hoje, aberto) a {fmt(ps.close)}: se fechar agora, {pd.kind !== d.kind ? <b>{pd.label}</b> : "sem mudanca"}.
+          Previa (candle de hoje, aberto) a {fmtPx(ps.close)}: se fechar agora, {pd.kind !== d.kind ? <b>{pd.label}</b> : "sem mudanca"}.
           {" "}Vale so no fechamento das 21:00.
         </p>
       )}
       <div className="price-row">
         <div>
           <span className="muted small">Preco atual ({cur.live ? `ao vivo, ${ago(cur.at)}` : `recalculo ${ago(cur.at)}`})</span>
-          <b>{fmt(cur.price)}</b>
+          <b>{fmtPx(cur.price)}</b>
         </div>
         {pos > 0 && (
           <div>
@@ -267,15 +270,15 @@ function AssetCard({ l, cfg, prices }: { l: LatestDoc; cfg: AppConfig; prices: P
       <Chart chart={l.chart} />
       <p className="legend small"><i className="k-close" /> preco <i className="k-sma" /> SMA {DEFAULT_PARAMS.sma} <i className="k-hma" /> HMA {DEFAULT_PARAMS.hma} <i className="k-band" /> comprado</p>
       <dl>
-        <dt>Fechamento</dt><dd>{fmt(s.close)}</dd>
-        <dt>SMA {DEFAULT_PARAMS.sma}</dt><dd>{fmt(s.sma ?? 0)} ({fmt(((s.close / (s.sma ?? s.close)) - 1) * 100, 1)}%)</dd>
-        <dt>Compra acima / sai abaixo</dt><dd>{fmt((s.sma ?? 0) * (1 + buf), 0)} / {fmt((s.sma ?? 0) * (1 - buf), 0)}</dd>
+        <dt>Fechamento</dt><dd>{fmtPx(s.close)}</dd>
+        <dt>SMA {DEFAULT_PARAMS.sma}</dt><dd>{fmtPx(s.sma ?? 0)} ({fmt(((s.close / (s.sma ?? s.close)) - 1) * 100, 1)}%)</dd>
+        <dt>Compra acima / sai abaixo</dt><dd>{fmtPx((s.sma ?? 0) * (1 + buf))} / {fmtPx((s.sma ?? 0) * (1 - buf))}</dd>
         <dt>HMA {DEFAULT_PARAMS.hma}</dt><dd className={s.hmaDown ? "warn" : ""}>{s.hmaDown ? "CAINDO" : "subindo"}{s.turnDown ? " (virou hoje)" : ""}</dd>
         <dt>Volatilidade 30d</dt><dd>{fmt((s.vol ?? 0) * 100, 0)}% ao ano</dd>
-        <dt>Exposicao alvo</dt><dd>{fmt(s.expo)}x = {fmt(d.targetQty, 4)} {coin}</dd>
-        <dt>Sua posicao</dt><dd>{fmt(pos, 4)} {coin}{pos > 0 && avg > 0 ? ` a ${fmt(avg)}` : ""}</dd>
+        <dt>Exposicao alvo</dt><dd>{fmt(s.expo)}x = {fmtQty(d.targetQty)} {coin}</dd>
+        <dt>Sua posicao</dt><dd>{fmtQty(pos)} {coin}{pos > 0 && avg > 0 ? ` a ${fmtPx(avg)}` : ""}</dd>
         {realized !== 0 && <><dt>Realizado</dt><dd className={pnlClass(realized)}>{signed(realized)} USDT</dd></>}
-        {s.stop !== null && <><dt>Stop da reentrada</dt><dd>{fmt(s.stop)}</dd></>}
+        {s.stop !== null && <><dt>Stop da reentrada</dt><dd>{fmtPx(s.stop)}</dd></>}
       </dl>
       <p className="muted small">Ultimos sinais: {l.changes.map((c) => `${day(c.t)} ${c.on ? "compra" : "saida"}`).join(", ") || "-"}</p>
     </section>
@@ -316,7 +319,7 @@ function TradeForm({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[
       { merge: true });
     setQty("");
     setPrice("");
-    setMsg(`Registrado. Posicao em ${symbol}: ${fmt(next, 4)}${next > 0 ? ` a preco medio ${fmt(nextAvg)}` : ""}.`);
+    setMsg(`Registrado. Posicao em ${symbol}: ${fmtQty(next)}${next > 0 ? ` a preco medio ${fmtPx(nextAvg)}` : ""}.`);
   }
 
   return (

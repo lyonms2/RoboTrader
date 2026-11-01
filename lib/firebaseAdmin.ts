@@ -1,6 +1,13 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
+let projectId = "";
+// Projeto da conta de servico (para o painel conferir se e o mesmo projeto que ele le)
+export const serverProjectId = () => {
+  app();
+  return projectId;
+};
+
 // FIREBASE_SERVICE_ACCOUNT = conteudo do JSON da conta de servico (Firebase > Configuracoes > Contas de servico)
 function app() {
   if (getApps().length) return getApps()[0];
@@ -16,7 +23,8 @@ function app() {
     throw new Error("FIREBASE_SERVICE_ACCOUNT nao e um JSON valido (cole o arquivo da conta de servico inteiro)");
   }
   sa.private_key = String(sa.private_key).replace(/\\n/g, "\n");
-  return initializeApp({ credential: cert(sa) });
+  projectId = sa.project_id ?? "";
+  return initializeApp({ credential: cert(sa), projectId });
 }
 
 export const adminDb = () => getFirestore(app());

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { serverProjectId } from "@/lib/firebaseAdmin";
 import { runJob } from "@/lib/job";
 import { verifyIdToken } from "@/lib/verifyIdToken";
 
@@ -22,7 +23,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: config ? `configuracao do servidor: ${msg}` : `login invalido: ${msg}` }, { status: config ? 500 : 401 });
   }
   try {
-    return NextResponse.json({ ok: true, ...(await runJob({ force: true })) });
+    const out = await runJob({ force: true });
+    return NextResponse.json({ ok: true, projectId: serverProjectId(), ...out });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

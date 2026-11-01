@@ -1,6 +1,6 @@
 "use client";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
-import { addDoc, collection, doc, limit, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, limit, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
@@ -59,6 +59,7 @@ export default function Page() {
   const [latest, setLatest] = useState<LatestDoc[]>([]);
   const [trades, setTrades] = useState<(TradeDoc & { id: string })[]>([]);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const prices = usePrices(user ? Object.keys(cfg.weights) : []);
 
@@ -77,6 +78,7 @@ export default function Page() {
   async function refresh() {
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       const res = await fetch("/api/refresh", { method: "POST", headers: { Authorization: `Bearer ${await user!.getIdToken()}` } });
       if (!res.ok) {
@@ -85,7 +87,21 @@ export default function Page() {
         let detail = text.slice(0, 300) || "(resposta vazia)";
         try { detail = JSON.parse(text).error ?? detail; } catch { /* nao e JSON */ }
         setError(`Recalcular falhou (HTTP ${res.status}): ${detail}`);
+        return;
       }
+      const body = (await res.json()) as { results?: { symbol: string; label: string }[]; projectId?: string };
+      const clientProject = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+      if (body.projectId && body.projectId !== clientProject) {
+        setError(`O servidor gravou no projeto "${body.projectId}", mas o site le o projeto "${clientProject}". ` +
+          "Gere a chave da conta de servico (FIREBASE_SERVICE_ACCOUNT) no mesmo projeto do Firebase.");
+        return;
+      }
+      // Le de novo os sinais (alem do tempo real), para mostrar erro de permissao se houver
+      const snap = await getDocs(collection(db(), "latest"));
+      setLatest(snap.docs.map((d) => d.data() as LatestDoc));
+      setNotice(`Recalculado as ${new Date().toLocaleTimeString("pt-BR")}: ` +
+        (body.results ?? []).map((r) => `${r.symbol.replace("USDT", "")} ${r.label}`).join(" | ") +
+        (snap.empty ? ` - mas nada foi encontrado em "latest" no projeto ${clientProject}.` : ""));
     } catch (e) {
       setError(`Recalcular falhou: ${String(e)}`);
     } finally {
@@ -115,6 +131,7 @@ export default function Page() {
         </div>
       </header>
       {error && <p className="error">{error}</p>}
+      {notice && <p className="muted small">{notice}</p>}
       {!latest.length && !error && <p className="muted">Nenhum sinal ainda. Clique em &quot;Recalcular agora&quot;.</p>}
 
       <Summary cfg={cfg} latest={latest} prices={prices} />

@@ -61,3 +61,10 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
 .price-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 2px 0 6px; }
 .price-row b { font-size: 17px; }
 .summary table { margin-top: 4px; }
+.cfg-top { display: flex; gap: 16px 24px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+.table-scroll { overflow-x: auto; }
+.cfg-table { min-width: 560px; }
+.cfg-table th { font-weight: 600; color: var(--muted); font-size: 12.5px; }
+.cfg-table input { width: 100%; max-width: 150px; }
+.cfg-table tfoot td { border-bottom: 0; font-weight: 600; }
+.cfg-actions { margin: 12px 0 4px; flex-wrap: wrap; }

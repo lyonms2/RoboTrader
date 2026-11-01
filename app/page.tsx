@@ -336,28 +336,58 @@ function ConfigForm({ cfg }: { cfg: AppConfig }) {
     setMsg("Salvo. Os cartoes ja usam os novos valores.");
   }
 
+  const symbols = ordered(Object.keys(draft.weights));
+  const totalWeight = Object.values(draft.weights).reduce((a, b) => a + b, 0);
+  const setMap = (key: "weights" | "positions" | "avgPrice", s: string, v: number) =>
+    setDraft({ ...draft, [key]: { ...(draft[key] ?? {}), [s]: v } });
+
   return (
     <section className="card">
       <h2>Configuracao</h2>
-      <div className="row wrap-row">
-        <label>Capital (USDT) <NumInput value={draft.capitalUsdt} onChange={(v) => setDraft({ ...draft, capitalUsdt: v })} /></label>
-        {ordered(Object.keys(draft.weights)).map((s) => (
-          <label key={s}>Peso {s} <NumInput value={draft.weights[s]} onChange={(v) => setDraft({ ...draft, weights: { ...draft.weights, [s]: v } })} /></label>
-        ))}
-        {ordered(Object.keys(draft.weights)).map((s) => (
-          <label key={`p${s}`}>Posicao {s} <NumInput value={draft.positions[s] ?? 0} onChange={(v) => setDraft({ ...draft, positions: { ...draft.positions, [s]: v } })} /></label>
-        ))}
-        {ordered(Object.keys(draft.weights)).map((s) => (
-          <label key={`a${s}`}>Preco medio {s} <NumInput value={draft.avgPrice?.[s] ?? 0} onChange={(v) => setDraft({ ...draft, avgPrice: { ...draft.avgPrice, [s]: v } })} /></label>
-        ))}
-        <label className="check"><input type="checkbox" checked={draft.reentry} onChange={(e) => setDraft({ ...draft, reentry: e.target.checked })} /> Reentrada no repique (meia posicao)</label>
-        <button onClick={save}>Salvar</button>
+      <div className="cfg-top">
+        <label>Capital total (USDT) <NumInput value={draft.capitalUsdt} onChange={(v) => setDraft({ ...draft, capitalUsdt: v })} /></label>
+        <label className="check">
+          <input type="checkbox" checked={draft.reentry} onChange={(e) => setDraft({ ...draft, reentry: e.target.checked })} />
+          Reentrada no repique (meia posicao)
+        </label>
       </div>
-      {msg && <p className="muted small">{msg}</p>}
-      {Math.abs(Object.values(draft.weights).reduce((a, b) => a + b, 0) - 1) > 0.011 && (
-        <p className="warn small">A soma dos pesos e {fmt(Object.values(draft.weights).reduce((a, b) => a + b, 0))}: o normal e 1 (100% do capital).</p>
+      <div className="table-scroll">
+        <table className="cfg-table">
+          <thead>
+            <tr><th>Moeda</th><th>Peso (%)</th><th>Capital alocado</th><th>Posicao (moedas)</th><th>Preco medio (USDT)</th></tr>
+          </thead>
+          <tbody>
+            {symbols.map((s) => (
+              <tr key={s}>
+                <td><b>{s.replace("USDT", "")}</b></td>
+                <td><NumInput value={round8(draft.weights[s] * 100)} onChange={(v) => setMap("weights", s, v / 100)} /></td>
+                <td className="muted">{fmt(draft.capitalUsdt * draft.weights[s])} USDT</td>
+                <td><NumInput value={draft.positions[s] ?? 0} onChange={(v) => setMap("positions", s, v)} /></td>
+                <td><NumInput value={draft.avgPrice?.[s] ?? 0} onChange={(v) => setMap("avgPrice", s, v)} /></td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td className={Math.abs(totalWeight - 1) > 0.011 ? "warn" : ""}>{fmt(totalWeight * 100, 0)}%</td>
+              <td className="muted">{fmt(draft.capitalUsdt * totalWeight)} USDT</td>
+              <td colSpan={2} />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="row cfg-actions">
+        <button onClick={save}>Salvar</button>
+        {msg && <span className="muted small">{msg}</span>}
+      </div>
+      {Math.abs(totalWeight - 1) > 0.011 && (
+        <p className="warn small">Os pesos somam {fmt(totalWeight * 100, 0)}%: o normal e 100% do capital.</p>
       )}
-      <p className="muted small">A reentrada muda o calculo do servidor: clique em &quot;Recalcular agora&quot; depois de alterar.</p>
+      <p className="muted small">
+        Posicao e preco medio sao atualizados sozinhos ao registrar operacoes; edite aqui so para corrigir.
+        A reentrada muda o calculo do servidor: depois de alterar, clique em &quot;Recalcular agora&quot;.
+      </p>
     </section>
   );
 }

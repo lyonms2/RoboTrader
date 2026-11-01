@@ -1,6 +1,6 @@
 "use client";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
-import { addDoc, collection, doc, getDocs, limit, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
@@ -74,7 +74,7 @@ export default function Page() {
     const onErr = (e: Error) => setError(e.message.includes("permission") ? "Este e-mail nao tem acesso (veja firestore.rules)." : e.message);
     const u1 = onSnapshot(doc(db(), "config/main"), (s) => s.exists() && setCfg({ ...DEFAULT_CONFIG, ...(s.data() as AppConfig) }), onErr);
     const u2 = onSnapshot(collection(db(), "latest"), (s) => setLatest(s.docs.map((d) => d.data() as LatestDoc)), onErr);
-    const u3 = onSnapshot(query(collection(db(), "trades"), orderBy("t", "desc"), limit(20)),
+    const u3 = onSnapshot(query(collection(db(), "trades"), orderBy("t", "desc")),
       (s) => setTrades(s.docs.map((d) => ({ id: d.id, ...(d.data() as TradeDoc) }))), onErr);
     return () => { u1(); u2(); u3(); };
   }, [user]);
@@ -159,19 +159,7 @@ export default function Page() {
         </Modal>
       )}
 
-      <section className="card">
-        <h2>Operacoes registradas</h2>
-        {trades.length ? (
-          <table>
-            <thead><tr><th>Data</th><th>Ativo</th><th>Lado</th><th>Qtd</th><th>Preco</th></tr></thead>
-            <tbody>
-              {trades.map((t) => (
-                <tr key={t.id}><td>{new Date(t.t).toLocaleString("pt-BR")}</td><td>{t.symbol}</td><td>{t.side}</td><td>{fmtQty(t.qty)}</td><td>{fmtPx(t.price)}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        ) : <p className="muted">Nenhuma ainda.</p>}
-      </section>
+      <TradesTable trades={trades} />
       <p className="muted small">Ferramenta educacional. Nao e recomendacao de investimento. O candle diario fecha as 21:00 (Brasilia).</p>
     </main>
   );
@@ -422,6 +410,85 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
         Posicao e preco medio sao atualizados sozinhos ao registrar operacoes; edite aqui so para corrigir.
         A reentrada muda o calculo do servidor: depois de alterar, clique em &quot;Recalcular agora&quot;.
       </p>
+    </section>
+  );
+}
+
+const PAGE_SIZE = 10;
+
+// Historico de operacoes: busca livre, filtro por moeda e lado, 10 por pagina
+function TradesTable({ trades }: { trades: (TradeDoc & { id: string })[] }) {
+  const [search, setSearch] = useState("");
+  const [coin, setCoin] = useState("");
+  const [side, setSide] = useState("");
+  const [page, setPage] = useState(0);
+  const coins = ordered([...new Set(trades.map((t) => t.symbol))]);
+  const q = search.trim().toLowerCase();
+  const rows = trades.filter((t) => {
+    if (coin && t.symbol !== coin) return false;
+    if (side && t.side !== side) return false;
+    if (!q) return true;
+    const text = [new Date(t.t).toLocaleString("pt-BR"), t.symbol, t.side, fmtQty(t.qty), fmtPx(t.price), String(t.qty), String(t.price)]
+      .join(" ").toLowerCase();
+    return text.includes(q);
+  });
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const cur = Math.min(page, pages - 1);
+  const shown = rows.slice(cur * PAGE_SIZE, cur * PAGE_SIZE + PAGE_SIZE);
+  useEffect(() => setPage(0), [search, coin, side]);
+
+  return (
+    <section className="card">
+      <div className="row between wrap-row trades-head">
+        <h2>Operacoes registradas</h2>
+        <div className="row wrap-row">
+          <input type="search" placeholder="Buscar (data, moeda, preco...)" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <select value={coin} onChange={(e) => setCoin(e.target.value)} aria-label="Moeda">
+            <option value="">Todas as moedas</option>
+            {coins.map((c) => <option key={c} value={c}>{c.replace("USDT", "")}</option>)}
+          </select>
+          <select value={side} onChange={(e) => setSide(e.target.value)} aria-label="Lado">
+            <option value="">Compra e venda</option>
+            <option value="compra">compra</option>
+            <option value="venda">venda</option>
+          </select>
+        </div>
+      </div>
+      {!trades.length ? (
+        <p className="muted">Nenhuma ainda.</p>
+      ) : !rows.length ? (
+        <p className="muted">Nenhuma operacao encontrada com esses filtros.</p>
+      ) : (
+        <>
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Data</th><th>Moeda</th><th>Lado</th><th>Qtd</th><th>Preco</th><th>Valor (USDT)</th></tr></thead>
+              <tbody>
+                {shown.map((t) => (
+                  <tr key={t.id}>
+                    <td>{new Date(t.t).toLocaleString("pt-BR")}</td>
+                    <td>{t.symbol.replace("USDT", "")}</td>
+                    <td className={t.side === "compra" ? "pos" : "neg"}>{t.side}</td>
+                    <td>{fmtQty(t.qty)}</td>
+                    <td>{fmtPx(t.price)}</td>
+                    <td>{fmt(t.qty * t.price)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="row between pager">
+            <span className="muted small">
+              {rows.length} operac{rows.length === 1 ? "ao" : "oes"}{rows.length !== trades.length ? ` (de ${trades.length})` : ""}
+            </span>
+            <div className="row">
+              <button className="ghost" onClick={() => setPage(cur - 1)} disabled={cur === 0}>Anterior</button>
+              <span className="small">Pagina {cur + 1} de {pages}</span>
+              <button className="ghost" onClick={() => setPage(cur + 1)} disabled={cur >= pages - 1}>Proxima</button>
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }

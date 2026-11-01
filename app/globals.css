@@ -73,3 +73,8 @@ button.icon { padding: 8px 10px; line-height: 0; display: inline-flex; align-ite
 .modal { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; width: 100%; max-width: 760px; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
 .modal-head { margin-bottom: 8px; }
 .modal-head h2 { margin: 0; }
+.trades-head { margin-bottom: 10px; gap: 10px; }
+.trades-head h2 { margin: 0; }
+.trades-head input[type="search"] { max-width: 240px; }
+.pager { margin-top: 10px; flex-wrap: wrap; gap: 8px; }
+.pager button:disabled { opacity: .4; }

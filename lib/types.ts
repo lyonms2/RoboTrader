@@ -8,10 +8,13 @@ export type AppConfig = {
   reentry: boolean;
 };
 
+// Ativos acompanhados pelo robo (pares do spot da Binance)
+export const SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
+
 export const DEFAULT_CONFIG: AppConfig = {
   capitalUsdt: 1000,
-  weights: { BTCUSDT: 0.5, ETHUSDT: 0.5 },
-  positions: { BTCUSDT: 0, ETHUSDT: 0 },
+  weights: { BTCUSDT: 0.34, ETHUSDT: 0.33, SOLUSDT: 0.33 },
+  positions: { BTCUSDT: 0, ETHUSDT: 0, SOLUSDT: 0 },
   reentry: false,
 };
 

@@ -189,6 +189,9 @@ function ConfigForm({ cfg }: { cfg: AppConfig }) {
         <button onClick={save}>Salvar</button>
       </div>
       {msg && <p className="muted small">{msg}</p>}
+      {Math.abs(Object.values(draft.weights).reduce((a, b) => a + b, 0) - 1) > 0.011 && (
+        <p className="warn small">A soma dos pesos e {fmt(Object.values(draft.weights).reduce((a, b) => a + b, 0))}: o normal e 1 (100% do capital).</p>
+      )}
       <p className="muted small">A reentrada muda o calculo do servidor: clique em &quot;Recalcular agora&quot; depois de alterar.</p>
     </section>
   );

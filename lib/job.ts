@@ -1,7 +1,7 @@
 import { adminDb } from "./firebaseAdmin";
 import { fetchDaily } from "./market";
 import { DEFAULT_PARAMS, decide, runStrategy, signalChanges } from "./strategy";
-import { DEFAULT_CONFIG, type AppConfig, type LatestDoc } from "./types";
+import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc } from "./types";
 
 const CHART_DAYS = 240;
 
@@ -21,14 +21,20 @@ export async function runJob({ notify }: { notify: boolean }) {
   const db = adminDb();
   const cfgSnap = await db.doc("config/main").get();
   const cfg: AppConfig = { ...DEFAULT_CONFIG, ...(cfgSnap.data() as Partial<AppConfig> | undefined) };
-  if (!cfgSnap.exists) await db.doc("config/main").set(cfg);
+  // Ativo novo (ex.: SOL adicionada depois): entra com o peso padrao e posicao zero; ajuste no painel
+  const missing = SYMBOLS.filter((s) => cfg.weights[s] === undefined);
+  for (const s of missing) {
+    cfg.weights = { ...cfg.weights, [s]: DEFAULT_CONFIG.weights[s] };
+    cfg.positions = { ...cfg.positions, [s]: cfg.positions[s] ?? 0 };
+  }
+  if (!cfgSnap.exists || missing.length) await db.doc("config/main").set(cfg);
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
   const results: { symbol: string; label: string; qty: number; day: string }[] = [];
 
-  for (const symbol of Object.keys(cfg.weights)) {
+  for (const symbol of SYMBOLS) {
     const states = runStrategy(await fetchDaily(symbol), params);
     const s = states[states.length - 1];
-    const capital = cfg.capitalUsdt * cfg.weights[symbol];
+    const capital = cfg.capitalUsdt * (cfg.weights[symbol] ?? 0);
     const decision = decide(s, capital, cfg.positions[symbol] ?? 0, params);
     const tail = states.slice(-CHART_DAYS);
     const doc: LatestDoc = {

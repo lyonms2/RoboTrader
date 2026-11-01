@@ -1,4 +1,4 @@
-# Robô de Sinais (BTC/ETH, diário)
+# Robô de Sinais (BTC/ETH/SOL, diário)
 
 Painel web que calcula todo dia o sinal da estratégia diária, a mesma do `btc_swing_sma_vol.pine` e do `robo_sinais.py`:
 
@@ -18,7 +18,7 @@ Vercel Cron (todo dia, logo depois das 00:00 UTC = 21:00 Brasília)
 Painel (Next.js na Vercel) com login Google
   ├─ cartões por ativo: ação sugerida, gráfico, SMA, HMA, volatilidade, exposição alvo
   ├─ "Registrar operação": anota a compra/venda que você fez e atualiza a posição
-  ├─ "Configuração": capital, pesos (BTC/ETH 50/50), posição, reentrada no repique
+  ├─ "Configuração": capital, pesos (BTC 34%, ETH 33%, SOL 33%), posição, reentrada no repique
   └─ "Recalcular agora": roda o cálculo na hora
 ```
 

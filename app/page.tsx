@@ -79,7 +79,15 @@ export default function Page() {
     setError("");
     try {
       const res = await fetch("/api/refresh", { method: "POST", headers: { Authorization: `Bearer ${await user!.getIdToken()}` } });
-      if (!res.ok) setError(`Recalcular falhou: ${(await res.json()).error}`);
+      if (!res.ok) {
+        // A resposta pode nao ser JSON (ex.: tempo esgotado ou falha da Vercel): mostra status e texto
+        const text = await res.text();
+        let detail = text.slice(0, 300) || "(resposta vazia)";
+        try { detail = JSON.parse(text).error ?? detail; } catch { /* nao e JSON */ }
+        setError(`Recalcular falhou (HTTP ${res.status}): ${detail}`);
+      }
+    } catch (e) {
+      setError(`Recalcular falhou: ${String(e)}`);
     } finally {
       setBusy(false);
     }

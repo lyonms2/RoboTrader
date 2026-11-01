@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { runJob } from "@/lib/job";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const digest = (s: string) => createHash("sha256").update(s).digest();
 

@@ -4,7 +4,7 @@ import { addDoc, collection, doc, limit, onSnapshot, orderBy, query, setDoc } fr
 import { useEffect, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
-import { DEFAULT_CONFIG, type AppConfig, type LatestDoc, type TradeDoc } from "@/lib/types";
+import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type TradeDoc } from "@/lib/types";
 import Chart from "./Chart";
 import { usePrices, type Prices } from "./usePrices";
 
@@ -16,13 +16,22 @@ const ago = (t: number) => {
 };
 const signed = (v: number, d = 2) => `${v > 0 ? "+" : ""}${fmt(v, d)}`;
 const pnlClass = (v: number) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
+// Evita lixo de ponto flutuante (0.022719999999999997) nas quantidades e precos salvos
+const round8 = (v: number) => Math.round(v * 1e8) / 1e8;
+// Moedas na ordem fixa BTC, ETH, SOL (o Firestore nao garante a ordem das chaves)
+const ordered = (keys: string[]) =>
+  [...keys].sort((a, b) => (SYMBOLS.indexOf(a) + 1 || 99) - (SYMBOLS.indexOf(b) + 1 || 99));
+
+type Px = { price: number; at: number; live: boolean };
 
 // Preco atual: Binance ao vivo (30 s) ou, se indisponivel, o do ultimo recalculo do servidor
-function currentPrice(l: LatestDoc, prices: Prices): { price: number; at: number; live: boolean } {
-  const live = prices.values[l.symbol];
+function priceOf(symbol: string, latest: LatestDoc[], prices: Prices): Px | null {
+  const live = prices.values[symbol];
   if (live && prices.at) return { price: live, at: prices.at, live: true };
-  return { price: l.preview?.state.close ?? l.state.close, at: l.updatedAt, live: false };
+  const l = latest.find((x) => x.symbol === symbol);
+  return l ? { price: l.preview?.state.close ?? l.state.close, at: l.updatedAt, live: false } : null;
 }
+const currentPrice = (l: LatestDoc, prices: Prices): Px => priceOf(l.symbol, [l], prices) as Px;
 
 // Lucro/prejuizo da posicao aberta (sem taxas e funding)
 function openPnl(cfg: AppConfig, symbol: string, price: number) {
@@ -34,9 +43,9 @@ function openPnl(cfg: AppConfig, symbol: string, price: number) {
 
 // Campo numerico que aceita digitar "0," ou "0.004" antes de virar numero
 function NumInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const [text, setText] = useState(String(value));
+  const [text, setText] = useState(String(round8(value)));
   useEffect(() => {
-    setText((t) => (Number(t.replace(",", ".")) === value ? t : String(value)));
+    setText((t) => (Number(t.replace(",", ".")) === value ? t : String(round8(value))));
   }, [value]);
   return (
     <input value={text} inputMode="decimal"
@@ -100,7 +109,7 @@ export default function Page() {
       {error && <p className="error">{error}</p>}
       {!latest.length && !error && <p className="muted">Nenhum sinal ainda. Clique em &quot;Recalcular agora&quot;.</p>}
 
-      {latest.length > 0 && <Summary cfg={cfg} latest={latest} prices={prices} />}
+      <Summary cfg={cfg} latest={latest} prices={prices} />
 
       <div className="grid">
         {[...latest].sort((a, b) => a.symbol.localeCompare(b.symbol)).map((l) => (
@@ -129,19 +138,24 @@ export default function Page() {
   );
 }
 
+// Resumo do lucro: usa o preco ao vivo, entao funciona mesmo antes do primeiro "Recalcular agora"
 function Summary({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[]; prices: Prices }) {
   let open = 0;
   let invested = 0;
   let value = 0;
   let unknown = false;
-  for (const l of latest) {
-    const { price } = currentPrice(l, prices);
-    const p = openPnl(cfg, l.symbol, price);
-    const pos = cfg.positions[l.symbol] ?? 0;
+  const rows: { symbol: string; pos: number; avg: number; price: number; usdt: number; pct: number }[] = [];
+  for (const symbol of ordered(Object.keys(cfg.weights))) {
+    const px = priceOf(symbol, latest, prices);
+    const pos = cfg.positions[symbol] ?? 0;
+    if (!px || !(pos > 0)) continue;
+    const avg = cfg.avgPrice?.[symbol] ?? 0;
+    const p = openPnl(cfg, symbol, px.price);
     open += p.usdt;
     unknown ||= !p.known;
-    invested += pos * (cfg.avgPrice?.[l.symbol] ?? 0);
-    value += pos * price;
+    invested += pos * avg;
+    value += pos * px.price;
+    rows.push({ symbol, pos, avg, price: px.price, usdt: p.usdt, pct: p.pct });
   }
   const realized = Object.values(cfg.realized ?? {}).reduce((a, b) => a + b, 0);
   return (
@@ -151,6 +165,20 @@ function Summary({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[];
         <b className={pnlClass(open)}>{signed(open)} USDT{invested > 0 ? ` (${signed((open / invested) * 100, 1)}%)` : ""}</b></div>
       <div><span className="muted small">Realizado (vendas)</span><b className={pnlClass(realized)}>{signed(realized)} USDT</b></div>
       <div><span className="muted small">Total</span><b className={pnlClass(open + realized)}>{signed(open + realized)} USDT</b></div>
+      {rows.length > 0 && (
+        <table className="full">
+          <thead><tr><th>Moeda</th><th>Posicao</th><th>Preco medio</th><th>Preco atual</th><th>Lucro/prejuizo</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.symbol}>
+                <td>{r.symbol.replace("USDT", "")}</td><td>{fmt(r.pos, 4)}</td>
+                <td>{r.avg > 0 ? fmt(r.avg) : "-"}</td><td>{fmt(r.price)}</td>
+                <td className={pnlClass(r.usdt)}>{r.avg > 0 ? `${signed(r.usdt)} USDT (${signed(r.pct, 1)}%)` : "informe o preco medio"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       {unknown && <p className="warn small full">Ha posicao sem preco medio: informe-o em Configuracao para calcular o lucro.</p>}
       <p className="muted small full">Sem taxas e sem funding. Preco {prices.at ? `ao vivo da Binance (${ago(prices.at)})` : "do ultimo recalculo"}.</p>
     </section>
@@ -219,7 +247,7 @@ function AssetCard({ l, cfg, prices }: { l: LatestDoc; cfg: AppConfig; prices: P
 }
 
 function TradeForm({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[]; prices: Prices }) {
-  const symbols = Object.keys(cfg.weights);
+  const symbols = ordered(Object.keys(cfg.weights));
   const [symbol, setSymbol] = useState(symbols[0] ?? "BTCUSDT");
   const [side, setSide] = useState<"compra" | "venda">("compra");
   const [qty, setQty] = useState("");
@@ -248,7 +276,8 @@ function TradeForm({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[
     }
     await addDoc(collection(db(), "trades"), { symbol, side, qty: q, price: p, t: Date.now() } satisfies TradeDoc);
     await setDoc(doc(db(), "config/main"),
-      { positions: { [symbol]: next }, avgPrice: { [symbol]: nextAvg }, realized: { [symbol]: realized } }, { merge: true });
+      { positions: { [symbol]: round8(next) }, avgPrice: { [symbol]: round8(nextAvg) }, realized: { [symbol]: round8(realized) } },
+      { merge: true });
     setQty("");
     setPrice("");
     setMsg(`Registrado. Posicao em ${symbol}: ${fmt(next, 4)}${next > 0 ? ` a preco medio ${fmt(nextAvg)}` : ""}.`);
@@ -275,7 +304,10 @@ function ConfigForm({ cfg }: { cfg: AppConfig }) {
   useEffect(() => setDraft(cfg), [cfg]);
 
   async function save() {
-    await setDoc(doc(db(), "config/main"), draft);
+    const clean = (m: Record<string, number> = {}) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, round8(v)]));
+    await setDoc(doc(db(), "config/main"), {
+      ...draft, weights: clean(draft.weights), positions: clean(draft.positions), avgPrice: clean(draft.avgPrice), realized: clean(draft.realized),
+    });
     setMsg("Salvo. Os cartoes ja usam os novos valores.");
   }
 
@@ -284,13 +316,13 @@ function ConfigForm({ cfg }: { cfg: AppConfig }) {
       <h2>Configuracao</h2>
       <div className="row wrap-row">
         <label>Capital (USDT) <NumInput value={draft.capitalUsdt} onChange={(v) => setDraft({ ...draft, capitalUsdt: v })} /></label>
-        {Object.keys(draft.weights).map((s) => (
+        {ordered(Object.keys(draft.weights)).map((s) => (
           <label key={s}>Peso {s} <NumInput value={draft.weights[s]} onChange={(v) => setDraft({ ...draft, weights: { ...draft.weights, [s]: v } })} /></label>
         ))}
-        {Object.keys(draft.weights).map((s) => (
+        {ordered(Object.keys(draft.weights)).map((s) => (
           <label key={`p${s}`}>Posicao {s} <NumInput value={draft.positions[s] ?? 0} onChange={(v) => setDraft({ ...draft, positions: { ...draft.positions, [s]: v } })} /></label>
         ))}
-        {Object.keys(draft.weights).map((s) => (
+        {ordered(Object.keys(draft.weights)).map((s) => (
           <label key={`a${s}`}>Preco medio {s} <NumInput value={draft.avgPrice?.[s] ?? 0} onChange={(v) => setDraft({ ...draft, avgPrice: { ...draft.avgPrice, [s]: v } })} /></label>
         ))}
         <label className="check"><input type="checkbox" checked={draft.reentry} onChange={(e) => setDraft({ ...draft, reentry: e.target.checked })} /> Reentrada no repique (meia posicao)</label>

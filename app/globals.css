@@ -60,3 +60,4 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
 .summary .full { grid-column: 1 / -1; margin: 0; }
 .price-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 2px 0 6px; }
 .price-row b { font-size: 17px; }
+.summary table { margin-top: 4px; }

@@ -68,3 +68,8 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line
 .cfg-table input { width: 100%; max-width: 150px; }
 .cfg-table tfoot td { border-bottom: 0; font-weight: 600; }
 .cfg-actions { margin: 12px 0 4px; flex-wrap: wrap; }
+button.icon { padding: 8px 10px; line-height: 0; display: inline-flex; align-items: center; justify-content: center; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; z-index: 50; overflow-y: auto; }
+.modal { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; width: 100%; max-width: 760px; box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+.modal-head { margin-bottom: 8px; }
+.modal-head h2 { margin: 0; }

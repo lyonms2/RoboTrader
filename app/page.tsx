@@ -60,6 +60,7 @@ export default function Page() {
   const [trades, setTrades] = useState<(TradeDoc & { id: string })[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [showCfg, setShowCfg] = useState(false);
   const [busy, setBusy] = useState(false);
   const prices = usePrices(user ? Object.keys(cfg.weights) : []);
 
@@ -127,6 +128,12 @@ export default function Page() {
         <h1>Robo de Sinais</h1>
         <div className="row">
           <button onClick={refresh} disabled={busy}>{busy ? "Calculando..." : "Recalcular agora"}</button>
+          <button className="ghost icon" onClick={() => setShowCfg(true)} aria-label="Configuracao" title="Configuracao">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
           <button className="ghost" onClick={() => signOut(auth())}>Sair</button>
         </div>
       </header>
@@ -143,7 +150,11 @@ export default function Page() {
       </div>
 
       <TradeForm cfg={cfg} latest={latest} prices={prices} />
-      <ConfigForm cfg={cfg} />
+      {showCfg && (
+        <Modal onClose={() => setShowCfg(false)}>
+          <ConfigForm cfg={cfg} onClose={() => setShowCfg(false)} />
+        </Modal>
+      )}
 
       <section className="card">
         <h2>Operacoes registradas</h2>
@@ -323,9 +334,26 @@ function TradeForm({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[
   );
 }
 
-function ConfigForm({ cfg }: { cfg: AppConfig }) {
+// Janela sobreposta: fecha no X, no Esc ou clicando fora
+function Modal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" role="dialog" aria-modal="true">{children}</div>
+    </div>
+  );
+}
+
+function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
   const [draft, setDraft] = useState(cfg);
-  const [msg, setMsg] = useState("");
   useEffect(() => setDraft(cfg), [cfg]);
 
   async function save() {
@@ -333,7 +361,7 @@ function ConfigForm({ cfg }: { cfg: AppConfig }) {
     await setDoc(doc(db(), "config/main"), {
       ...draft, weights: clean(draft.weights), positions: clean(draft.positions), avgPrice: clean(draft.avgPrice), realized: clean(draft.realized),
     });
-    setMsg("Salvo. Os cartoes ja usam os novos valores.");
+    onClose();
   }
 
   const symbols = ordered(Object.keys(draft.weights));
@@ -342,8 +370,11 @@ function ConfigForm({ cfg }: { cfg: AppConfig }) {
     setDraft({ ...draft, [key]: { ...(draft[key] ?? {}), [s]: v } });
 
   return (
-    <section className="card">
-      <h2>Configuracao</h2>
+    <section>
+      <div className="row between modal-head">
+        <h2>Configuracao</h2>
+        <button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button>
+      </div>
       <div className="cfg-top">
         <label>Capital total (USDT) <NumInput value={draft.capitalUsdt} onChange={(v) => setDraft({ ...draft, capitalUsdt: v })} /></label>
         <label className="check">
@@ -379,7 +410,7 @@ function ConfigForm({ cfg }: { cfg: AppConfig }) {
       </div>
       <div className="row cfg-actions">
         <button onClick={save}>Salvar</button>
-        {msg && <span className="muted small">{msg}</span>}
+        <button className="ghost" onClick={onClose}>Cancelar</button>
       </div>
       {Math.abs(totalWeight - 1) > 0.011 && (
         <p className="warn small">Os pesos somam {fmt(totalWeight * 100, 0)}%: o normal e 100% do capital.</p>

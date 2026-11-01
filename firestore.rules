@@ -15,7 +15,7 @@ service cloud.firestore {
       allow write: if isOwner();
     }
     match /trades/{id} {
-      allow create: if isOwner();
+      allow create, update, delete: if isOwner();
     }
   }
 }

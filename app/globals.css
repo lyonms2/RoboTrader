@@ -78,3 +78,8 @@ button.icon { padding: 8px 10px; line-height: 0; display: inline-flex; align-ite
 .trades-head input[type="search"] { max-width: 240px; }
 .pager { margin-top: 10px; flex-wrap: wrap; gap: 8px; }
 .pager button:disabled { opacity: .4; }
+td.actions { white-space: nowrap; text-align: right; }
+td.actions button { padding: 5px 7px; margin-left: 4px; }
+button.danger:hover { color: var(--sell); border-color: var(--sell); }
+tr.editing input, tr.editing select { max-width: 130px; padding: 4px 6px; }
+tr.editing input[type="datetime-local"] { max-width: 190px; }

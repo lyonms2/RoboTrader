@@ -1,8 +1,9 @@
 "use client";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
-import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, setDoc, writeBatch } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
+import { applyTrade, rebuild } from "@/lib/ledger";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
 import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type TradeDoc } from "@/lib/types";
 import Chart from "./Chart";
@@ -287,20 +288,8 @@ function TradeForm({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[
     const p = Number(price.replace(",", ".")) || (l ? currentPrice(l, prices).price : 0);
     if (!(q > 0)) return setMsg("Informe a quantidade.");
     if (!(p > 0)) return setMsg("Informe o preco.");
-    const cur = cfg.positions[symbol] ?? 0;
-    const avg = cfg.avgPrice?.[symbol] ?? 0;
-    let realized = cfg.realized?.[symbol] ?? 0;
-    let next: number;
-    let nextAvg: number;
-    if (side === "compra") {
-      next = cur + q;
-      nextAvg = cur > 0 && avg > 0 ? (cur * avg + q * p) / next : p; // preco medio ponderado
-    } else {
-      const sold = Math.min(q, cur);
-      next = cur - sold;
-      if (avg > 0) realized += sold * (p - avg); // lucro da parte vendida contra o preco medio
-      nextAvg = next > 1e-12 ? avg : 0;
-    }
+    const { pos: next, avg: nextAvg, realized } = applyTrade(
+      { pos: cfg.positions[symbol] ?? 0, avg: cfg.avgPrice?.[symbol] ?? 0, realized: cfg.realized?.[symbol] ?? 0 }, side, q, p);
     await addDoc(collection(db(), "trades"), { symbol, side, qty: q, price: p, t: Date.now() } satisfies TradeDoc);
     await setDoc(doc(db(), "config/main"),
       { positions: { [symbol]: round8(next) }, avgPrice: { [symbol]: round8(nextAvg) }, realized: { [symbol]: round8(realized) } },
@@ -417,7 +406,40 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
 const PAGE_SIZE = 10;
 
 // Historico de operacoes: busca livre, filtro por moeda e lado, 10 por pagina
-function TradesTable({ trades }: { trades: (TradeDoc & { id: string })[] }) {
+type TradeRow = TradeDoc & { id: string };
+
+// Grava a mudanca na operacao e refaz posicao, preco medio e realizado das moedas afetadas a partir do historico
+async function saveTradeChange(all: TradeRow[], change: { id: string; next: TradeDoc | null }) {
+  const old = all.find((t) => t.id === change.id);
+  const after = all.filter((t) => t.id !== change.id).concat(change.next ? [{ ...change.next, id: change.id }] : []);
+  const symbols = [...new Set([old?.symbol, change.next?.symbol].filter((s): s is string => !!s))];
+  const batch = writeBatch(db());
+  const ref = doc(db(), "trades", change.id);
+  if (change.next) batch.set(ref, change.next);
+  else batch.delete(ref);
+  const books = Object.fromEntries(symbols.map((s) => [s, rebuild(after, s)]));
+  batch.set(doc(db(), "config/main"), {
+    positions: Object.fromEntries(symbols.map((s) => [s, books[s].pos])),
+    avgPrice: Object.fromEntries(symbols.map((s) => [s, books[s].avg])),
+    realized: Object.fromEntries(symbols.map((s) => [s, books[s].realized])),
+  }, { merge: true });
+  await batch.commit();
+  return books;
+}
+
+const toLocalInput = (t: number) => {
+  const d = new Date(t);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
+
+const RECALC_NOTE = "A posicao, o preco medio e o realizado da moeda serao refeitos a partir de TODAS as operacoes registradas dela " +
+  "(ajustes feitos a mao na Configuracao serao substituidos).";
+
+type Editing = { id: string; symbol: string; side: TradeDoc["side"]; qty: string; price: string; when: string };
+
+function TradesTable({ trades }: { trades: TradeRow[] }) {
+  const [editing, setEditing] = useState<Editing | null>(null);
+  const [msg, setMsg] = useState("");
   const [search, setSearch] = useState("");
   const [coin, setCoin] = useState("");
   const [side, setSide] = useState("");
@@ -436,6 +458,38 @@ function TradesTable({ trades }: { trades: (TradeDoc & { id: string })[] }) {
   const cur = Math.min(page, pages - 1);
   const shown = rows.slice(cur * PAGE_SIZE, cur * PAGE_SIZE + PAGE_SIZE);
   useEffect(() => setPage(0), [search, coin, side]);
+
+  const summary = (books: Record<string, { pos: number; avg: number }>) =>
+    Object.entries(books).map(([s, b]) => `${s.replace("USDT", "")}: ${fmtQty(b.pos)}${b.pos > 0 ? ` a ${fmtPx(b.avg)}` : ""}`).join(" | ");
+
+  async function saveEdit() {
+    if (!editing) return;
+    const q = Number(editing.qty.replace(",", "."));
+    const p = Number(editing.price.replace(",", "."));
+    const t = new Date(editing.when).getTime();
+    if (!(q > 0) || !(p > 0) || !Number.isFinite(t)) return setMsg("Quantidade, preco e data precisam ser validos.");
+    if (!window.confirm(`Salvar a alteracao?\n\n${RECALC_NOTE}`)) return;
+    try {
+      const books = await saveTradeChange(trades, {
+        id: editing.id, next: { symbol: editing.symbol, side: editing.side, qty: round8(q), price: round8(p), t },
+      });
+      setEditing(null);
+      setMsg(`Operacao alterada. Posicao agora: ${summary(books)}.`);
+    } catch (e) {
+      setMsg(`Nao foi possivel salvar: ${String(e)}`);
+    }
+  }
+
+  async function remove(t: TradeRow) {
+    const what = `${t.side} de ${fmtQty(t.qty)} ${t.symbol.replace("USDT", "")} a ${fmtPx(t.price)} em ${new Date(t.t).toLocaleString("pt-BR")}`;
+    if (!window.confirm(`Excluir a ${what}?\n\n${RECALC_NOTE}`)) return;
+    try {
+      const books = await saveTradeChange(trades, { id: t.id, next: null });
+      setMsg(`Operacao excluida. Posicao agora: ${summary(books)}.`);
+    } catch (e) {
+      setMsg(`Nao foi possivel excluir: ${String(e)}`);
+    }
+  }
 
   return (
     <section className="card">
@@ -462,9 +516,30 @@ function TradesTable({ trades }: { trades: (TradeDoc & { id: string })[] }) {
         <>
           <div className="table-scroll">
             <table>
-              <thead><tr><th>Data</th><th>Moeda</th><th>Lado</th><th>Qtd</th><th>Preco</th><th>Valor (USDT)</th></tr></thead>
+              <thead><tr><th>Data</th><th>Moeda</th><th>Lado</th><th>Qtd</th><th>Preco</th><th>Valor (USDT)</th><th /></tr></thead>
               <tbody>
-                {shown.map((t) => (
+                {shown.map((t) => editing?.id === t.id ? (
+                  <tr key={t.id} className="editing">
+                    <td><input type="datetime-local" value={editing.when} onChange={(e) => setEditing({ ...editing, when: e.target.value })} /></td>
+                    <td>
+                      <select value={editing.symbol} onChange={(e) => setEditing({ ...editing, symbol: e.target.value })}>
+                        {ordered([...new Set([...SYMBOLS, editing.symbol])]).map((c) => <option key={c} value={c}>{c.replace("USDT", "")}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select value={editing.side} onChange={(e) => setEditing({ ...editing, side: e.target.value as TradeDoc["side"] })}>
+                        <option value="compra">compra</option><option value="venda">venda</option>
+                      </select>
+                    </td>
+                    <td><input value={editing.qty} inputMode="decimal" onChange={(e) => setEditing({ ...editing, qty: e.target.value })} /></td>
+                    <td><input value={editing.price} inputMode="decimal" onChange={(e) => setEditing({ ...editing, price: e.target.value })} /></td>
+                    <td className="muted">{fmt((Number(editing.qty.replace(",", ".")) || 0) * (Number(editing.price.replace(",", ".")) || 0))}</td>
+                    <td className="actions">
+                      <button className="icon" onClick={saveEdit} title="Salvar" aria-label="Salvar">&#x2713;</button>
+                      <button className="ghost icon" onClick={() => setEditing(null)} title="Cancelar" aria-label="Cancelar">&#x2715;</button>
+                    </td>
+                  </tr>
+                ) : (
                   <tr key={t.id}>
                     <td>{new Date(t.t).toLocaleString("pt-BR")}</td>
                     <td>{t.symbol.replace("USDT", "")}</td>
@@ -472,11 +547,21 @@ function TradesTable({ trades }: { trades: (TradeDoc & { id: string })[] }) {
                     <td>{fmtQty(t.qty)}</td>
                     <td>{fmtPx(t.price)}</td>
                     <td>{fmt(t.qty * t.price)}</td>
+                    <td className="actions">
+                      <button className="ghost icon" title="Editar" aria-label="Editar"
+                        onClick={() => setEditing({ id: t.id, symbol: t.symbol, side: t.side, qty: String(t.qty), price: String(t.price), when: toLocalInput(t.t) })}>
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                      </button>
+                      <button className="ghost icon danger" title="Excluir" aria-label="Excluir" onClick={() => remove(t)}>
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /></svg>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {msg && <p className="muted small">{msg}</p>}
           <div className="row between pager">
             <span className="muted small">
               {rows.length} operac{rows.length === 1 ? "ao" : "oes"}{rows.length !== trades.length ? ` (de ${trades.length})` : ""}

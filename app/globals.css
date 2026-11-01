@@ -52,3 +52,11 @@ table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
 @media (max-width: 520px) { input, select { max-width: 100%; } .wrap-row > * { flex: 1 1 140px; } }
 .preview { margin: 0 0 6px; }
+.pos { color: var(--buy); }
+.neg { color: var(--sell); }
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 16px; }
+.summary > div, .price-row > div { display: flex; flex-direction: column; }
+.summary b { font-size: 18px; }
+.summary .full { grid-column: 1 / -1; margin: 0; }
+.price-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 2px 0 6px; }
+.price-row b { font-size: 17px; }

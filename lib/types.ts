@@ -5,6 +5,8 @@ export type AppConfig = {
   capitalUsdt: number;
   weights: Record<string, number>;
   positions: Record<string, number>;
+  avgPrice: Record<string, number>; // preco medio da posicao aberta (calculado ao registrar operacoes)
+  realized: Record<string, number>; // lucro/prejuizo ja realizado em vendas, em USDT (sem taxas)
   reentry: boolean;
 };
 
@@ -15,6 +17,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   capitalUsdt: 1000,
   weights: { BTCUSDT: 0.34, ETHUSDT: 0.33, SOLUSDT: 0.33 },
   positions: { BTCUSDT: 0, ETHUSDT: 0, SOLUSDT: 0 },
+  avgPrice: {},
+  realized: {},
   reentry: false,
 };
 

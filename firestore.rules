@@ -1,0 +1,21 @@
+rules_version = '2';
+// Cole no Firebase > Firestore > Regras, trocando SEU_EMAIL@gmail.com pelo seu e-mail do Google.
+// O servidor (cron) usa a conta de servico e nao passa por estas regras.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email == "SEU_EMAIL@gmail.com"
+        && request.auth.token.email_verified == true;
+    }
+    match /{document=**} {
+      allow read: if isOwner();
+    }
+    match /config/{id} {
+      allow write: if isOwner();
+    }
+    match /trades/{id} {
+      allow create: if isOwner();
+    }
+  }
+}

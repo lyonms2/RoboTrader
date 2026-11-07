@@ -119,6 +119,14 @@ export type TokenFicha = {
   revenuePrev30d: number | null;
   pf: number | null; // valor de mercado / receita anualizada (so para tokens de protocolo)
   kind: "rede" | "token"; // rede: receita = taxas pagas na rede
-  alerts: { level: "warn" | "info"; text: string }[];
+  // use: entrada = filtro antes de comprar; saida = reduzir se exposto; olho = so acompanhar
+  alerts: { level: "warn" | "info"; text: string; use?: ("entrada" | "saida" | "olho")[] }[];
+  situacao: Situacao | null;
+};
+// Situacao do token: sinal de preco (robo ou rompimento 55/20) combinado com os alertas da ficha
+export type Situacao = {
+  code: "entrada" | "entrada_metade" | "manter" | "tendencia" | "saida" | "reduzir" | "observar" | "fora" | "sem_dados";
+  label: string;
+  detail: string;
 };
 export type FichaDoc = { at: number; items: TokenFicha[]; missing: string[]; errors: string[] };

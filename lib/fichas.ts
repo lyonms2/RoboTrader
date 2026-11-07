@@ -1,5 +1,10 @@
 import { adminDb } from "./firebaseAdmin";
-import type { FichaDoc, TokenFicha, WalletDoc } from "./types";
+import { fetchDaily } from "./market";
+import { DEFAULT_PARAMS, runStrategy, type Kline } from "./strategy";
+import type { FichaDoc, LatestDoc, Situacao, TokenFicha, WalletDoc } from "./types";
+
+type Alert = TokenFicha["alerts"][number];
+const DAY_MS = 86_400_000;
 
 // Ficha de cada token (fora do grafico): oferta, avaliacao e receita. Fontes gratuitas e sem chave:
 //   CoinGecko (valor de mercado, FDV, oferta, maxima historica) e DefiLlama (receita dos ultimos 30 dias)
@@ -85,20 +90,24 @@ export async function buildFichas(symbols: string[]): Promise<FichaDoc> {
     const circPct = m.max_supply ? (m.circulating_supply ?? 0) / m.max_supply : m.total_supply ? (m.circulating_supply ?? 0) / m.total_supply : null;
     const chain = m.id in CHAIN_SLUG;
     const alerts: TokenFicha["alerts"] = [];
-    if (fdv && mcap > 0 && fdv / mcap >= 2) alerts.push({ level: "warn", text: `${Math.round((1 - mcap / fdv) * 100)}% da oferta ainda vai entrar no mercado (FDV ${(fdv / mcap).toFixed(1)}x o valor de mercado)` });
-    else if (fdv && mcap > 0 && fdv / mcap >= 1.3) alerts.push({ level: "info", text: `FDV ${(fdv / mcap).toFixed(1)}x o valor de mercado: ainda ha tokens a liberar` });
+    // use: entrada = filtro antes de comprar (metade do tamanho ou nao entrar); saida = reduzir se estiver exposto;
+    //      olho = so acompanhar. Quem manda entrar e sair e o preco (robo / rompimento), nao estes alertas.
+    const add = (level: "warn" | "info", use: Alert["use"], text: string) => alerts.push({ level, use, text });
+    if (fdv && mcap > 0 && fdv / mcap >= 2) add("warn", ["entrada"], `${Math.round((1 - mcap / fdv) * 100)}% da oferta ainda vai entrar no mercado (FDV ${(fdv / mcap).toFixed(1)}x o valor de mercado)`);
+    else if (fdv && mcap > 0 && fdv / mcap >= 1.3) add("info", ["olho"], `FDV ${(fdv / mcap).toFixed(1)}x o valor de mercado: ainda ha tokens a liberar`);
     // Rede (BTC, ETH, SOL...): o valor vem de ser a moeda da rede, nao da receita; nao se compara P/F
     if (chain) { /* sem alerta de receita */ }
-    else if (!annual || annual < 1_000_000) alerts.push({ level: "info", text: "sem receita relevante conhecida (preco depende de narrativa)" });
-    else if (mcap / annual > 100) alerts.push({ level: "warn", text: `caro pela receita: ${Math.round(mcap / annual)}x a receita anual` });
-    if (rev?.prev && rev.prev > 0 && rev.r30 < rev.prev * 0.6) alerts.push({ level: "warn", text: `receita caiu ${Math.round((1 - rev.r30 / rev.prev) * 100)}% no ultimo mes` });
-    if (m.total_volume !== null && mcap > 0 && m.total_volume / mcap < 0.005) alerts.push({ level: "warn", text: "pouca liquidez (volume diario < 0,5% do valor de mercado)" });
-    if ((m.ath_change_percentage ?? 0) < -85) alerts.push({ level: "info", text: `${Math.round(-(m.ath_change_percentage ?? 0))}% abaixo da maxima historica` });
+    else if (!annual || annual < 1_000_000) add("info", ["olho"], "sem receita relevante conhecida (preco depende de narrativa): posicao pequena");
+    else if (mcap / annual > 100) add("info", ["olho"], `caro pela receita: ${Math.round(mcap / annual)}x a receita anual`);
+    if (rev?.prev && rev.prev > 0 && rev.r30 < rev.prev * 0.6) add("warn", ["saida"], `receita caiu ${Math.round((1 - rev.r30 / rev.prev) * 100)}% no ultimo mes`);
+    else if (!chain && rev?.prev && rev.prev > 0 && rev.r30 > rev.prev * 1.5) add("info", ["olho"], `receita subiu ${Math.round((rev.r30 / rev.prev - 1) * 100)}% no ultimo mes: espere o rompimento confirmar`);
+    if (m.total_volume !== null && mcap > 0 && m.total_volume / mcap < 0.005) add("warn", ["entrada", "saida"], "pouca liquidez (volume diario < 0,5% do valor de mercado)");
+    if ((m.ath_change_percentage ?? 0) < -85) add("info", ["olho"], `${Math.round(-(m.ath_change_percentage ?? 0))}% abaixo da maxima historica`);
     return {
       id: m.id, symbol: m.symbol.toUpperCase(), name: m.name, image: m.image, price: m.current_price, rank: m.market_cap_rank,
       mcap, fdv, circPct, volume: m.total_volume, change30d: m.price_change_percentage_30d_in_currency ?? null,
       athDrop: m.ath_change_percentage ?? null, revenue30d: rev?.r30 ?? null, revenuePrev30d: rev?.prev ?? null,
-      pf: annual && annual > 0 && !chain ? mcap / annual : null, kind: chain ? "rede" : "token", alerts,
+      pf: annual && annual > 0 && !chain ? mcap / annual : null, kind: chain ? "rede" : "token", alerts, situacao: null,
     };
   });
   const found = new Set(items.map((i) => i.symbol));
@@ -106,15 +115,97 @@ export async function buildFichas(symbols: string[]): Promise<FichaDoc> {
   return { at: Date.now(), items: items.sort((a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9)), missing, errors };
 }
 
-// Atualiza fichas/main (agendador: a cada 12 h; botao do painel: na hora)
+const dayStr = (t: number) => new Date(t).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+const ROBO: Record<string, Situacao["code"]> = { COMPRAR: "entrada", REENTRADA: "entrada", VENDER_TUDO: "saida", VENDER_PARTE: "reduzir" };
+
+// Rompimento 55/20 (item 5r do RESUMO) refeito nos candles fechados: entra ao fechar na maxima de 55 dias com o BTC em
+// alta; sai ao fechar na minima de 20 dias ou com o BTC saindo da alta. Devolve o estado no ultimo candle fechado.
+export function breakoutState(k: Kline[], btcUp: Map<number, boolean>) {
+  let inPos = false;
+  let since = 0;
+  let event: "entrada" | "saida" | null = null;
+  for (let i = 56; i < k.length; i++) {
+    const [t, , , , c] = k[i];
+    const hi = Math.max(...k.slice(i - 55, i).map((r) => r[2]));
+    const lo = Math.min(...k.slice(i - 20, i).map((r) => r[3]));
+    event = null;
+    if (!inPos && btcUp.get(t) && c > hi) [inPos, since, event] = [true, t, "entrada"];
+    else if (inPos && (c < lo || !btcUp.get(t))) [inPos, since, event] = [false, t, "saida"];
+  }
+  return { inPos, since, event, high55: Math.max(...k.slice(-55).map((r) => r[2])), low20: Math.min(...k.slice(-20).map((r) => r[3])) };
+}
+
+// Junta o sinal de preco (robo para BTC/ETH/SOL; rompimento 55/20 para os outros) com os alertas da ficha
+async function situacoes(items: TokenFicha[], strategy: string[], latest: LatestDoc[], held: Set<string>, reentry: boolean) {
+  const btc = (await fetchDaily("BTCUSDT")).closed;
+  const btcUp = new Map(runStrategy(btc, { ...DEFAULT_PARAMS, reentry }).map((s) => [s.t, s.expo > 0]));
+  const warn = (f: TokenFicha, use: "entrada" | "saida") => f.alerts.filter((a) => a.level === "warn" && a.use?.includes(use));
+  const px = (v: number) => v.toPrecision(5);
+  for (const f of items) {
+    const isHeld = held.has(f.symbol);
+    const exitWarn = warn(f, "saida");
+    if (strategy.includes(f.symbol)) {
+      const l = latest.find((x) => x.symbol === `${f.symbol}USDT`);
+      if (!l) {
+        f.situacao = { code: "sem_dados", label: "Sem sinal", detail: "clique em Recalcular agora" };
+        continue;
+      }
+      const code = ROBO[l.decision.kind] ?? (l.state.expo > 0 ? (isHeld ? "manter" : "tendencia") : "fora");
+      const label = l.decision.kind !== "MANTER" ? l.decision.label
+        : code === "fora" ? "Fora (robo)" : code === "manter" ? "Manter (robo)" : "Em tendencia (robo)";
+      f.situacao = { code, label, detail: "sinal da estrategia principal (cards acima)" };
+      continue;
+    }
+    let k: Kline[];
+    try {
+      k = (await fetchDaily(`${f.symbol}USDT`)).closed;
+    } catch {
+      f.situacao = { code: "sem_dados", label: "Sem grafico", detail: "nao negocia contra USDT na Binance (fonte dos precos)" };
+      continue;
+    }
+    if (k.length < 90) f.alerts.push({ level: "warn", use: ["entrada"], text: `token novo (${k.length} dias de grafico): nos testes, a mediana caiu 13% a 21% nos primeiros 3 meses` });
+    if (k.length < 60) {
+      f.situacao = { code: "observar", label: "Observar", detail: "historico curto para o rompimento" };
+      continue;
+    }
+    const b = breakoutState(k, btcUp);
+    const entryWarn = warn(f, "entrada");
+    if (b.event === "entrada") {
+      f.situacao = entryWarn.length
+        ? { code: "entrada_metade", label: "Entrada com metade", detail: `rompeu a maxima de 55 dias, mas: ${entryWarn.map((a) => a.text).join("; ")}` }
+        : { code: "entrada", label: "Entrada", detail: `rompeu a maxima de 55 dias com o BTC em alta (sai ao fechar abaixo de ${px(b.low20)})` };
+    } else if (b.event === "saida") {
+      f.situacao = { code: "saida", label: isHeld ? "Saida" : "Saiu da tendencia", detail: "fechou na minima de 20 dias ou o BTC saiu da alta" };
+    } else if (isHeld && exitWarn.length) {
+      f.situacao = { code: "reduzir", label: "Reduzir", detail: exitWarn.map((a) => a.text).join("; ") };
+    } else if (b.inPos) {
+      const d = Math.round((Date.now() - b.since) / DAY_MS);
+      f.situacao = isHeld
+        ? { code: "manter", label: "Manter", detail: `em tendencia desde ${dayStr(b.since)}; sai ao fechar abaixo de ${px(b.low20)}` }
+        : { code: "tendencia", label: "Em tendencia", detail: `entrada foi em ${dayStr(b.since)} (ha ${d} dias): o sinal de compra ja passou` };
+    } else {
+      const up = btcUp.get(k[k.length - 1][0]);
+      f.situacao = { code: "observar", label: "Observar", detail: up ? `compra se fechar acima de ${px(b.high55)}` : "BTC fora da alta: rompimentos nao valem agora" };
+    }
+  }
+}
+
+// Atualiza fichas/main (agendador: a cada 12 h e depois de cada fechamento diario; botao do painel: na hora)
 export async function refreshFichas({ force, strategy }: { force: boolean; strategy: string[] }) {
   const db = adminDb();
   const ref = db.doc("fichas/main");
   const prev = (await ref.get()).data() as FichaDoc | undefined;
-  if (!force && prev && Date.now() - prev.at < REFRESH_MS) return { skipped: true };
-  const [cfg, wallet] = await Promise.all([db.doc("config/main").get(), db.doc("wallet/main").get()]);
-  const symbols = fichaSymbols(strategy, wallet.data() as WalletDoc | undefined, (cfg.data()?.watchlist as string[] | undefined) ?? []);
+  const newCandle = prev && Math.floor(prev.at / DAY_MS) !== Math.floor(Date.now() / DAY_MS);
+  if (!force && prev && !newCandle && Date.now() - prev.at < REFRESH_MS) return { skipped: true };
+  const [cfg, wallet, latestSnap] = await Promise.all([db.doc("config/main").get(), db.doc("wallet/main").get(), db.collection("latest").get()]);
+  const w = wallet.data() as WalletDoc | undefined;
+  const symbols = fichaSymbols(strategy, w, (cfg.data()?.watchlist as string[] | undefined) ?? []);
   const doc = await buildFichas(symbols);
+  try {
+    await situacoes(doc.items, strategy, latestSnap.docs.map((d) => d.data() as LatestDoc), new Set(fichaSymbols([], w)), !!cfg.data()?.reentry);
+  } catch (e) {
+    doc.errors.push(`situacao: ${String(e)}`);
+  }
   await ref.set(JSON.parse(JSON.stringify(doc)));
   return { skipped: false, count: doc.items.length, missing: doc.missing, errors: doc.errors };
 }

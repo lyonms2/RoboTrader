@@ -9,6 +9,12 @@ const big = (v: number | null) =>
   v === null ? "-" : v >= 1e9 ? `$${fmt(v / 1e9, 1)} bi` : v >= 1e6 ? `$${fmt(v / 1e6, 1)} mi` : v >= 1e3 ? `$${fmt(v / 1e3, 0)} mil` : `$${fmt(v, 0)}`;
 const pct = (v: number | null, d = 0) => (v === null ? "-" : Math.abs(v) < 0.5 ? "0%" : `${v > 0 ? "+" : ""}${fmt(v, d)}%`);
 
+const USES = [
+  ["entrada", "Antes de comprar (com metade ou nao entre)"],
+  ["saida", "Se estiver exposto (reduzir)"],
+  ["olho", "Para ficar de olho"],
+] as const;
+
 // Fichas dos tokens (fora do grafico): oferta, avaliacao e receita, com alertas de risco
 export default function FichasCard({ fichas, user }: { fichas: FichaDoc | null; user: User }) {
   const [busy, setBusy] = useState(false);
@@ -43,11 +49,19 @@ export default function FichasCard({ fichas, user }: { fichas: FichaDoc | null; 
         <p className="muted small">Ainda nao montadas. Clique em &quot;Atualizar fichas&quot;.</p>
       ) : (
         <>
+          {(() => {
+            const act = rows.filter((f) => f.situacao && ["entrada", "entrada_metade", "saida", "reduzir"].includes(f.situacao.code));
+            return act.length ? (
+              <p className="small sit-summary">
+                Hoje: {act.map((f) => <span key={f.id} className={`sit sit-${f.situacao!.code}`}>{f.symbol}: {f.situacao!.label}</span>)}
+              </p>
+            ) : <p className="muted small">Nenhuma entrada ou saida hoje.</p>;
+          })()}
           <div className="table-scroll">
             <table className="fichas">
               <thead>
                 <tr>
-                  <th>Token</th><th>Valor de mercado</th><th title="Valor totalmente diluido / valor de mercado">FDV / mercado</th>
+                  <th>Token</th><th>Situacao</th><th>Valor de mercado</th><th title="Valor totalmente diluido / valor de mercado">FDV / mercado</th>
                   <th title="Oferta em circulacao / maxima">Circulando</th><th>Receita 30 dias</th>
                   <th title="Valor de mercado / receita anualizada">Preco / receita</th><th>30 dias</th><th>Alertas</th>
                 </tr>
@@ -61,6 +75,7 @@ export default function FichasCard({ fichas, user }: { fichas: FichaDoc | null; 
                         <img src={f.image} alt="" width={16} height={16} className="coin" />
                         <b>{f.symbol}</b> <span className="muted small">#{f.rank ?? "-"}</span>
                       </td>
+                      <td>{f.situacao ? <span className={`sit sit-${f.situacao.code}`} title={f.situacao.detail}>{f.situacao.label}</span> : <span className="muted small">-</span>}</td>
                       <td>{big(f.mcap)}</td>
                       <td className={f.fdv && f.mcap && f.fdv / f.mcap >= 2 ? "warn" : ""}>{f.fdv && f.mcap ? `${fmt(f.fdv / f.mcap, 1)}x` : "-"}</td>
                       <td>{f.circPct === null ? "-" : `${fmt(f.circPct * 100, 0)}%`}</td>
@@ -75,14 +90,21 @@ export default function FichasCard({ fichas, user }: { fichas: FichaDoc | null; 
                     </tr>
                     {open === f.id && (
                       <tr className="detail">
-                        <td colSpan={8}>
+                        <td colSpan={9}>
                           <b>{f.name}</b> - preco ${fmt(f.price, f.price < 1 ? 6 : 2)}, volume 24h {big(f.volume)},
                           {" "}{f.athDrop === null ? "" : `${fmt(-f.athDrop, 0)}% abaixo da maxima historica`}
                           {f.revenuePrev30d ? `, receita do mes anterior ${big(f.revenuePrev30d)}` : ""}.
-                          <ul className="alerts">
-                            {f.alerts.map((a) => <li key={a.text} className={a.level === "warn" ? "warn" : "muted"}>{a.text}</li>)}
-                            {!f.alerts.length && <li className="muted">Nenhum alerta.</li>}
-                          </ul>
+                          {f.situacao && <p className="sit-detail"><span className={`sit sit-${f.situacao.code}`}>{f.situacao.label}</span> {f.situacao.detail}</p>}
+                          {USES.map(([use, title]) => {
+                            const list = f.alerts.filter((a) => (a.use ?? ["olho"]).includes(use));
+                            return list.length ? (
+                              <div key={use} className="alert-group">
+                                <span className="small muted">{title}</span>
+                                <ul className="alerts">{list.map((a) => <li key={a.text} className={a.level === "warn" ? "warn" : "muted"}>{a.text}</li>)}</ul>
+                              </div>
+                            ) : null;
+                          })}
+                          {!f.alerts.length && <p className="muted small">Nenhum alerta.</p>}
                         </td>
                       </tr>
                     )}
@@ -94,9 +116,12 @@ export default function FichasCard({ fichas, user }: { fichas: FichaDoc | null; 
           {fichas.missing.length > 0 && <p className="muted small">Nao encontrados na CoinGecko: {fichas.missing.join(", ")}.</p>}
           {fichas.errors.map((e) => <p key={e} className="error small">{e}</p>)}
           <p className="muted small">
-            Moedas da estrategia, tokens das suas carteiras e a lista extra da Configuracao. Fontes: CoinGecko e DefiLlama (gratuitas).
-            Atualizado {new Date(fichas.at).toLocaleString("pt-BR")}; o agendador atualiza a cada 12 h. Clique numa linha para ver os detalhes.
-            {" "}E um alerta de risco: no backtest, esses dados nao melhoraram o momento de compra.
+            Situacao: BTC, ETH e SOL seguem o robo; os outros tokens, o rompimento 55/20 (entra ao fechar na maxima de 55 dias com o
+            BTC em alta, sai ao fechar na minima de 20 dias). &quot;Com metade&quot; quando ha alerta de entrada; &quot;Reduzir&quot; quando voce
+            tem o token e aparece alerta de saida. Os alertas sozinhos nao mandam comprar: no backtest nao melhoraram o momento.
+            Operar so em carteira propria (DEX); a Binance e usada apenas como fonte de precos.
+            Fontes: Binance, CoinGecko e DefiLlama (gratuitas). Atualizado {new Date(fichas.at).toLocaleString("pt-BR")};
+            o agendador atualiza depois de cada fechamento diario e a cada 12 h. Clique numa linha para ver os detalhes.
           </p>
         </>
       )}

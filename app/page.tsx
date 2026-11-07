@@ -1,12 +1,12 @@
 "use client";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
-import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, setDoc, writeBatch } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, limitToLast, onSnapshot, orderBy, query, setDoc, writeBatch } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { applyTrade, rebuild } from "@/lib/ledger";
 import { performance } from "@/lib/performance";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
-import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type TradeDoc, type WalletDoc } from "@/lib/types";
+import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type TradeDoc, type WalletDoc, type WalletHistoryDoc } from "@/lib/types";
 import Chart from "./Chart";
 import PerfChart from "./PerfChart";
 import WalletCard from "./WalletCard";
@@ -66,6 +66,7 @@ export default function Page() {
   const [latest, setLatest] = useState<LatestDoc[]>([]);
   const [trades, setTrades] = useState<(TradeDoc & { id: string })[]>([]);
   const [wallet, setWallet] = useState<WalletDoc | null>(null);
+  const [walletHistory, setWalletHistory] = useState<WalletHistoryDoc[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showCfg, setShowCfg] = useState(false);
@@ -82,7 +83,9 @@ export default function Page() {
     const u3 = onSnapshot(query(collection(db(), "trades"), orderBy("t", "desc")),
       (s) => setTrades(s.docs.map((d) => ({ id: d.id, ...(d.data() as TradeDoc) }))), onErr);
     const u4 = onSnapshot(doc(db(), "wallet/main"), (s) => setWallet(s.exists() ? (s.data() as WalletDoc) : null), onErr);
-    return () => { u1(); u2(); u3(); u4(); };
+    const u5 = onSnapshot(query(collection(db(), "wallet_history"), orderBy("t"), limitToLast(365)),
+      (s) => setWalletHistory(s.docs.map((d) => d.data() as WalletHistoryDoc)), onErr);
+    return () => { u1(); u2(); u3(); u4(); u5(); };
   }, [user]);
 
   async function refresh() {
@@ -152,7 +155,7 @@ export default function Page() {
 
       <Summary cfg={cfg} latest={latest} prices={prices} />
       <Performance cfg={cfg} latest={latest} trades={trades} prices={prices} />
-      <WalletCard wallet={wallet} cfg={cfg} latest={latest} user={user} />
+      <WalletCard wallet={wallet} history={walletHistory} cfg={cfg} latest={latest} user={user} />
 
       <div className="grid">
         {[...latest].sort((a, b) => a.symbol.localeCompare(b.symbol)).map((l) => (

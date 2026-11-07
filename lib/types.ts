@@ -70,3 +70,6 @@ export type WalletDoc = {
   lighter: { value: number; available: number; perps: WalletPerp[] } | null;
   errors: string[];
 };
+
+// Documento wallet_history/{AAAA-MM-DD}: ultimo retrato do dia, para o grafico de evolucao
+export type WalletHistoryDoc = { t: number; total: number; byClass: Record<WalletItem["cls"], number> };

@@ -1,5 +1,6 @@
 import { adminDb } from "./firebaseAdmin";
 import type { WalletDoc, WalletItem, WalletPerp } from "./types";
+import { walletTotals } from "./walletMath";
 
 // Carteira on-chain (so leitura, pelo endereco publico; nunca usa chave privada):
 //   Zerion  = saldos e posicoes DeFi em todas as redes EVM (chave gratuita em ZERION_API_KEY)
@@ -126,5 +127,10 @@ export async function refreshWallet({ force }: { force: boolean }) {
   if (!force && prev?.address === address && Date.now() - prev.at < AUTO_INTERVAL_MS) return { skipped: true, reason: "atualizada ha menos de 1 hora" };
   const doc = await readWallet(address);
   await ref.set(doc);
+  // Um retrato por dia (o ultimo do dia vale) para o grafico de evolucao; so com a leitura completa
+  if (!doc.errors.length) {
+    const day = new Date(doc.at).toISOString().slice(0, 10);
+    await db.doc(`wallet_history/${day}`).set({ t: doc.at, total: doc.total, byClass: walletTotals(doc).byClass });
+  }
   return { skipped: false, total: doc.total, errors: doc.errors };
 }

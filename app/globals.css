@@ -97,3 +97,27 @@ h3 { font-size: 14px; margin: 14px 0 6px; color: var(--muted); font-weight: 600;
 button.small-btn { padding: 3px 8px; font-size: 12px; margin-top: 4px; align-self: flex-start; }
 label.grow { flex: 1 1 320px; }
 label.grow input { max-width: 100%; width: 100%; font-family: ui-monospace, monospace; font-size: 13px; }
+/* Graficos da carteira: cores categoricas validadas para o fundo escuro (ordem fixa por classe) */
+:root { --c-stable: #3987e5; --c-BTC: #d95926; --c-ETH: #199e70; --c-SOL: #c98500; --c-outro: #d55181; }
+.c-stable { fill: var(--c-stable); background: var(--c-stable); } .c-BTC { fill: var(--c-BTC); background: var(--c-BTC); }
+.c-ETH { fill: var(--c-ETH); background: var(--c-ETH); } .c-SOL { fill: var(--c-SOL); background: var(--c-SOL); }
+.c-outro { fill: var(--c-outro); background: var(--c-outro); }
+.viz { margin: 12px 0; min-width: 0; }
+.viz figcaption { margin-bottom: 6px; }
+.alloc { width: 100%; height: 22px; display: block; }
+.alloc rect { transition: opacity .15s; cursor: default; }
+.alloc rect.dim { opacity: .35; }
+.viz-legend { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.viz-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.viz-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 24px; }
+.hbars { display: flex; flex-direction: column; gap: 6px; }
+.hbar { display: grid; grid-template-columns: minmax(90px, 32%) 1fr auto; align-items: center; gap: 8px; }
+.hbar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar-track { height: 10px; }
+.hbar-fill { display: block; height: 100%; background: var(--c-stable); border-radius: 0 4px 4px 0; min-width: 2px; }
+.hbar-value { text-align: right; white-space: nowrap; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font-size: 11px; }
+.chart .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart .dot { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
+.ink { color: var(--text); }

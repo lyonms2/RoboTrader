@@ -3,7 +3,9 @@ import type { User } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import { db } from "@/lib/firebaseClient";
-import type { AppConfig, LatestDoc, WalletDoc, WalletItem } from "@/lib/types";
+import type { AppConfig, LatestDoc, WalletDoc, WalletHistoryDoc, WalletItem } from "@/lib/types";
+import { walletTotals } from "@/lib/walletMath";
+import { AllocationBar, HistoryLine, ProtocolBars } from "./WalletCharts";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const signed = (v: number) => `${v > 0 ? "+" : ""}${fmt(v)}`;
@@ -14,7 +16,9 @@ const CLASS_LABEL: Record<WalletItem["cls"], string> = { stable: "Dolar (stablec
 const COINS = ["BTC", "ETH", "SOL"] as const;
 
 // Carteira on-chain lida pelo servidor (Zerion + Lighter), comparada com a exposicao alvo da estrategia
-export default function WalletCard({ wallet, cfg, latest, user }: { wallet: WalletDoc | null; cfg: AppConfig; latest: LatestDoc[]; user: User }) {
+export default function WalletCard({ wallet, history, cfg, latest, user }: {
+  wallet: WalletDoc | null; history: WalletHistoryDoc[]; cfg: AppConfig; latest: LatestDoc[]; user: User;
+}) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -61,11 +65,7 @@ export default function WalletCard({ wallet, cfg, latest, user }: { wallet: Wall
   const total = wallet.total;
   const lt = wallet.lighter;
   // Exposicao real por moeda: saldo a vista + perpetuos (comprado soma, vendido subtrai)
-  const byClass: Record<WalletItem["cls"], number> = { stable: 0, BTC: 0, ETH: 0, SOL: 0, outro: 0 };
-  for (const i of wallet.items) byClass[i.cls] += i.value;
-  const perpExpo: Record<string, number> = {};
-  for (const p of lt?.perps ?? []) perpExpo[p.symbol] = (perpExpo[p.symbol] ?? 0) + (p.side === "long" ? 1 : -1) * p.notional;
-  if (lt) byClass.stable += lt.value; // margem da Lighter e USDC
+  const { byClass, perpExpo } = walletTotals(wallet);
   const perpNotional = (lt?.perps ?? []).reduce((s, p) => s + p.notional, 0);
   const lev = lt && lt.value > 0 ? perpNotional / lt.value : 0;
   const totalLev = total > 0 ? (byClass.BTC + byClass.ETH + byClass.SOL + byClass.outro + perpNotional) / total : 0;
@@ -96,6 +96,12 @@ export default function WalletCard({ wallet, cfg, latest, user }: { wallet: Wall
             </button>
           )}
         </div>
+      </div>
+
+      <AllocationBar byClass={byClass} />
+      <div className="viz-grid">
+        <ProtocolBars rows={appRows} total={total} />
+        <HistoryLine history={history} />
       </div>
 
       <h3>Estrategia x carteira</h3>

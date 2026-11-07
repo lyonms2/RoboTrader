@@ -28,7 +28,8 @@ const dayOf = (t: number) => new Date(t).toISOString().slice(0, 10);
 // Calcula o sinal oficial (candles fechados) e a previa (candle de hoje como se fechasse agora) de cada ativo,
 // grava latest/{ativo} e history/{ativo}_{data} e avisa no Telegram uma unica vez por candle.
 // force = botao "Recalcular agora" (ignora a trava de frequencia).
-export async function runJob({ force }: { force: boolean }) {
+// fichas = false quando quem chama ja vai atualizar as fichas (botao "Atualizar tudo")
+export async function runJob({ force, fichas: withFichas = true }: { force: boolean; fichas?: boolean }) {
   const db = adminDb();
   const now = Date.now();
   const runRef = db.doc("meta/run");
@@ -135,7 +136,7 @@ export async function runJob({ force }: { force: boolean }) {
   if (official.length || forming.length) await notifyRef.set(notified);
   let fichas: unknown = null;
   try {
-    fichas = await refreshFichas({ force: false, strategy: SYMBOLS.map((s) => s.replace("USDT", "")) });
+    if (withFichas) fichas = await refreshFichas({ force: false, strategy: SYMBOLS.map((s) => s.replace("USDT", "")) });
   } catch (e) {
     fichas = { error: String(e) };
   }

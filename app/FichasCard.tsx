@@ -1,5 +1,4 @@
 "use client";
-import type { User } from "firebase/auth";
 import { Fragment, useState } from "react";
 import type { FichaDoc, TokenFicha } from "@/lib/types";
 
@@ -16,47 +15,21 @@ const USES = [
 ] as const;
 
 // Fichas dos tokens (fora do grafico): oferta, avaliacao e receita, com alertas de risco
-export default function FichasCard({ fichas, user }: { fichas: FichaDoc | null; user: User }) {
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
+export default function FichasCard({ fichas }: { fichas: FichaDoc | null }) {
   const [open, setOpen] = useState<string | null>(null);
-
-  async function refresh() {
-    setBusy(true);
-    setMsg("");
-    try {
-      const res = await fetch("/api/fichas", { method: "POST", headers: { Authorization: `Bearer ${await user.getIdToken()}` } });
-      const text = await res.text();
-      let body: { error?: string } = {};
-      try { body = JSON.parse(text); } catch { /* nao e JSON */ }
-      if (!res.ok) setMsg(`Falhou (HTTP ${res.status}): ${body.error ?? (text.slice(0, 200) || "(resposta vazia)")}`);
-    } catch (e) {
-      setMsg(`Falhou: ${String(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   const rows = fichas?.items ?? [];
   const warnCount = (f: TokenFicha) => f.alerts.filter((a) => a.level === "warn").length;
   return (
     <section className="card">
-      <div className="row between wrap-row">
+      <div className="card-head">
         <h2>Fichas dos tokens</h2>
-        <button className="ghost" onClick={refresh} disabled={busy}>{busy ? "Montando..." : "Atualizar fichas"}</button>
+        {fichas && <span className="muted small">atualizadas {new Date(fichas.at).toLocaleString("pt-BR")}</span>}
       </div>
       {!fichas ? (
-        <p className="muted small">Ainda nao montadas. Clique em &quot;Atualizar fichas&quot;.</p>
+        <p className="muted">Ainda nao montadas. Clique em &quot;Atualizar tudo&quot;.</p>
       ) : (
         <>
-          {(() => {
-            const act = rows.filter((f) => f.situacao && (["entrada", "entrada_metade", "saida", "reduzir"].includes(f.situacao.code) || !!f.action));
-            return act.length ? (
-              <p className="small sit-summary">
-                Hoje: {act.map((f) => <span key={f.id} className={`sit sit-${f.situacao!.code}`}>{f.symbol}: {f.situacao!.label}{f.action ? ` - ${f.action}` : ""}</span>)}
-              </p>
-            ) : <p className="muted small">Nenhuma entrada ou saida hoje.</p>;
-          })()}
           <div className="table-scroll">
             <table className="fichas">
               <thead>
@@ -124,12 +97,10 @@ export default function FichasCard({ fichas, user }: { fichas: FichaDoc | null; 
             BTC em alta, sai ao fechar na minima de 20 dias). &quot;Com metade&quot; quando ha alerta de entrada; &quot;Reduzir&quot; quando voce
             tem o token e aparece alerta de saida. Os alertas sozinhos nao mandam comprar: no backtest nao melhoraram o momento.
             Operar so em carteira propria (DEX); a Binance e usada apenas como fonte de precos.
-            Fontes: Binance, CoinGecko e DefiLlama (gratuitas). Atualizado {new Date(fichas.at).toLocaleString("pt-BR")};
-            o agendador atualiza depois de cada fechamento diario e a cada 12 h. Clique numa linha para ver os detalhes.
+            Fontes: Binance (so precos), CoinGecko e DefiLlama, gratuitas. Clique numa linha para ver os detalhes.
           </p>
         </>
       )}
-      {msg && <p className="error small">{msg}</p>}
     </section>
   );
 }

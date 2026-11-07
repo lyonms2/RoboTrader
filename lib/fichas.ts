@@ -141,6 +141,31 @@ export function breakoutState(k: Kline[], btcUp: Map<number, boolean>) {
 const SLOTS = 5;
 const usd = (v: number) => `$${Math.round(v).toLocaleString("pt-BR")}`;
 
+// Pico de volume no ultimo candle fechado (volume em USDT da Binance contra a media dos 30 dias anteriores).
+// So alerta para olhar: no backtest (volume_lab.py) nao melhorou entradas, e picos em dia de alta costumam devolver.
+async function volumeAlert(f: TokenFicha) {
+  try {
+    const res = await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${f.symbol}USDT&interval=1d&limit=33`, { cache: "no-store" });
+    if (!res.ok) return;
+    const rows = ((await res.json()) as unknown[][]).filter((r) => Number(r[0]) + DAY_MS <= Date.now());
+    if (rows.length < 31) return;
+    const last = rows[rows.length - 1];
+    const avg = rows.slice(-31, -1).reduce((s, r) => s + Number(r[7]), 0) / 30;
+    const mult = avg > 0 ? Number(last[7]) / avg : 0;
+    if (mult < 3) return;
+    const up = Number(last[4]) >= Number(last[1]);
+    const move = (Number(last[4]) / Number(last[1]) - 1) * 100;
+    f.alerts.push({
+      level: mult >= 5 ? "warn" : "info",
+      use: ["olho"],
+      text: `pico de volume em ${dayStr(Number(last[0]))}: ${mult.toFixed(1)}x a media de 30 dias, dia de ${up ? "alta" : "queda"} (${move > 0 ? "+" : ""}${move.toFixed(1)}%). ` +
+        (up ? "Veja se ha noticia; nos testes, a maioria dos picos em dia de alta devolveu o ganho." : "Pode ser capitulacao ou noticia ruim: veja o motivo antes de agir."),
+    });
+  } catch {
+    // sem dado de volume: sem alerta
+  }
+}
+
 // held = USD de cada token nas carteiras; satCapital = patrimonio x fatia do satelite
 async function situacoes(items: TokenFicha[], strategy: string[], latest: LatestDoc[], held: Map<string, number>, reentry: boolean, satCapital: number) {
   const btc = (await fetchDaily("BTCUSDT")).closed;
@@ -153,6 +178,7 @@ async function situacoes(items: TokenFicha[], strategy: string[], latest: Latest
   for (const f of items) {
     f.held = held.get(f.symbol) ?? 0;
     const isHeld = f.held >= 1;
+    await volumeAlert(f);
     const exitWarn = warn(f, "saida");
     if (strategy.includes(f.symbol)) {
       const l = latest.find((x) => x.symbol === `${f.symbol}USDT`);

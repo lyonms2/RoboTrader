@@ -108,6 +108,8 @@ export type WalletDoc = {
   pnl?: Record<string, { netInvested: number; unrealized: number; realized: number; avgBuy?: number }>;
   pnlAt?: number;
   pnlErrors?: string[]; // por que o preco medio automatico falhou (por carteira)
+  pnlTriedAt?: number; // ultima tentativa (para nao gastar a cota com cliques seguidos)
+  pnlThrottled?: boolean; // a ultima tentativa bateu no limite da Zerion (429): espera 3 h
 };
 
 // Documento wallet_history/{AAAA-MM-DD}: ultimo retrato do dia, para o grafico de evolucao

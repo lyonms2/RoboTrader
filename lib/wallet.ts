@@ -45,6 +45,9 @@ type ZerionPosition = {
 
 // Lucro/prejuizo da Zerion so a cada 6 h (o endpoint tem cota menor no plano gratuito); o botao forca
 const PNL_INTERVAL_MS = 6 * 3_600_000;
+// Depois de um limite (429), espera 3 h; o botao so forca de novo se a ultima tentativa tiver mais de 10 min
+const PNL_THROTTLE_MS = 3 * 3_600_000;
+const PNL_MIN_GAP_MS = 10 * 60_000;
 const zerionAuth = () => {
   const key = process.env.ZERION_API_KEY;
   if (!key) throw new Error("ZERION_API_KEY nao configurada");
@@ -56,10 +59,11 @@ type PnlStats = { net_invested?: number; unrealized_gain?: number; realized_gain
 // Custo investido e lucro de cada token que voce tem (FIFO da Zerion): uma chamada por carteira com todos os tokens
 // (filter[fungible_ids], ate 100), lendo data.attributes.breakdown.by_id. Na primeira consulta de uma carteira a Zerion
 // responde 503 com Retry-After enquanto prepara o historico: tenta de novo algumas vezes.
-async function zerionPnl(items: WalletItem[]): Promise<{ pnl: NonNullable<WalletDoc["pnl"]>; errors: string[] }> {
+async function zerionPnl(items: WalletItem[]): Promise<{ pnl: NonNullable<WalletDoc["pnl"]>; errors: string[]; throttled: boolean }> {
   const auth = zerionAuth();
   const out: NonNullable<WalletDoc["pnl"]> = {};
   const errors: string[] = [];
+  let throttled = false;
   const byOwner = new Map<string, Set<string>>();
   for (const i of items) {
     if (!i.fungibleId || !i.owner || i.cls === "stable" || i.value < 1 || i.type === "loan") continue;
@@ -69,18 +73,23 @@ async function zerionPnl(items: WalletItem[]): Promise<{ pnl: NonNullable<Wallet
     const url = `${ZERION}/wallets/${owner}/pnl?currency=usd&filter[fungible_ids]=${[...ids].slice(0, 100).join(",")}`;
     let res: Response | null = null;
     // No maximo ~15 s de espera por carteira (o "Atualizar tudo" tem 60 s no total)
+    // 503 = preparando o historico; 429 = limite por segundo ou da cota do dia. Novas tentativas curtas (~15 s no maximo).
     for (let attempt = 0; attempt < 4; attempt++) {
       res = await fetch(url, { headers: { accept: "application/json", authorization: auth }, cache: "no-store" });
-      if (res.status !== 503 || attempt === 3) break;
-      const wait = Math.min(5, Number(res.headers.get("retry-after")) || 3);
+      if ((res.status !== 503 && res.status !== 429) || attempt === 3) break;
+      if (res.status === 429 && attempt >= 1) break; // segundo 429: e a cota, nao adianta insistir
+      const wait = Math.min(5, Number(res.headers.get("retry-after")) || (res.status === 429 ? 2 : 3));
       await new Promise((r) => setTimeout(r, wait * 1000));
     }
     const tag = `${owner.slice(0, 6)}...${owner.slice(-4)}`;
     if (!res || !res.ok) {
       const body = res ? (await res.text()).slice(0, 160) : "";
+      if (res?.status === 429) throttled = true;
       errors.push(res?.status === 503
         ? `${tag}: a Zerion ainda esta preparando o historico; tente "Atualizar tudo" de novo em alguns minutos`
-        : `${tag}: Zerion respondeu HTTP ${res?.status} ${body}`);
+        : res?.status === 429
+          ? `${tag}: limite de consultas da Zerion (plano gratuito) atingido; o site tenta de novo sozinho em 3 h e mantem o ultimo preco medio conhecido`
+          : `${tag}: Zerion respondeu HTTP ${res?.status} ${body}`);
       continue;
     }
     const body = (await res.json()) as { data?: { attributes?: { breakdown?: { by_id?: Record<string, PnlStats> } } } };
@@ -95,7 +104,7 @@ async function zerionPnl(items: WalletItem[]): Promise<{ pnl: NonNullable<Wallet
     }
     if (!Object.keys(byId).length) errors.push(`${tag}: a Zerion nao devolveu historico de compra para os tokens desta carteira`);
   }
-  return { pnl: out, errors };
+  return { pnl: out, errors, throttled };
 }
 
 async function zerion(address: string): Promise<WalletItem[]> {
@@ -195,20 +204,25 @@ export async function refreshWallet({ force }: { force: boolean }) {
   if (!force && prev?.address === walletKey(addresses) && Date.now() - prev.at < AUTO_INTERVAL_MS) return { skipped: true, reason: "atualizada ha menos de 30 min" };
   const doc = await readWallet(addresses);
   // Lucro/prejuizo por token: a cada 6 h ou no botao; senao mantem o ultimo calculado
-  if (force || !prev?.pnlAt || Date.now() - prev.pnlAt > PNL_INTERVAL_MS) {
+  const now = Date.now();
+  const tried = prev?.pnlTriedAt ?? 0;
+  const pnlDue = prev?.pnlThrottled
+    ? now - tried > PNL_THROTTLE_MS
+    : force ? now - tried > PNL_MIN_GAP_MS : !prev?.pnlAt || now - prev.pnlAt > PNL_INTERVAL_MS;
+  // Sempre parte do ultimo valor conhecido; uma consulta nova so acrescenta ou substitui
+  [doc.pnl, doc.pnlAt, doc.pnlErrors, doc.pnlTriedAt, doc.pnlThrottled] =
+    [prev?.pnl, prev?.pnlAt, prev?.pnlErrors ?? [], prev?.pnlTriedAt, prev?.pnlThrottled];
+  if (pnlDue) {
     // Falha no preco medio nao conta como falha da leitura (nao impede o retrato do dia): vai em pnlErrors
+    doc.pnlTriedAt = now;
     try {
       const r = await zerionPnl(doc.items);
       doc.pnlErrors = r.errors;
-      // Se uma carteira falhou, mantem o ultimo valor conhecido dos tokens dela
-      doc.pnl = { ...(r.errors.length ? prev?.pnl ?? {} : {}), ...r.pnl };
-      doc.pnlAt = Date.now();
+      doc.pnlThrottled = r.throttled;
+      if (Object.keys(r.pnl).length) [doc.pnl, doc.pnlAt] = [{ ...(r.errors.length ? prev?.pnl ?? {} : {}), ...r.pnl }, now];
     } catch (e) {
       doc.pnlErrors = [String(e)];
-      if (prev?.pnl) [doc.pnl, doc.pnlAt] = [prev.pnl, prev.pnlAt];
     }
-  } else if (prev?.pnl) {
-    [doc.pnl, doc.pnlAt, doc.pnlErrors] = [prev.pnl, prev.pnlAt, prev.pnlErrors ?? []];
   }
   await ref.set(JSON.parse(JSON.stringify(doc)));
   // Um retrato por dia (o ultimo do dia vale) para o grafico de evolucao; so com a leitura completa

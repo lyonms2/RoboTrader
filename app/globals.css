@@ -214,3 +214,20 @@ button.primary { background: var(--accent); font-weight: 600; }
   .modal-backdrop { padding: 0; }
   .modal { border-radius: 0; min-height: 100%; padding: 14px; }
 }
+button.link { background: none; border: 0; padding: 0; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
+button.link:hover { text-decoration: underline; }
+button.link.small { font-size: 12px; margin-top: 8px; display: inline-block; }
+td button.link.small { margin: 0 0 0 6px; }
+.holdings td { vertical-align: top; white-space: nowrap; }
+.holdings td:first-child { white-space: normal; min-width: 120px; }
+.avg-edit { display: inline-flex; gap: 4px; align-items: center; }
+.avg-edit input { max-width: 110px; padding: 4px 6px; }
+.avg-edit button { padding: 4px 7px; }
+@media (max-width: 600px) {
+  table.stack thead { display: none; }
+  table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: 100%; }
+  table.stack tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+  table.stack td { border: 0; padding: 2px 0; display: flex; justify-content: space-between; gap: 10px; white-space: normal; }
+  table.stack td:first-child { display: block; padding-bottom: 4px; }
+  table.stack td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: 12.5px; }
+}

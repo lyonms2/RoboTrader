@@ -4,6 +4,7 @@ import { walletNotices } from "@/lib/allocation";
 import { walletTotals } from "@/lib/walletMath";
 import { walletAddresses, walletKey } from "@/lib/addresses";
 import { AllocationBar, HistoryLine, ProtocolBars } from "./WalletCharts";
+import HoldingsCard from "./HoldingsCard";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const signed = (v: number) => `${v > 0 ? "+" : ""}${fmt(v)}`;
@@ -45,6 +46,7 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
 
   return (
     <>
+      <HoldingsCard wallet={wallet} cfg={cfg} />
       <section className="card">
         <div className="card-head">
           <h2>Patrimonio</h2>

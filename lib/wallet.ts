@@ -40,13 +40,43 @@ type ZerionPosition = {
     protocol?: string | null;
     flags?: { is_trash?: boolean };
   };
-  relationships?: { chain?: { data?: { id?: string } } };
+  relationships?: { chain?: { data?: { id?: string } }; fungible?: { data?: { id?: string } } };
 };
 
-async function zerion(address: string): Promise<WalletItem[]> {
+// Lucro/prejuizo da Zerion so a cada 6 h (o endpoint tem cota menor no plano gratuito); o botao forca
+const PNL_INTERVAL_MS = 6 * 3_600_000;
+const zerionAuth = () => {
   const key = process.env.ZERION_API_KEY;
   if (!key) throw new Error("ZERION_API_KEY nao configurada");
-  const auth = `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
+  return `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
+};
+
+// Custo investido e lucro de cada token que voce tem (FIFO da Zerion), uma chamada por token e carteira
+async function zerionPnl(items: WalletItem[]): Promise<NonNullable<WalletDoc["pnl"]>> {
+  const auth = zerionAuth();
+  const out: NonNullable<WalletDoc["pnl"]> = {};
+  const pairs = new Map<string, { owner: string; id: string }>();
+  for (const i of items) {
+    if (!i.fungibleId || !i.owner || i.cls === "stable" || i.value < 1 || i.type === "loan") continue;
+    pairs.set(`${i.owner}:${i.fungibleId}`, { owner: i.owner, id: i.fungibleId });
+  }
+  for (const { owner, id } of [...pairs.values()].slice(0, 25)) {
+    const res = await fetch(`${ZERION}/wallets/${owner}/pnl/?currency=usd&filter[fungible_ids]=${id}`,
+      { headers: { accept: "application/json", authorization: auth }, cache: "no-store" });
+    if (!res.ok) continue; // token sem historico: fica sem preco medio automatico
+    const a = ((await res.json()) as { data?: { attributes?: Record<string, number | null> } }).data?.attributes ?? {};
+    if (typeof a.net_invested !== "number") continue;
+    const cur = out[id] ?? { netInvested: 0, unrealized: 0, realized: 0 };
+    cur.netInvested += a.net_invested ?? 0;
+    cur.unrealized += a.unrealized_gain ?? 0;
+    cur.realized += a.realized_gain ?? 0;
+    out[id] = cur;
+  }
+  return out;
+}
+
+async function zerion(address: string): Promise<WalletItem[]> {
+  const auth = zerionAuth();
   let url: string | null =
     `${ZERION}/wallets/${address}/positions/?filter[positions]=no_filter&filter[trash]=only_non_trash&currency=usd&sort=value`;
   const items: WalletItem[] = [];
@@ -73,6 +103,8 @@ async function zerion(address: string): Promise<WalletItem[]> {
         value: a.position_type === "loan" ? -value : value,
         cls: assetClass(symbol),
         maturity: maturityOf(`${a.name} ${symbol}`),
+        fungibleId: p.relationships?.fungible?.data?.id,
+        owner: address,
       });
     }
     url = body.links?.next ?? null;
@@ -139,7 +171,19 @@ export async function refreshWallet({ force }: { force: boolean }) {
   const prev = (await ref.get()).data() as WalletDoc | undefined;
   if (!force && prev?.address === walletKey(addresses) && Date.now() - prev.at < AUTO_INTERVAL_MS) return { skipped: true, reason: "atualizada ha menos de 30 min" };
   const doc = await readWallet(addresses);
-  await ref.set(doc);
+  // Lucro/prejuizo por token: a cada 6 h ou no botao; senao mantem o ultimo calculado
+  if (force || !prev?.pnlAt || Date.now() - prev.pnlAt > PNL_INTERVAL_MS) {
+    try {
+      doc.pnl = await zerionPnl(doc.items);
+      doc.pnlAt = Date.now();
+    } catch (e) {
+      doc.errors.push(`lucro por token: ${String(e)}`);
+      if (prev?.pnl) [doc.pnl, doc.pnlAt] = [prev.pnl, prev.pnlAt];
+    }
+  } else if (prev?.pnl) {
+    [doc.pnl, doc.pnlAt] = [prev.pnl, prev.pnlAt];
+  }
+  await ref.set(JSON.parse(JSON.stringify(doc)));
   // Um retrato por dia (o ultimo do dia vale) para o grafico de evolucao; so com a leitura completa
   if (!doc.errors.length) {
     const day = new Date(doc.at).toISOString().slice(0, 10);

@@ -10,7 +10,8 @@ export type AppConfig = {
   reentry: boolean;
   wallet?: string; // (antigo) um endereco so; agora vale "wallets"
   wallets?: string[]; // enderecos publicos: EVM 0x... (Rabby, Phantom EVM) e Solana (Phantom). So leitura
-  watchlist?: string[]; // simbolos extras para as fichas (ex.: ["HYPE", "PENDLE"])
+  watchlist?: string[];
+  costBasis?: Record<string, number>; // preco medio digitado por token (quando nao ha dado automatico) // simbolos extras para as fichas (ex.: ["HYPE", "PENDLE"])
   walletPositions?: boolean;
   // Divisao do patrimonio: nucleo = robo (BTC/ETH/SOL); satelite = rompimento 55/20 em outros tokens (ate 5 posicoes)
   alloc?: { core: number; satellite: number };
@@ -80,6 +81,8 @@ export type WalletItem = {
   value: number; // USD (emprestimo tomado entra negativo)
   cls: "stable" | "BTC" | "ETH" | "SOL" | "outro";
   maturity: number | null; // vencimento (ex.: PT do Pendle)
+  fungibleId?: string; // id do token na Zerion (para o lucro/prejuizo)
+  owner?: string; // endereco da carteira que tem o token
 };
 export type WalletPerp = {
   symbol: string;
@@ -99,6 +102,9 @@ export type WalletDoc = {
   items: WalletItem[];
   lighter: { value: number; available: number; perps: WalletPerp[] } | null;
   errors: string[];
+  // Lucro/prejuizo por token (Zerion, FIFO), por id do token, somado entre as carteiras
+  pnl?: Record<string, { netInvested: number; unrealized: number; realized: number }>;
+  pnlAt?: number;
 };
 
 // Documento wallet_history/{AAAA-MM-DD}: ultimo retrato do dia, para o grafico de evolucao

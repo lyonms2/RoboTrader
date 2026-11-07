@@ -1,6 +1,6 @@
 import { walletAddresses, walletKey } from "./addresses";
 import { dayBR, financeSummary, type FinGroup } from "./financeMath";
-import { debts, type GastosSetup, type MonthDoc } from "./gastos";
+import { accountBalance, debts, type GastosSetup, type MonthDoc } from "./gastos";
 import type { AppConfig, FinanceDoc, WalletDoc } from "./types";
 
 // Patrimonio liquido = bens (cripto + investimentos, em R$) - dividas (emprestimos + faturas a vencer)
@@ -16,7 +16,7 @@ export type NetWorthDoc = {
 
 export function netWorth(cfg: AppConfig, fin: FinanceDoc | null, wallet: WalletDoc | null, months: Record<string, MonthDoc>, setup: GastosSetup): NetWorthDoc {
   const okWallet = wallet && wallet.address === walletKey(walletAddresses(cfg)) ? wallet : null;
-  const s = financeSummary(cfg.finance ?? [], fin, okWallet, cfg.monthlyCost);
+  const s = financeSummary(cfg.finance ?? [], fin, okWallet, cfg.monthlyCost, accountBalance(months, setup)?.value);
   const d = debts(months, setup);
   const partial = s.cryptoMissingFx ? ["cripto sem cotacao do dolar"] : [];
   return { t: Date.now(), day: dayBR(Date.now()), bens: s.total, dividas: d.total, net: s.total - d.total, byGroup: s.byGroup, ...(partial.length ? { partial } : {}) };

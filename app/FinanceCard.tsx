@@ -4,14 +4,14 @@ import { useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
-import { monthLabel, type GastosSetup, type MonthDoc } from "@/lib/gastos";
+import { accountBalance, monthLabel, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import GastosCard, { DebtsView, monthSnapshot } from "./GastosCard";
 import NetWorthChart from "./NetWorthChart";
 import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
 
 type Sub = "resumo" | "invest" | "gastos" | "dividas";
 const SUBS: { id: Sub; label: string }[] = [
-  { id: "resumo", label: "Resumo" }, { id: "invest", label: "Investimentos" }, { id: "gastos", label: "Gastos" }, { id: "dividas", label: "Cartoes e dividas" },
+  { id: "resumo", label: "Resumo" }, { id: "invest", label: "Investimentos" }, { id: "gastos", label: "Entradas e saidas" }, { id: "dividas", label: "Cartoes e dividas" },
 ];
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -55,7 +55,8 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
     try { localStorage.setItem("finSub", v); } catch { /* sem armazenamento */ }
   };
   const items = cfg.finance ?? [];
-  const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost);
+  const acct = accountBalance(months, setup);
+  const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost, acct?.value);
   const [editing, setEditing] = useState<FinItem | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -130,12 +131,14 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
 
       <div className="two-col">
         <section className="card link-card" role="button" tabIndex={0} onClick={() => setSub("gastos")}>
-          <div className="card-head"><h2>{monthLabel(mon.m, true)}</h2><span className="muted small">ver gastos &rsaquo;</span></div>
+          <div className="card-head"><h2>{monthLabel(mon.m, true)}</h2><span className="muted small">ver entradas e saidas &rsaquo;</span></div>
           {mon.count || mon.pendingN ? (
             <div className="kpis compact">
               <div><span>Gastos</span><b>{brl(mon.gastos, 0)}</b><small className="muted">{mon.avg ? `media ${brl(mon.avg.value, 0)}` : "-"}</small></div>
               <div><span>Entradas</span><b>{brl(mon.receitas, 0)}</b></div>
               <div><span>Sobrou</span><b className={mon.receitas - mon.gastos >= 0 ? "pos" : "neg"}>{brl(mon.receitas - mon.gastos, 0)}</b></div>
+              <div><span>Saldo em conta</span><b className={acct && acct.value < 0 ? "neg" : ""}>{acct ? brl(acct.value, 0) : "-"}</b>
+                <small className="muted">{acct ? (acct.informed ? "entra no patrimonio" : "sobra acumulada (informe o saldo)") : "-"}</small></div>
               <div><span>Ainda a pagar</span><b className={mon.pending > 0 ? "warn" : ""}>{brl(mon.pending, 0)}</b><small className="muted">{mon.pendingN} fixos/parcelas</small></div>
             </div>
           ) : <p className="muted small">Nenhum gasto lancado neste mes. Importe o extrato do banco ou lance a mao.</p>}

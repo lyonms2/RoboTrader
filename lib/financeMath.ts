@@ -2,9 +2,9 @@ import { walletTotals } from "./walletMath";
 import type { FinanceDoc, FinItem, WalletDoc } from "./types";
 
 // Contas das financas (roda no navegador): valor de cada investimento em R$, rendimento estimado e composicao
-export type FinGroup = "reserva" | "rendafixa" | "acoes" | "fiis" | "outro" | "cripto" | "dolar";
+export type FinGroup = "reserva" | "conta" | "rendafixa" | "acoes" | "fiis" | "outro" | "cripto" | "dolar";
 export const GROUPS: { key: FinGroup; label: string }[] = [
-  { key: "reserva", label: "Reserva" }, { key: "rendafixa", label: "Renda fixa" }, { key: "acoes", label: "Acoes e ETFs" },
+  { key: "reserva", label: "Reserva" }, { key: "conta", label: "Conta corrente" }, { key: "rendafixa", label: "Renda fixa" }, { key: "acoes", label: "Acoes e ETFs" },
   { key: "fiis", label: "FIIs" }, { key: "cripto", label: "Cripto" }, { key: "dolar", label: "Dolar (cripto)" },
   { key: "outro", label: "Outros" },
 ];
@@ -114,7 +114,8 @@ export function financeRow(item: FinItem, f: FinanceDoc | null): FinRow {
 }
 
 // Patrimonio total em R$: investimentos + carteiras cripto (dolar -> real pela PTAX)
-export function financeSummary(items: FinItem[], f: FinanceDoc | null, wallet: WalletDoc | null, monthlyCost?: number) {
+// cash = saldo em conta (aba Entradas e saidas), entra como o grupo "Conta corrente"
+export function financeSummary(items: FinItem[], f: FinanceDoc | null, wallet: WalletDoc | null, monthlyCost?: number, cash?: number | null) {
   const rows = items.map((i) => financeRow(i, f));
   const byGroup = Object.fromEntries(GROUPS.map((g) => [g.key, 0])) as Record<FinGroup, number>;
   for (const r of rows) byGroup[r.group] += r.value ?? 0;
@@ -124,6 +125,7 @@ export function financeSummary(items: FinItem[], f: FinanceDoc | null, wallet: W
     byGroup.dolar += byClass.stable * usd;
     byGroup.cripto += (wallet.total - byClass.stable) * usd;
   }
+  if (cash) byGroup.conta += cash;
   const total = Object.values(byGroup).reduce((s, v) => s + v, 0);
   const withCost = rows.filter((r) => r.cost !== null && r.value !== null);
   const cost = withCost.reduce((s, r) => s + r.cost!, 0);

@@ -395,3 +395,12 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 .chart .nw-area { fill: var(--accent); fill-opacity: .1; stroke: none; }
 .chart .nw-bens { stroke: var(--muted); stroke-width: 1.4; stroke-dasharray: 4 3; }
 .k-net { background: var(--accent); } .k-bens { background: var(--muted); }
+
+/* Conta corrente (8o tom da paleta categorica validada) e saldo em conta */
+:root { --g-conta: #e66767; }
+.g-conta { fill: var(--g-conta); background: var(--g-conta); }
+.acct { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.acct b { font-size: 15px; }
+.acct button.link { padding: 0; }
+.acct-form { width: 100%; margin-top: 8px; gap: 8px 12px; align-items: flex-end; flex-wrap: wrap; }
+.acct-form label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }

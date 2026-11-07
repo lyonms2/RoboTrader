@@ -2,7 +2,7 @@
 import { doc, setDoc } from "firebase/firestore";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
-import { cardStatus, debts } from "@/lib/gastos";
+import { accountBalance, cardStatus, debts } from "@/lib/gastos";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
   monthOf, newId, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
@@ -97,7 +97,7 @@ export default function GastosCard({ months, setup }: { months: Record<string, M
     await saveMonth(m, items.filter((x) => x.id !== g.id));
   };
   const launch = async (p: (typeof pending)[number]) => {
-    await saveMonth(m, [...items, { id: newId(), d: p.d, desc: p.desc, v: p.v, tipo: "gasto", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...(p.card ? { card: p.card } : {}), ...(p.parc ? { parc: p.parc } : {}) }]);
+    await saveMonth(m, [...items, { id: newId(), d: p.d, desc: p.desc, v: p.v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...(p.card ? { card: p.card } : {}), ...(p.parc ? { parc: p.parc } : {}) }]);
   };
 
   const shown = [...items].filter((g) => !filter || g.cat === filter).sort((a, b) => b.d.localeCompare(a.d));
@@ -126,6 +126,7 @@ export default function GastosCard({ months, setup }: { months: Record<string, M
           <div><span>Ainda a pagar</span><b className={pendingTotal > 0 ? "warn" : ""}>{brl(pendingTotal)}</b>
             <small className="muted">{pending.length ? `${pending.length} fixos/parcelas - previsto ${brl(s.gastos + pendingTotal, 0)}` : "fixos e parcelas em dia"}</small></div>
         </div>
+        <AccountBox months={months} setup={setup} />
         {pending.length > 0 && (
           <ul className="pend small">
             {pending.map((p) => (
@@ -211,6 +212,39 @@ function CatSelect({ value, onChange }: { value: string; onChange: (c: string) =
   );
 }
 
+// Saldo em conta: o que sobra (ou falta) dos lancamentos entra no patrimonio como "Conta corrente"
+function AccountBox({ months, setup }: { months: Record<string, MonthDoc>; setup: GastosSetup }) {
+  const acct = accountBalance(months, setup);
+  const [open, setOpen] = useState(false);
+  const [bal, setBal] = useState(setup.account ? fmt(setup.account.balance) : "");
+  const [at, setAt] = useState(setup.account?.at ?? todayBR());
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const t = bal.trim();
+    await saveSetup({ account: t ? { balance: num(t.replace(/\u2212/g, "-")), at } : null } as unknown as Partial<GastosSetup>);
+    setOpen(false);
+  };
+  return (
+    <div className="acct small">
+      <span>Saldo em conta {acct?.informed ? "" : "(sobra acumulada)"}: <b className={acct && acct.value < 0 ? "neg" : ""}>{acct ? brl(acct.value) : "-"}</b></span>
+      <span className="muted">
+        {acct?.informed ? `saldo de ${dm(setup.account!.at)} + movimentos depois` : acct ? `entradas - saidas da conta desde ${dm(acct.since)}` : "sem lancamentos"}
+        {" "}- entra no patrimonio como Conta corrente
+      </span>
+      {!open && <button className="link" onClick={() => setOpen(true)}>{setup.account ? "atualizar saldo" : "informar saldo atual"}</button>}
+      {open && (
+        <form className="row wrapline acct-form" onSubmit={save}>
+          <label>Saldo somado das contas (R$)<input value={bal} inputMode="decimal" onChange={(e) => setBal(e.target.value)} placeholder="ex.: 1.250,00" /></label>
+          <label>Em<input type="date" value={at} onChange={(e) => setAt(e.target.value)} /></label>
+          <button className="primary" type="submit">Salvar</button>
+          <button className="ghost" type="button" onClick={() => setOpen(false)}>Cancelar</button>
+          <span className="muted">Lancamentos ate essa data ja estao no saldo; os seguintes somam ou descontam. Deixe vazio para voltar a sobra acumulada.</span>
+        </form>
+      )}
+    </div>
+  );
+}
+
 // Lancamento rapido: categoria sugerida pela descricao; no cartao pode ser parcelado
 function QuickAdd({ months, setup, defaultDate }: { months: Record<string, MonthDoc>; setup: GastosSetup; defaultDate: string }) {
   const [d, setD] = useState(defaultDate);
@@ -232,7 +266,7 @@ function QuickAdd({ months, setup, defaultDate }: { months: Record<string, Month
     const parcels = card && !entrada ? Math.max(1, Math.min(48, Math.round(num(n)) || 1)) : 1;
     const each = Math.round((total / parcels) * 100) / 100;
     const list: Gasto[] = Array.from({ length: parcels }, (_, k) => ({
-      id: newId(), d: dayIn(addMonths(monthOf(d), k), Number(d.slice(8, 10))), desc: desc.trim(), v: each, tipo, cat: finalCat, src: "manual" as const,
+      id: newId(), d: dayIn(addMonths(monthOf(d), k), Number(d.slice(8, 10))), desc: desc.trim(), v: each, tipo, io: entrada ? "in" as const : "out" as const, cat: finalCat, src: "manual" as const,
       ...(card ? { card } : {}), ...(parcels > 1 ? { parc: [k + 1, parcels] as [number, number] } : {}),
     }));
     await addItems(months, list);
@@ -308,7 +342,7 @@ function ImportPanel({ months, setup, onDone }: { months: Record<string, MonthDo
     setBusy(true);
     if ((setup.ownName ?? "") !== ownName.trim()) await saveSetup({ ownName: ownName.trim() });
     await addItems(months, chosen.map((r) => ({
-      id: newId(), d: r.d, desc: r.desc, v: Math.abs(r.amount), tipo: r.tipo, cat: r.cat, src: "import" as const, ext: r.ext,
+      id: newId(), d: r.d, desc: r.desc, v: Math.abs(r.amount), tipo: r.tipo, io: r.amount > 0 ? "in" as const : "out" as const, cat: r.cat, src: "import" as const, ext: r.ext,
       ...(card ? { card } : {}), ...(parcOf(r.desc) ? { parc: parcOf(r.desc) } : {}),
     })));
     setBusy(false);

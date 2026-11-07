@@ -16,6 +16,7 @@ export type Gasto = {
   card?: string; // id do cartao (compra no credito)
   parc?: [number, number]; // parcela k de n
   ref?: string; // id do fixo / emprestimo que gerou o lancamento
+  io?: "in" | "out"; // entrou ou saiu da conta (importante nos neutros: guardar no cofrinho sai, resgatar entra)
 };
 export type MonthDoc = { items: Gasto[] };
 export type Card = { id: string; name: string; closeDay: number; dueDay: number; limit?: number };
@@ -31,6 +32,7 @@ export type Fixo = { id: string; desc: string; v: number; cat: string; dia: numb
 export type GastosSetup = {
   cards: Card[]; loans: Loan[]; fixos: Fixo[]; rules: Record<string, string>; categories?: string[];
   ownName?: string; // seu nome como aparece nos extratos: Pix para/de voce mesmo = transferencia entre contas (nao conta)
+  account?: { balance: number; at: string }; // saldo em conta informado (soma das contas) e a data (AAAA-MM-DD)
 };
 export const EMPTY_SETUP: GastosSetup = { cards: [], loans: [], fixos: [], rules: {} };
 
@@ -386,3 +388,32 @@ export function cardStatus(c: Card, months: Record<string, MonthDoc>, today = to
   return { faturas, open, next: faturas[0] ?? null };
 }
 
+
+// ---------- saldo em conta ----------
+// Direcao do lancamento na conta: +1 entrou, -1 saiu (lancamentos antigos sem "io": pelo tipo e pela descricao)
+export function dirOf(g: Gasto): 1 | -1 {
+  if (g.io) return g.io === "in" ? 1 : -1;
+  if (g.tipo === "receita") return 1;
+  if (g.tipo === "gasto") return -1;
+  return /resgat|recebid|estorno|devolu|reembols/i.test(g.desc) ? 1 : -1;
+}
+
+// Saldo em conta = saldo informado + o que entrou - o que saiu da conta depois daquela data.
+// Conta tudo que passa pela conta (inclusive guardar no cofrinho e pagar a fatura); compras no cartao ficam de fora
+// (elas viram divida da fatura). Sem saldo informado, comeca do zero no primeiro lancamento: e a sobra acumulada.
+export function accountBalance(months: Record<string, MonthDoc>, setup: GastosSetup) {
+  const base = setup.account;
+  let flow = 0;
+  let first = "";
+  let n = 0;
+  for (const md of Object.values(months))
+    for (const g of md.items) {
+      if (g.card) continue;
+      if (base && g.d <= base.at) continue;
+      flow += dirOf(g) * g.v;
+      n++;
+      if (!first || g.d < first) first = g.d;
+    }
+  if (!base && !n) return null;
+  return { value: (base?.balance ?? 0) + flow, informed: !!base, since: base?.at ?? first, flow, count: n };
+}

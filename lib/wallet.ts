@@ -51,28 +51,51 @@ const zerionAuth = () => {
   return `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
 };
 
-// Custo investido e lucro de cada token que voce tem (FIFO da Zerion), uma chamada por token e carteira
-async function zerionPnl(items: WalletItem[]): Promise<NonNullable<WalletDoc["pnl"]>> {
+type PnlStats = { net_invested?: number; unrealized_gain?: number; realized_gain?: number; average_buy_price?: number };
+
+// Custo investido e lucro de cada token que voce tem (FIFO da Zerion): uma chamada por carteira com todos os tokens
+// (filter[fungible_ids], ate 100), lendo data.attributes.breakdown.by_id. Na primeira consulta de uma carteira a Zerion
+// responde 503 com Retry-After enquanto prepara o historico: tenta de novo algumas vezes.
+async function zerionPnl(items: WalletItem[]): Promise<{ pnl: NonNullable<WalletDoc["pnl"]>; errors: string[] }> {
   const auth = zerionAuth();
   const out: NonNullable<WalletDoc["pnl"]> = {};
-  const pairs = new Map<string, { owner: string; id: string }>();
+  const errors: string[] = [];
+  const byOwner = new Map<string, Set<string>>();
   for (const i of items) {
     if (!i.fungibleId || !i.owner || i.cls === "stable" || i.value < 1 || i.type === "loan") continue;
-    pairs.set(`${i.owner}:${i.fungibleId}`, { owner: i.owner, id: i.fungibleId });
+    byOwner.set(i.owner, (byOwner.get(i.owner) ?? new Set()).add(i.fungibleId));
   }
-  for (const { owner, id } of [...pairs.values()].slice(0, 25)) {
-    const res = await fetch(`${ZERION}/wallets/${owner}/pnl/?currency=usd&filter[fungible_ids]=${id}`,
-      { headers: { accept: "application/json", authorization: auth }, cache: "no-store" });
-    if (!res.ok) continue; // token sem historico: fica sem preco medio automatico
-    const a = ((await res.json()) as { data?: { attributes?: Record<string, number | null> } }).data?.attributes ?? {};
-    if (typeof a.net_invested !== "number") continue;
-    const cur = out[id] ?? { netInvested: 0, unrealized: 0, realized: 0 };
-    cur.netInvested += a.net_invested ?? 0;
-    cur.unrealized += a.unrealized_gain ?? 0;
-    cur.realized += a.realized_gain ?? 0;
-    out[id] = cur;
+  for (const [owner, ids] of byOwner) {
+    const url = `${ZERION}/wallets/${owner}/pnl?currency=usd&filter[fungible_ids]=${[...ids].slice(0, 100).join(",")}`;
+    let res: Response | null = null;
+    // No maximo ~15 s de espera por carteira (o "Atualizar tudo" tem 60 s no total)
+    for (let attempt = 0; attempt < 4; attempt++) {
+      res = await fetch(url, { headers: { accept: "application/json", authorization: auth }, cache: "no-store" });
+      if (res.status !== 503 || attempt === 3) break;
+      const wait = Math.min(5, Number(res.headers.get("retry-after")) || 3);
+      await new Promise((r) => setTimeout(r, wait * 1000));
+    }
+    const tag = `${owner.slice(0, 6)}...${owner.slice(-4)}`;
+    if (!res || !res.ok) {
+      const body = res ? (await res.text()).slice(0, 160) : "";
+      errors.push(res?.status === 503
+        ? `${tag}: a Zerion ainda esta preparando o historico; tente "Atualizar tudo" de novo em alguns minutos`
+        : `${tag}: Zerion respondeu HTTP ${res?.status} ${body}`);
+      continue;
+    }
+    const body = (await res.json()) as { data?: { attributes?: { breakdown?: { by_id?: Record<string, PnlStats> } } } };
+    const byId = body.data?.attributes?.breakdown?.by_id ?? {};
+    for (const [id, st] of Object.entries(byId)) {
+      const cur = out[id] ?? { netInvested: 0, unrealized: 0, realized: 0, avgBuy: 0 };
+      cur.netInvested += st.net_invested ?? 0;
+      cur.unrealized += st.unrealized_gain ?? 0;
+      cur.realized += st.realized_gain ?? 0;
+      if (st.average_buy_price) cur.avgBuy = st.average_buy_price;
+      out[id] = cur;
+    }
+    if (!Object.keys(byId).length) errors.push(`${tag}: a Zerion nao devolveu historico de compra para os tokens desta carteira`);
   }
-  return out;
+  return { pnl: out, errors };
 }
 
 async function zerion(address: string): Promise<WalletItem[]> {
@@ -173,15 +196,19 @@ export async function refreshWallet({ force }: { force: boolean }) {
   const doc = await readWallet(addresses);
   // Lucro/prejuizo por token: a cada 6 h ou no botao; senao mantem o ultimo calculado
   if (force || !prev?.pnlAt || Date.now() - prev.pnlAt > PNL_INTERVAL_MS) {
+    // Falha no preco medio nao conta como falha da leitura (nao impede o retrato do dia): vai em pnlErrors
     try {
-      doc.pnl = await zerionPnl(doc.items);
+      const r = await zerionPnl(doc.items);
+      doc.pnlErrors = r.errors;
+      // Se uma carteira falhou, mantem o ultimo valor conhecido dos tokens dela
+      doc.pnl = { ...(r.errors.length ? prev?.pnl ?? {} : {}), ...r.pnl };
       doc.pnlAt = Date.now();
     } catch (e) {
-      doc.errors.push(`lucro por token: ${String(e)}`);
+      doc.pnlErrors = [String(e)];
       if (prev?.pnl) [doc.pnl, doc.pnlAt] = [prev.pnl, prev.pnlAt];
     }
   } else if (prev?.pnl) {
-    [doc.pnl, doc.pnlAt] = [prev.pnl, prev.pnlAt];
+    [doc.pnl, doc.pnlAt, doc.pnlErrors] = [prev.pnl, prev.pnlAt, prev.pnlErrors ?? []];
   }
   await ref.set(JSON.parse(JSON.stringify(doc)));
   // Um retrato por dia (o ultimo do dia vale) para o grafico de evolucao; so com a leitura completa

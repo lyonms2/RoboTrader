@@ -26,8 +26,11 @@ export function holdings(wallet: WalletDoc, costBasis: Record<string, number> = 
     g.price = g.qty > 0 ? g.value / g.qty : 0;
     const manual = costBasis[g.symbol.toUpperCase()];
     const invested = [...ids].reduce((s, id) => s + (wallet.pnl?.[id]?.netInvested ?? 0), 0);
+    const avgBuy = [...ids].map((id) => wallet.pnl?.[id]?.avgBuy ?? 0).find((v) => v > 0) ?? 0;
     if (manual > 0) [g.avg, g.source] = [manual, "manual"];
+    // Custo do que ainda esta na carteira (FIFO) / quantidade; sem ele, o preco medio de compra da Zerion
     else if (invested > 0 && g.qty > 0) [g.avg, g.source] = [invested / g.qty, "Zerion"];
+    else if (avgBuy > 0) [g.avg, g.source] = [avgBuy, "Zerion"];
     if (g.avg !== null) {
       g.cost = g.avg * g.qty;
       g.pnl = g.value - g.cost;

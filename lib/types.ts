@@ -105,8 +105,9 @@ export type WalletDoc = {
   lighter: { value: number; available: number; perps: WalletPerp[] } | null;
   errors: string[];
   // Lucro/prejuizo por token (Zerion, FIFO), por id do token, somado entre as carteiras
-  pnl?: Record<string, { netInvested: number; unrealized: number; realized: number }>;
+  pnl?: Record<string, { netInvested: number; unrealized: number; realized: number; avgBuy?: number }>;
   pnlAt?: number;
+  pnlErrors?: string[]; // por que o preco medio automatico falhou (por carteira)
 };
 
 // Documento wallet_history/{AAAA-MM-DD}: ultimo retrato do dia, para o grafico de evolucao

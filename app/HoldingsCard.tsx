@@ -100,6 +100,11 @@ export default function HoldingsCard({ wallet, cfg }: { wallet: WalletDoc; cfg: 
         <p className="muted">Nenhum token fora de stablecoins nas carteiras.</p>
       )}
 
+      {(wallet.pnlErrors ?? []).length > 0 && (
+        <ul className="alerts small">
+          {wallet.pnlErrors!.map((e) => <li key={e} className="warn">Preco medio automatico: {e}</li>)}
+        </ul>
+      )}
       {stables.length > 0 && (
         <>
           <button className="link small" onClick={() => setShowStables(!showStables)}>

@@ -91,3 +91,9 @@ tr.editing input[type="datetime-local"] { max-width: 190px; }
 .history { margin-top: 8px; }
 .history summary { cursor: pointer; color: var(--muted); }
 .history table { margin-top: 6px; }
+h3 { font-size: 14px; margin: 14px 0 6px; color: var(--muted); font-weight: 600; }
+.alerts { margin: 10px 0; padding-left: 18px; }
+.alerts li { margin: 3px 0; }
+button.small-btn { padding: 3px 8px; font-size: 12px; margin-top: 4px; align-self: flex-start; }
+label.grow { flex: 1 1 320px; }
+label.grow input { max-width: 100%; width: 100%; font-family: ui-monospace, monospace; font-size: 13px; }

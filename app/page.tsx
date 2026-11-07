@@ -6,9 +6,10 @@ import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { applyTrade, rebuild } from "@/lib/ledger";
 import { performance } from "@/lib/performance";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
-import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type TradeDoc } from "@/lib/types";
+import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type TradeDoc, type WalletDoc } from "@/lib/types";
 import Chart from "./Chart";
 import PerfChart from "./PerfChart";
+import WalletCard from "./WalletCard";
 import { usePrices, type Prices } from "./usePrices";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -64,6 +65,7 @@ export default function Page() {
   const [cfg, setCfg] = useState<AppConfig>(DEFAULT_CONFIG);
   const [latest, setLatest] = useState<LatestDoc[]>([]);
   const [trades, setTrades] = useState<(TradeDoc & { id: string })[]>([]);
+  const [wallet, setWallet] = useState<WalletDoc | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showCfg, setShowCfg] = useState(false);
@@ -79,7 +81,8 @@ export default function Page() {
     const u2 = onSnapshot(collection(db(), "latest"), (s) => setLatest(s.docs.map((d) => d.data() as LatestDoc)), onErr);
     const u3 = onSnapshot(query(collection(db(), "trades"), orderBy("t", "desc")),
       (s) => setTrades(s.docs.map((d) => ({ id: d.id, ...(d.data() as TradeDoc) }))), onErr);
-    return () => { u1(); u2(); u3(); };
+    const u4 = onSnapshot(doc(db(), "wallet/main"), (s) => setWallet(s.exists() ? (s.data() as WalletDoc) : null), onErr);
+    return () => { u1(); u2(); u3(); u4(); };
   }, [user]);
 
   async function refresh() {
@@ -149,6 +152,7 @@ export default function Page() {
 
       <Summary cfg={cfg} latest={latest} prices={prices} />
       <Performance cfg={cfg} latest={latest} trades={trades} prices={prices} />
+      <WalletCard wallet={wallet} cfg={cfg} latest={latest} user={user} />
 
       <div className="grid">
         {[...latest].sort((a, b) => a.symbol.localeCompare(b.symbol)).map((l) => (
@@ -397,10 +401,13 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
   const [draft, setDraft] = useState(cfg);
   useEffect(() => setDraft(cfg), [cfg]);
 
+  const [err, setErr] = useState("");
   async function save() {
     const clean = (m: Record<string, number> = {}) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, round8(v)]));
+    const wallet = (draft.wallet ?? "").trim();
+    if (wallet && !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return setErr("Endereco da carteira invalido: deve ser 0x seguido de 40 caracteres.");
     await setDoc(doc(db(), "config/main"), {
-      ...draft, weights: clean(draft.weights), positions: clean(draft.positions), avgPrice: clean(draft.avgPrice), realized: clean(draft.realized),
+      ...draft, wallet, weights: clean(draft.weights), positions: clean(draft.positions), avgPrice: clean(draft.avgPrice), realized: clean(draft.realized),
     });
     onClose();
   }
@@ -421,6 +428,9 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
         <label className="check">
           <input type="checkbox" checked={draft.reentry} onChange={(e) => setDraft({ ...draft, reentry: e.target.checked })} />
           Reentrada no repique (meia posicao)
+        </label>
+        <label className="grow">Carteira on-chain (endereco publico 0x..., opcional)
+          <input value={draft.wallet ?? ""} placeholder="0x..." spellCheck={false} onChange={(e) => setDraft({ ...draft, wallet: e.target.value })} />
         </label>
       </div>
       <div className="table-scroll">
@@ -453,6 +463,7 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
         <button onClick={save}>Salvar</button>
         <button className="ghost" onClick={onClose}>Cancelar</button>
       </div>
+      {err && <p className="error small">{err}</p>}
       {Math.abs(totalWeight - 1) > 0.011 && (
         <p className="warn small">Os pesos somam {fmt(totalWeight * 100, 0)}%: o normal e 100% do capital.</p>
       )}

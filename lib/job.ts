@@ -2,6 +2,7 @@ import { adminDb } from "./firebaseAdmin";
 import { fetchDaily } from "./market";
 import { DEFAULT_PARAMS, decide, runStrategy, signalChanges, signalEvents } from "./strategy";
 import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc } from "./types";
+import { refreshWallet } from "./wallet";
 
 const CHART_DAYS = 240;
 // Trava contra chamadas repetidas: o agendador roda a cada 15 min; abaixo disso o calculo e ignorado
@@ -107,5 +108,13 @@ export async function runJob({ force }: { force: boolean }) {
     await telegram(`Robo de sinais - sinal EM FORMACAO (o candle ainda nao fechou; pode mudar ate 21:00)\n${forming.join("\n")}`);
   }
   if (official.length || forming.length) await notifyRef.set(notified);
-  return { skipped: false, results };
+  let wallet: unknown = null;
+  if (!force) {
+    try {
+      wallet = await refreshWallet({ force: false });
+    } catch (e) {
+      wallet = { error: String(e) };
+    }
+  }
+  return { skipped: false, results, wallet };
 }

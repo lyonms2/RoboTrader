@@ -8,6 +8,7 @@ export type AppConfig = {
   avgPrice: Record<string, number>; // preco medio da posicao aberta (calculado ao registrar operacoes)
   realized: Record<string, number>; // lucro/prejuizo ja realizado em vendas, em USDT (sem taxas)
   reentry: boolean;
+  wallet?: string; // endereco publico 0x... da carteira on-chain (opcional, so leitura)
 };
 
 // Ativos acompanhados pelo robo (pares do spot da Binance)
@@ -38,3 +39,34 @@ export type LatestDoc = {
 
 // Documento trades/{id}: operacao registrada manualmente
 export type TradeDoc = { symbol: string; side: "compra" | "venda"; qty: number; price: number; t: number };
+
+// Documento wallet/main: retrato da carteira on-chain (Zerion + Lighter), gravado pelo servidor
+export type WalletItem = {
+  app: string; // protocolo (Aave V3, Fluid...) ou "Carteira"
+  chain: string;
+  type: string; // wallet, deposit, staked, locked, reward, loan...
+  symbol: string;
+  name: string;
+  qty: number;
+  value: number; // USD (emprestimo tomado entra negativo)
+  cls: "stable" | "BTC" | "ETH" | "SOL" | "outro";
+  maturity: number | null; // vencimento (ex.: PT do Pendle)
+};
+export type WalletPerp = {
+  symbol: string;
+  side: "long" | "short";
+  size: number;
+  entry: number;
+  notional: number;
+  pnl: number;
+  maxLev: number;
+  liq: number | null;
+};
+export type WalletDoc = {
+  address: string;
+  at: number;
+  total: number;
+  items: WalletItem[];
+  lighter: { value: number; available: number; perps: WalletPerp[] } | null;
+  errors: string[];
+};

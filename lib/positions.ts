@@ -1,4 +1,5 @@
 import { walletAddresses, walletKey } from "./addresses";
+import { holdings } from "./holdings";
 import type { AppConfig, LighterSyncDoc, TradeDoc, WalletDoc } from "./types";
 
 const r8 = (v: number) => Math.round(v * 1e8) / 1e8;
@@ -22,8 +23,12 @@ export function effectiveConfig(cfg: AppConfig, sync: LighterSyncDoc | null | un
   const realized = { ...(cfg.realized ?? {}) };
   if (cfg.walletPositions && wallet && px && wallet.address === walletKey(walletAddresses(cfg))) {
     positions = {};
+    const rows = holdings(wallet, cfg.costBasis);
     for (const s of Object.keys(cfg.weights)) {
       const coin = s.replace("USDT", "");
+      // Preco medio = o da lista "Meus tokens" (Zerion ou digitado); sem ele, o da Configuracao
+      const row = rows.find((r) => r.symbol.toUpperCase() === coin);
+      if (row?.avg) avgPrice[s] = row.avg;
       const value = wallet.items.filter((i) => i.cls === coin).reduce((sum, i) => sum + i.value, 0);
       positions[s] = px[s] > 0 ? r8(Math.max(0, value) / px[s]) : 0;
     }

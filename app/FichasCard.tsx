@@ -31,7 +31,7 @@ export default function FichasCard({ fichas }: { fichas: FichaDoc | null }) {
       ) : (
         <>
           <div className="table-scroll">
-            <table className="fichas">
+            <table className="fichas stack">
               <thead>
                 <tr>
                   <th>Token</th><th>Situacao</th><th>Valor de mercado</th><th title="Valor totalmente diluido / valor de mercado">FDV / mercado</th>
@@ -48,22 +48,22 @@ export default function FichasCard({ fichas }: { fichas: FichaDoc | null }) {
                         <img src={f.image} alt="" width={16} height={16} className="coin" />
                         <b>{f.symbol}</b> <span className="muted small">#{f.rank ?? "-"}</span>
                       </td>
-                      <td>
+                      <td data-label="Situacao"><div className="cell">
                         {f.situacao ? <span className={`sit sit-${f.situacao.code}`} title={f.situacao.detail}>{f.situacao.label}</span> : <span className="muted small">-</span>}
                         {f.action && <div className="small action-line">{f.action}</div>}
                         {f.held >= 1 && <div className="small muted">voce tem ${fmt(f.held, 0)}{f.target !== null ? ` / alvo $${fmt(f.target, 0)}` : ""}</div>}
-                      </td>
-                      <td>{big(f.mcap)}</td>
-                      <td className={f.fdv && f.mcap && f.fdv / f.mcap >= 2 ? "warn" : ""}>{f.fdv && f.mcap ? `${fmt(f.fdv / f.mcap, 1)}x` : "-"}</td>
-                      <td>{f.circPct === null ? "-" : `${fmt(f.circPct * 100, 0)}%`}</td>
-                      <td>{big(f.revenue30d)}{f.kind === "rede" && f.revenue30d !== null ? <span className="muted small"> taxas</span> : ""}</td>
-                      <td>{f.pf === null ? "-" : `${fmt(f.pf, 0)}x`}</td>
-                      <td className={f.change30d === null ? "" : f.change30d >= 0 ? "pos" : "neg"}>{pct(f.change30d)}</td>
-                      <td>
+                      </div></td>
+                      <td data-label="Valor de mercado">{big(f.mcap)}</td>
+                      <td data-label="FDV / mercado" className={f.fdv && f.mcap && f.fdv / f.mcap >= 2 ? "warn" : ""}>{f.fdv && f.mcap ? `${fmt(f.fdv / f.mcap, 1)}x` : "-"}</td>
+                      <td data-label="Circulando">{f.circPct === null ? "-" : `${fmt(f.circPct * 100, 0)}%`}</td>
+                      <td data-label="Receita 30 dias"><span>{big(f.revenue30d)}{f.kind === "rede" && f.revenue30d !== null ? <span className="muted small"> taxas</span> : ""}</span></td>
+                      <td data-label="Preco / receita">{f.pf === null ? "-" : `${fmt(f.pf, 0)}x`}</td>
+                      <td data-label="30 dias" className={f.change30d === null ? "" : f.change30d >= 0 ? "pos" : "neg"}>{pct(f.change30d)}</td>
+                      <td data-label="Alertas"><span>
                         {warnCount(f) > 0 ? <span className="chip warn-chip">{warnCount(f)} atencao</span> : null}
                         {f.alerts.length - warnCount(f) > 0 ? <span className="chip">{f.alerts.length - warnCount(f)} info</span> : null}
                         {!f.alerts.length ? <span className="muted small">-</span> : null}
-                      </td>
+                      </span></td>
                     </tr>
                     {open === f.id && (
                       <tr className="detail">

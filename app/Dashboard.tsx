@@ -303,7 +303,7 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab }: {
       todo.push({ tone: c === "saida" ? "sell" : c === "reduzir" || c === "sem_vaga" ? "warn" : "buy", who: f.symbol, text: `${f.situacao.label}${f.action ? `: ${f.action}` : ""}`, tab: "tokens" });
   }
   if (wallet) for (const n of walletNotices(wallet)) if (n.level !== "info") todo.push({ tone: "warn", who: "Carteira", text: n.text, tab: "carteira" });
-  if (unknown) todo.push({ tone: "info", who: "Robo", text: "ha posicao sem preco medio: informe-o na Configuracao para ver o lucro", tab: "sinais" });
+  if (unknown) todo.push({ tone: "info", who: "Robo", text: "ha posicao sem preco medio: informe-o em Carteira > Meus tokens para ver o lucro", tab: "sinais" });
   if (sync?.shorts.length) todo.push({ tone: "warn", who: "Lighter", text: `posicao vendida (${sync.shorts.join(", ")}) fica fora da conta`, tab: "carteira" });
 
   const total = wallet && wallet.address === walletKey(walletAddresses(cfg)) ? wallet.total : null;
@@ -488,23 +488,20 @@ function AssetCard({ l, cfg, prices }: { l: LatestDoc; cfg: AppConfig; prices: P
       {l.events?.length ? (
         <details className="history">
           <summary className="small">Historico de sinais ({l.events.length})</summary>
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>Data</th><th>Sinal</th><th>Preco</th><th>Motivo</th><th>Trade</th></tr></thead>
-              <tbody>
-                {[...l.events].reverse().map((e) => (
-                  <tr key={e.t}>
-                    <td>{day(e.t)}</td>
-                    <td className={e.kind === "saida" || e.kind === "meia" ? "neg" : "pos"}>{EVENT_LABEL[e.kind]}</td>
-                    <td>{fmtPx(e.price)}</td>
-                    <td className="muted">{e.reason}</td>
-                    <td className={e.ret === null ? "" : pnlClass(e.ret)}>{e.ret === null ? "" : `${signed(e.ret * 100, 1)}%`}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="muted small">Trade = variacao do preco da entrada ate a saida (sem o tamanho da posicao).</p>
+          <ul className="events">
+            {[...l.events].reverse().map((e) => (
+              <li key={e.t}>
+                <div className="ev-top">
+                  <span className="muted">{day(e.t)}</span>
+                  <b className={e.kind === "saida" || e.kind === "meia" ? "neg" : "pos"}>{EVENT_LABEL[e.kind]}</b>
+                  <span>{fmtPx(e.price)}</span>
+                  {e.ret !== null && <span className={`ev-ret ${pnlClass(e.ret)}`}>{signed(e.ret * 100, 1)}%</span>}
+                </div>
+                <div className="muted small">{e.reason}</div>
+              </li>
+            ))}
+          </ul>
+          <p className="muted small">% na venda = variacao do preco desde a entrada (sem o tamanho da posicao).</p>
         </details>
       ) : (
         <p className="muted small">Ultimos sinais: {l.changes.map((c) => `${day(c.t)} ${c.on ? "compra" : "saida"}`).join(", ") || "-"}</p>
@@ -543,7 +540,7 @@ function TradeForm({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[
       <h2>Registrar operacao manual</h2>
       <p className="muted small">So para o que voce faz fora das carteiras cadastradas (o saldo delas ja entra sozinho).</p>
       <div className="row wrap-row">
-        <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>{symbols.map((s) => <option key={s}>{s}</option>)}</select>
+        <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>{symbols.map((s) => <option key={s} value={s}>{s.replace("USDT", "")}</option>)}</select>
         <select value={side} onChange={(e) => setSide(e.target.value as "compra" | "venda")}><option value="compra">compra</option><option value="venda">venda</option></select>
         <input placeholder="quantidade" value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" />
         <input placeholder="preco (vazio = atual)" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" />
@@ -653,18 +650,19 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
         <legend>3. Robo (BTC, ETH, SOL)</legend>
         <div className="table-scroll">
           <table className="cfg-table">
-            <thead><tr><th>Moeda</th><th>Peso no nucleo (%)</th><th>Preco medio (para o lucro)</th></tr></thead>
+            <thead><tr><th>Moeda</th><th>Peso no nucleo (%)</th>{!draft.walletPositions && <th>Preco medio (para o lucro)</th>}</tr></thead>
             <tbody>
               {symbols.map((s) => (
                 <tr key={s}>
                   <td><b>{s.replace("USDT", "")}</b></td>
                   <td><NumInput value={round8(draft.weights[s] * 100)} onChange={(v) => setMap("weights", s, v / 100)} /></td>
-                  <td><NumInput value={draft.avgPrice?.[s] ?? 0} onChange={(v) => setMap("avgPrice", s, v)} /></td>
+                  {!draft.walletPositions && <td><NumInput value={draft.avgPrice?.[s] ?? 0} onChange={(v) => setMap("avgPrice", s, v)} /></td>}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {draft.walletPositions && <p className="hint">Preco medio: vem da lista &quot;Meus tokens&quot; (aba Carteira), automatico ou digitado la.</p>}
         {Math.abs(totalWeight - 1) > 0.011 && <p className="warn small">Os pesos somam {fmt(totalWeight * 100, 0)}%: o normal e 100%.</p>}
         <label className="check">
           <input type="checkbox" checked={draft.reentry} onChange={(e) => setDraft({ ...draft, reentry: e.target.checked })} />
@@ -839,7 +837,7 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
       ) : (
         <>
           <div className="table-scroll">
-            <table>
+            <table className="stack">
               <thead><tr><th>Data</th><th>Moeda</th><th>Lado</th><th>Qtd</th><th>Preco</th><th>Valor (USDT)</th><th /></tr></thead>
               <tbody>
                 {shown.map((t) => editing?.id === t.id ? (
@@ -866,11 +864,11 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
                 ) : (
                   <tr key={t.id}>
                     <td>{new Date(t.t).toLocaleString("pt-BR")}</td>
-                    <td>{t.symbol.replace("USDT", "")}{t.source === "lighter" && <span className="tag">Lighter</span>}</td>
-                    <td className={t.side === "compra" ? "pos" : "neg"}>{t.side}{t.note ? ` (${t.note})` : ""}</td>
-                    <td>{fmtQty(t.qty)}</td>
-                    <td>{fmtPx(t.price)}</td>
-                    <td>{fmt(t.qty * t.price)}</td>
+                    <td data-label="Moeda">{t.symbol.replace("USDT", "")}{t.source === "lighter" && <span className="tag">Lighter</span>}</td>
+                    <td data-label="Lado" className={t.side === "compra" ? "pos" : "neg"}>{t.side}{t.note ? ` (${t.note})` : ""}</td>
+                    <td data-label="Qtd">{fmtQty(t.qty)}</td>
+                    <td data-label="Preco">{fmtPx(t.price)}</td>
+                    <td data-label="Valor (USDT)">{fmt(t.qty * t.price)}</td>
                     <td className="actions">{t.source === "lighter" ? <span className="muted small" title="Importada da Lighter: edite la">auto</span> : <>
                       <button className="ghost icon" title="Editar" aria-label="Editar"
                         onClick={() => setEditing({ id: t.id, symbol: t.symbol, side: t.side, qty: String(t.qty), price: String(t.price), when: toLocalInput(t.t) })}>

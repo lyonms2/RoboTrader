@@ -1,0 +1,137 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { GROUPS } from "@/lib/financeMath";
+import type { NetWorthDoc } from "@/lib/patrimonio";
+
+const fmt = (v: number, d = 0) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+const brl = (v: number, d = 0) => `R$ ${fmt(v, d)}`;
+const date = (t: number) => new Date(t).toLocaleDateString("pt-BR");
+const RANGES = [
+  { id: "1m", label: "1M", days: 31 }, { id: "3m", label: "3M", days: 92 }, { id: "6m", label: "6M", days: 183 },
+  { id: "1a", label: "1A", days: 366 }, { id: "tudo", label: "Tudo", days: Infinity },
+] as const;
+type RangeId = (typeof RANGES)[number]["id"];
+
+// Evolucao do patrimonio liquido: 1 ponto por dia (foto gravada no Atualizar tudo / agendador) + o valor de agora
+export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; live: NetWorthDoc | null }) {
+  const [range, setRange] = useState<RangeId>("tudo");
+  const [idx, setIdx] = useState<number | null>(null);
+  // Largura real do grafico (para o texto nao encolher no celular)
+  const box = useRef<HTMLElement>(null);
+  const [width, setWidth] = useState(640);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(Math.round(e.contentRect.width) || 640));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hist.length, range]); // o grafico so aparece com 2+ pontos
+  // Hoje: o valor calculado agora substitui a foto do dia
+  const all = [...hist.filter((h) => !live || h.day !== live.day), ...(live && (live.bens > 0 || live.dividas > 0) ? [live] : [])].sort((a, b) => a.t - b.t);
+  const span = all.length ? (all[all.length - 1].t - all[0].t) / 86_400_000 : 0;
+  const avail = RANGES.filter((r) => r.days === Infinity || span > r.days * 0.6);
+  const days = RANGES.find((r) => r.id === range)!.days;
+  const pts = days === Infinity ? all : all.filter((p) => p.t >= Date.now() - days * 86_400_000);
+
+  if (pts.length < 2)
+    return (
+      <section className="card">
+        <h2>Evolucao do patrimonio</h2>
+        <p className="muted small">
+          O grafico comeca hoje{all[0] ? ` (${brl(all[0].net)})` : ""}: a cada dia em que voce clica em &quot;Atualizar tudo&quot; (ou o agendador roda)
+          fica gravada uma foto do patrimonio liquido. A linha aparece a partir do 2o dia.
+        </p>
+      </section>
+    );
+
+  const W = Math.max(280, width);
+  const H = W < 500 ? 190 : 210;
+  const PL = 4;
+  const PR = 4;
+  const hasDebt = pts.some((p) => p.dividas > 0.5);
+  const vals = pts.flatMap((p) => (hasDebt ? [p.net, p.bens] : [p.net]));
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.12 || Math.abs(hi) * 0.03 || 1;
+  const t0 = pts[0].t;
+  const t1 = pts[pts.length - 1].t;
+  const x = (t: number) => PL + ((t - t0) / (t1 - t0 || 1)) * (W - PL - PR);
+  const y = (v: number) => H - 20 - ((v - (lo - pad)) / (hi - lo + pad * 2)) * (H - 34);
+  const line = (k: "net" | "bens") => pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p[k]).toFixed(1)}`).join("");
+  const area = `${line("net")}L${x(t1).toFixed(1)},${H - 20}L${x(t0).toFixed(1)},${H - 20}Z`;
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  const chg = last.net - first.net;
+  const chgPct = first.net > 0 ? chg / first.net : null;
+  const cur = idx !== null ? pts[idx] : last;
+
+  function move(e: React.PointerEvent<SVGSVGElement>) {
+    const r = e.currentTarget.getBoundingClientRect();
+    const t = t0 + (((e.clientX - r.left) / r.width) * W - PL) / (W - PL - PR) * (t1 - t0);
+    let best = 0;
+    for (let i = 1; i < pts.length; i++) if (Math.abs(pts[i].t - t) < Math.abs(pts[best].t - t)) best = i;
+    setIdx(best);
+  }
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2>Evolucao do patrimonio</h2>
+        <div className="ranges" role="group" aria-label="Periodo">
+          {avail.map((r) => (
+            <button key={r.id} className={range === r.id ? "pill on" : "pill"} onClick={() => { setRange(r.id); setIdx(null); }}>{r.label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="nw-head">
+        <div>
+          <span className="muted small">{idx !== null ? date(cur.t) : "Patrimonio liquido agora"}</span>
+          <b>{brl(cur.net)}</b>
+        </div>
+        {idx === null ? (
+          <div className={chg >= 0 ? "pos" : "neg"}>
+            <span className="muted small">desde {date(first.t)}</span>
+            <b>{chg >= 0 ? "+" : "-"}{brl(Math.abs(chg))}{chgPct !== null && <small> ({chg >= 0 ? "+" : ""}{fmt(chgPct * 100, 1)}%)</small>}</b>
+          </div>
+        ) : (
+          <div>
+            <span className="muted small">bens - dividas</span>
+            <b className="small-b">{brl(cur.bens)} - {brl(cur.dividas)}</b>
+          </div>
+        )}
+      </div>
+      <figure className="viz" ref={box}>
+        {hasDebt && (
+          <figcaption className="small muted"><i className="key k-net" /> patrimonio liquido <i className="key k-bens" /> bens (sem descontar dividas)</figcaption>
+        )}
+        <svg viewBox={`0 0 ${W} ${H}`} className="chart nw" role="img" aria-label="Evolucao do patrimonio liquido"
+          onPointerMove={move} onPointerLeave={() => setIdx(null)}>
+          <line x1={0} x2={W} y1={y(hi)} y2={y(hi)} className="grid" />
+          <line x1={0} x2={W} y1={y(lo)} y2={y(lo)} className="grid" />
+          <text x={W - 2} y={y(hi) - 4} className="axis" textAnchor="end">{brl(hi)}</text>
+          <text x={W - 2} y={y(lo) + 13} className="axis" textAnchor="end">{brl(lo)}</text>
+          <text x={2} y={H - 4} className="axis">{date(t0)}</text>
+          <text x={W - 2} y={H - 4} className="axis" textAnchor="end">{date(t1)}</text>
+          <path d={area} className="nw-area" />
+          {hasDebt && <path d={line("bens")} className="nw-bens" />}
+          <path d={line("net")} className="l-real" />
+          {idx !== null && (
+            <>
+              <line x1={x(cur.t)} x2={x(cur.t)} y1={0} y2={H - 20} className="cross" />
+              <circle cx={x(cur.t)} cy={y(cur.net)} r={4} className="dot" />
+            </>
+          )}
+        </svg>
+      </figure>
+      <ul className="viz-legend small">
+        {GROUPS.filter((g) => (cur.byGroup?.[g.key] ?? 0) > 0.5).map((g) => (
+          <li key={g.key}><i className={`g-${g.key}`} />{g.label} <b>{brl(cur.byGroup[g.key])}</b></li>
+        ))}
+      </ul>
+      <p className="muted small">
+        Uma foto por dia, gravada quando voce clica em &quot;Atualizar tudo&quot; ou o agendador roda; o ultimo ponto e o valor de agora.
+        {cur.partial?.length ? ` Neste dia ficou de fora: ${cur.partial.join(", ")}.` : ""}
+      </p>
+    </section>
+  );
+}

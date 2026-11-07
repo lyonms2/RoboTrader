@@ -8,6 +8,7 @@ import { refreshWallet } from "./wallet";
 import { robotStats } from "./robotStats";
 import { refreshCandidates } from "./candidates";
 import { refreshFinance } from "./finance";
+import { snapshotNetWorth } from "./patrimonioServer";
 import { refreshFichas } from "./fichas";
 import { isEvmAddress, walletAddresses } from "./addresses";
 
@@ -161,5 +162,11 @@ export async function runJob({ force, fichas: withFichas = true }: { force: bool
       finance = { error: String(e) };
     }
   }
-  return { skipped: false, results, wallet, lighter, fichas, candidates, finance };
+  let patrimonio: unknown = null;
+  try {
+    patrimonio = await snapshotNetWorth();
+  } catch (e) {
+    patrimonio = { error: String(e) };
+  }
+  return { skipped: false, results, wallet, lighter, fichas, candidates, finance, patrimonio };
 }

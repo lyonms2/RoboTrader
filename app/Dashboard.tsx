@@ -18,6 +18,7 @@ import FichasCard from "./FichasCard";
 import CandidatesCard from "./CandidatesCard";
 import FinanceCard from "./FinanceCard";
 import { debts } from "./GastosCard";
+import type { NetWorthDoc } from "@/lib/patrimonio";
 import { EMPTY_SETUP, avgMonthly, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import { financeSummary } from "@/lib/financeMath";
 import type { CandidatesDoc } from "@/lib/candidates";
@@ -75,7 +76,7 @@ function NumInput({ value, onChange }: { value: number; onChange: (v: number) =>
 export type Demo = {
   cfg: AppConfig; latest: LatestDoc[]; trades: (TradeDoc & { id: string })[]; wallet: WalletDoc | null;
   walletHistory: WalletHistoryDoc[]; fichas: FichaDoc | null; candidates?: CandidatesDoc | null; finance?: FinanceDoc | null;
-  months?: Record<string, MonthDoc>; setup?: GastosSetup;
+  months?: Record<string, MonthDoc>; setup?: GastosSetup; nwHist?: NetWorthDoc[];
 };
 
 export default function Dashboard({ demo }: { demo?: Demo }) {
@@ -89,6 +90,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const [fichas, setFichas] = useState<FichaDoc | null>(demo?.fichas ?? null);
   const [candidates, setCandidates] = useState<CandidatesDoc | null>(demo?.candidates ?? null);
   const [finance, setFinance] = useState<FinanceDoc | null>(demo?.finance ?? null);
+  const [nwHist, setNwHist] = useState<NetWorthDoc[]>(demo?.nwHist ?? []);
   const [months, setMonths] = useState<Record<string, MonthDoc>>(demo?.months ?? {});
   const [gSetup, setGSetup] = useState<GastosSetup>(demo?.setup ?? EMPTY_SETUP);
   const [error, setError] = useState("");
@@ -139,7 +141,9 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       setMonths(ms);
       setGSetup(st);
     }, onErr);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); };
+    const u11 = onSnapshot(query(collection(db(), "patrimonio_history"), orderBy("t"), limitToLast(1500)),
+      (s) => setNwHist(s.docs.map((d) => d.data() as NetWorthDoc)), onErr);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); u11(); };
   }, [user, demo]);
 
   // Financas (cotacoes, CDI, Tesouro) numa chamada separada: o arquivo do Tesouro e grande e nao pode atrasar os sinais
@@ -277,7 +281,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             <CandidatesCard doc={candidates} />
           </>
         )}
-        {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup}
+        {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup} nwHist={nwHist}
           onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }} />}
         {tab === "carteira" && <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} />}
         {tab === "tokens" && <FichasCard fichas={fichas} />}

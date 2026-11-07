@@ -2,6 +2,7 @@
 import { doc, setDoc } from "firebase/firestore";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
+import { cardStatus, debts } from "@/lib/gastos";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
   monthOf, newId, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
@@ -29,47 +30,7 @@ async function addItems(months: Record<string, MonthDoc>, list: Gasto[]) {
   await Promise.all(Object.entries(by).map(([m, add]) => saveMonth(m, [...(months[m]?.items ?? []), ...add])));
 }
 
-// Dividas em aberto: saldo dos emprestimos + faturas de cartao ainda nao vencidas (inclui parcelas futuras)
-export function debts(months: Record<string, MonthDoc>, setup: GastosSetup) {
-  const today = todayBR();
-  const loans = setup.loans.reduce((s, l) => s + loanStatus(l, today).saldo, 0);
-  const cards = setup.cards.map((c) => cardStatus(c, months, today));
-  return { loans, cards: cards.reduce((s, c) => s + c.open, 0), total: loans + cards.reduce((s, c) => s + c.open, 0) };
-}
-
-// Fatura por mes de vencimento + parcelas futuras (que ainda nao apareceram em nenhum extrato)
-function cardStatus(c: Card, months: Record<string, MonthDoc>, today = todayBR()) {
-  const fat: Record<string, number> = {};
-  const lastParc = new Map<string, Gasto>();
-  const seenParc = new Set<string>();
-  for (const md of Object.values(months))
-    for (const g of md.items) {
-      if (g.card !== c.id || g.tipo === "neutro") continue;
-      if (g.parc) seenParc.add(`${descKey(g.desc)}|${g.parc[0]}|${g.parc[1]}`);
-      const fm = faturaMonth(c, g.d);
-      fat[fm] = (fat[fm] ?? 0) + (g.tipo === "receita" ? -g.v : g.v);
-      if (g.parc && g.parc[0] < g.parc[1]) {
-        const key = `${descKey(g.desc)}|${g.parc[1]}|${g.v.toFixed(2)}`;
-        const prev = lastParc.get(key);
-        if (!prev || prev.parc![0] < g.parc[0]) lastParc.set(key, g);
-      }
-    }
-  // Parcelas futuras: da ultima parcela vista ate a ultima, uma por fatura
-  const future: Record<string, number> = {};
-  for (const g of lastParc.values()) {
-    const fm = faturaMonth(c, g.d);
-    for (let k = g.parc![0] + 1; k <= g.parc![1]; k++) {
-      const m = addMonths(fm, k - g.parc![0]);
-      if (!seenParc.has(`${descKey(g.desc)}|${k}|${g.parc![1]}`)) future[m] = (future[m] ?? 0) + g.v;
-    }
-  }
-  const due = (m: string) => dayIn(m, c.dueDay);
-  const all = new Set([...Object.keys(fat), ...Object.keys(future)]);
-  const faturas = [...all].sort().map((m) => ({ m, due: due(m), v: (fat[m] ?? 0) + (future[m] ?? 0), futuro: future[m] ?? 0 }))
-    .filter((f) => f.due >= today && f.v > 0.005);
-  const open = faturas.reduce((s, f) => s + f.v, 0);
-  return { faturas, open, next: faturas[0] ?? null };
-}
+export { debts };
 
 // Resumo do mes atual (para a pagina Resumo das Financas)
 export function monthSnapshot(months: Record<string, MonthDoc>, setup: GastosSetup) {

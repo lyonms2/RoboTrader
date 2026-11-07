@@ -382,3 +382,16 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 .inv-mini li { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line); break-inside: avoid; }
 .inv-mini li .muted { font-size: 12px; }
 .inv-mini li b { margin-left: auto; font-weight: 600; }
+
+/* Evolucao do patrimonio */
+.ranges { display: flex; gap: 4px; }
+.ranges .pill { padding: 3px 10px; font-size: 12.5px; }
+.nw-head { display: flex; flex-wrap: wrap; gap: 8px 32px; margin: 4px 0 2px; }
+.nw-head > div { display: flex; flex-direction: column; }
+.nw-head b { font-size: 22px; }
+.nw-head b small { font-size: 13px; font-weight: 500; }
+.nw-head b.small-b { font-size: 15px; font-weight: 600; margin-top: 5px; }
+.chart.nw { touch-action: pan-y; }
+.chart .nw-area { fill: var(--accent); fill-opacity: .1; stroke: none; }
+.chart .nw-bens { stroke: var(--muted); stroke-width: 1.4; stroke-dasharray: 4 3; }
+.k-net { background: var(--accent); } .k-bens { background: var(--muted); }

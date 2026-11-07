@@ -6,6 +6,8 @@ import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type Fi
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
 import { monthLabel, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import GastosCard, { DebtsView, monthSnapshot } from "./GastosCard";
+import NetWorthChart from "./NetWorthChart";
+import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
 
 type Sub = "resumo" | "invest" | "gastos" | "dividas";
 const SUBS: { id: Sub; label: string }[] = [
@@ -33,11 +35,11 @@ const KINDS: { key: FinKind; label: string; hint: string }[] = [
 ];
 
 // Aba Financas: tudo num lugar so (cripto das carteiras + reserva, Tesouro, acoes/FIIs e outros), em reais
-export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, months, setup }: {
+export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, months, setup, nwHist }: {
   cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; onChanged: () => void;
   spend: { value: number; months: number } | null; // media de gastos
   debt: { total: number; loans: number; cards: number };
-  months: Record<string, MonthDoc>; setup: GastosSetup;
+  months: Record<string, MonthDoc>; setup: GastosSetup; nwHist: NetWorthDoc[];
 }) {
   // Sub-aba aberta, lembrada neste navegador
   const [sub, setSubState] = useState<Sub>(() => {
@@ -123,6 +125,8 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
           </ul>
         )}
       </section>
+
+      <NetWorthChart hist={nwHist} live={netWorth(cfg, fin, wallet, months, setup)} />
 
       <div className="two-col">
         <section className="card link-card" role="button" tabIndex={0} onClick={() => setSub("gastos")}>

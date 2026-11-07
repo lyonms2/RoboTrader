@@ -251,3 +251,47 @@ export function parcOf(desc: string): [number, number] | undefined {
   const n = Number(m[2]);
   return k >= 1 && n >= 2 && k <= n ? [k, n] : undefined;
 }
+
+// ---------- dividas ----------
+// Dividas em aberto: saldo dos emprestimos + faturas de cartao ainda nao vencidas (inclui parcelas futuras)
+export function debts(months: Record<string, MonthDoc>, setup: GastosSetup) {
+  const today = todayBR();
+  const loans = setup.loans.reduce((s, l) => s + loanStatus(l, today).saldo, 0);
+  const cards = setup.cards.map((c) => cardStatus(c, months, today));
+  return { loans, cards: cards.reduce((s, c) => s + c.open, 0), total: loans + cards.reduce((s, c) => s + c.open, 0) };
+}
+
+// Fatura por mes de vencimento + parcelas futuras (que ainda nao apareceram em nenhum extrato)
+export function cardStatus(c: Card, months: Record<string, MonthDoc>, today = todayBR()) {
+  const fat: Record<string, number> = {};
+  const lastParc = new Map<string, Gasto>();
+  const seenParc = new Set<string>();
+  for (const md of Object.values(months))
+    for (const g of md.items) {
+      if (g.card !== c.id || g.tipo === "neutro") continue;
+      if (g.parc) seenParc.add(`${descKey(g.desc)}|${g.parc[0]}|${g.parc[1]}`);
+      const fm = faturaMonth(c, g.d);
+      fat[fm] = (fat[fm] ?? 0) + (g.tipo === "receita" ? -g.v : g.v);
+      if (g.parc && g.parc[0] < g.parc[1]) {
+        const key = `${descKey(g.desc)}|${g.parc[1]}|${g.v.toFixed(2)}`;
+        const prev = lastParc.get(key);
+        if (!prev || prev.parc![0] < g.parc[0]) lastParc.set(key, g);
+      }
+    }
+  // Parcelas futuras: da ultima parcela vista ate a ultima, uma por fatura
+  const future: Record<string, number> = {};
+  for (const g of lastParc.values()) {
+    const fm = faturaMonth(c, g.d);
+    for (let k = g.parc![0] + 1; k <= g.parc![1]; k++) {
+      const m = addMonths(fm, k - g.parc![0]);
+      if (!seenParc.has(`${descKey(g.desc)}|${k}|${g.parc![1]}`)) future[m] = (future[m] ?? 0) + g.v;
+    }
+  }
+  const due = (m: string) => dayIn(m, c.dueDay);
+  const all = new Set([...Object.keys(fat), ...Object.keys(future)]);
+  const faturas = [...all].sort().map((m) => ({ m, due: due(m), v: (fat[m] ?? 0) + (future[m] ?? 0), futuro: future[m] ?? 0 }))
+    .filter((f) => f.due >= today && f.v > 0.005);
+  const open = faturas.reduce((s, f) => s + f.v, 0);
+  return { faturas, open, next: faturas[0] ?? null };
+}
+

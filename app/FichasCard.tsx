@@ -50,10 +50,10 @@ export default function FichasCard({ fichas, user }: { fichas: FichaDoc | null; 
       ) : (
         <>
           {(() => {
-            const act = rows.filter((f) => f.situacao && ["entrada", "entrada_metade", "saida", "reduzir"].includes(f.situacao.code));
+            const act = rows.filter((f) => f.situacao && (["entrada", "entrada_metade", "saida", "reduzir"].includes(f.situacao.code) || !!f.action));
             return act.length ? (
               <p className="small sit-summary">
-                Hoje: {act.map((f) => <span key={f.id} className={`sit sit-${f.situacao!.code}`}>{f.symbol}: {f.situacao!.label}</span>)}
+                Hoje: {act.map((f) => <span key={f.id} className={`sit sit-${f.situacao!.code}`}>{f.symbol}: {f.situacao!.label}{f.action ? ` - ${f.action}` : ""}</span>)}
               </p>
             ) : <p className="muted small">Nenhuma entrada ou saida hoje.</p>;
           })()}
@@ -75,7 +75,11 @@ export default function FichasCard({ fichas, user }: { fichas: FichaDoc | null; 
                         <img src={f.image} alt="" width={16} height={16} className="coin" />
                         <b>{f.symbol}</b> <span className="muted small">#{f.rank ?? "-"}</span>
                       </td>
-                      <td>{f.situacao ? <span className={`sit sit-${f.situacao.code}`} title={f.situacao.detail}>{f.situacao.label}</span> : <span className="muted small">-</span>}</td>
+                      <td>
+                        {f.situacao ? <span className={`sit sit-${f.situacao.code}`} title={f.situacao.detail}>{f.situacao.label}</span> : <span className="muted small">-</span>}
+                        {f.action && <div className="small action-line">{f.action}</div>}
+                        {f.held >= 1 && <div className="small muted">voce tem ${fmt(f.held, 0)}{f.target !== null ? ` / alvo $${fmt(f.target, 0)}` : ""}</div>}
+                      </td>
                       <td>{big(f.mcap)}</td>
                       <td className={f.fdv && f.mcap && f.fdv / f.mcap >= 2 ? "warn" : ""}>{f.fdv && f.mcap ? `${fmt(f.fdv / f.mcap, 1)}x` : "-"}</td>
                       <td>{f.circPct === null ? "-" : `${fmt(f.circPct * 100, 0)}%`}</td>

@@ -139,3 +139,5 @@ tr.detail td { white-space: normal; background: var(--bg); font-size: 13px; }
 .sit-detail { margin: 8px 0 4px; }
 .alert-group { margin-top: 6px; }
 .alert-group .alerts { margin: 2px 0 0; }
+.action-line { color: var(--text); margin-top: 3px; font-weight: 600; }
+.sit-sem_vaga, .sit-fora_sistema { color: var(--warn); }

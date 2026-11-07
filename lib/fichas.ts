@@ -1,7 +1,8 @@
 import { adminDb } from "./firebaseAdmin";
 import { fetchDaily } from "./market";
 import { DEFAULT_PARAMS, runStrategy, type Kline } from "./strategy";
-import type { FichaDoc, LatestDoc, Situacao, TokenFicha, WalletDoc } from "./types";
+import { allocOf, baseCapital } from "./positions";
+import type { AppConfig, FichaDoc, LatestDoc, Situacao, TokenFicha, WalletDoc } from "./types";
 
 type Alert = TokenFicha["alerts"][number];
 const DAY_MS = 86_400_000;
@@ -108,6 +109,7 @@ export async function buildFichas(symbols: string[]): Promise<FichaDoc> {
       mcap, fdv, circPct, volume: m.total_volume, change30d: m.price_change_percentage_30d_in_currency ?? null,
       athDrop: m.ath_change_percentage ?? null, revenue30d: rev?.r30 ?? null, revenuePrev30d: rev?.prev ?? null,
       pf: annual && annual > 0 && !chain ? mcap / annual : null, kind: chain ? "rede" : "token", alerts, situacao: null,
+      held: 0, target: null, action: null,
     };
   });
   const found = new Set(items.map((i) => i.symbol));
@@ -136,13 +138,21 @@ export function breakoutState(k: Kline[], btcUp: Map<number, boolean>) {
 }
 
 // Junta o sinal de preco (robo para BTC/ETH/SOL; rompimento 55/20 para os outros) com os alertas da ficha
-async function situacoes(items: TokenFicha[], strategy: string[], latest: LatestDoc[], held: Set<string>, reentry: boolean) {
+const SLOTS = 5;
+const usd = (v: number) => `$${Math.round(v).toLocaleString("pt-BR")}`;
+
+// held = USD de cada token nas carteiras; satCapital = patrimonio x fatia do satelite
+async function situacoes(items: TokenFicha[], strategy: string[], latest: LatestDoc[], held: Map<string, number>, reentry: boolean, satCapital: number) {
   const btc = (await fetchDaily("BTCUSDT")).closed;
   const btcUp = new Map(runStrategy(btc, { ...DEFAULT_PARAMS, reentry }).map((s) => [s.t, s.expo > 0]));
   const warn = (f: TokenFicha, use: "entrada" | "saida") => f.alerts.filter((a) => a.level === "warn" && a.use?.includes(use));
   const px = (v: number) => v.toPrecision(5);
+  // Vagas do satelite: tokens que voce ja tem e que seguem em tendencia ocupam vaga
+  let used = 0;
+  const pending: { f: TokenFicha; slot: number; ret: number }[] = [];
   for (const f of items) {
-    const isHeld = held.has(f.symbol);
+    f.held = held.get(f.symbol) ?? 0;
+    const isHeld = f.held >= 1;
     const exitWarn = warn(f, "saida");
     if (strategy.includes(f.symbol)) {
       const l = latest.find((x) => x.symbol === `${f.symbol}USDT`);
@@ -170,22 +180,51 @@ async function situacoes(items: TokenFicha[], strategy: string[], latest: Latest
     }
     const b = breakoutState(k, btcUp);
     const entryWarn = warn(f, "entrada");
-    if (b.event === "entrada") {
+    // Tamanho do backtest: 1/5 do satelite x min(1, 80% / vol 30d); metade com alerta de entrada
+    const c = k.map((r) => r[4]).slice(-31);
+    const lr = c.slice(1).map((v, i) => Math.log(v / c[i]));
+    const mean = lr.reduce((a, v) => a + v, 0) / lr.length;
+    const vol = Math.sqrt(lr.reduce((a, v) => a + (v - mean) ** 2, 0) / lr.length) * Math.sqrt(365);
+    const slot = (satCapital / SLOTS) * Math.min(1, 0.8 / (vol || 1)) * (entryWarn.length ? 0.5 : 1);
+    if (b.event === "entrada" && !isHeld) {
+      pending.push({ f, slot, ret: k[k.length - 1][4] / k[k.length - 56][4] - 1 });
       f.situacao = entryWarn.length
         ? { code: "entrada_metade", label: "Entrada com metade", detail: `rompeu a maxima de 55 dias, mas: ${entryWarn.map((a) => a.text).join("; ")}` }
         : { code: "entrada", label: "Entrada", detail: `rompeu a maxima de 55 dias com o BTC em alta (sai ao fechar abaixo de ${px(b.low20)})` };
     } else if (b.event === "saida") {
       f.situacao = { code: "saida", label: isHeld ? "Saida" : "Saiu da tendencia", detail: "fechou na minima de 20 dias ou o BTC saiu da alta" };
+      if (isHeld) [f.target, f.action] = [0, `vender tudo (~${usd(f.held)})`];
     } else if (isHeld && exitWarn.length) {
       f.situacao = { code: "reduzir", label: "Reduzir", detail: exitWarn.map((a) => a.text).join("; ") };
+      [f.target, f.action] = [b.inPos ? slot / 2 : 0, b.inPos ? `reduzir para ~${usd(slot / 2)}` : `vender (~${usd(f.held)})`];
+      if (b.inPos) used++;
+    } else if (isHeld && !b.inPos) {
+      f.situacao = { code: "fora_sistema", label: "Fora do sistema", detail: "voce tem o token, mas ele nao esta em tendencia pelo rompimento (airdrop, compra antiga...): decisao sua" };
     } else if (b.inPos) {
       const d = Math.round((Date.now() - b.since) / DAY_MS);
+      if (isHeld) {
+        used++;
+        f.target = slot;
+        const diff = slot - f.held;
+        if (Math.abs(diff) > 0.25 * slot) f.action = diff > 0 ? `rebalancear: comprar ~${usd(diff)}` : `rebalancear: vender ~${usd(-diff)}`;
+      }
       f.situacao = isHeld
         ? { code: "manter", label: "Manter", detail: `em tendencia desde ${dayStr(b.since)}; sai ao fechar abaixo de ${px(b.low20)}` }
         : { code: "tendencia", label: "Em tendencia", detail: `entrada foi em ${dayStr(b.since)} (ha ${d} dias): o sinal de compra ja passou` };
     } else {
       const up = btcUp.get(k[k.length - 1][0]);
       f.situacao = { code: "observar", label: "Observar", detail: up ? `compra se fechar acima de ${px(b.high55)}` : "BTC fora da alta: rompimentos nao valem agora" };
+    }
+  }
+  // Entradas novas pela ordem do backtest (maior alta em 55 dias) ate preencher as vagas
+  for (const p of pending.sort((a, z) => z.ret - a.ret)) {
+    if (satCapital <= 0) {
+      p.f.action = "satelite desligado (0% na Configuracao)";
+    } else if (used < SLOTS) {
+      used++;
+      [p.f.target, p.f.action] = [p.slot, `comprar ~${usd(p.slot)}`];
+    } else {
+      p.f.situacao = { code: "sem_vaga", label: "Sem vaga", detail: `rompeu, mas o satelite ja tem ${SLOTS} posicoes` };
     }
   }
 }
@@ -201,8 +240,16 @@ export async function refreshFichas({ force, strategy }: { force: boolean; strat
   const w = wallet.data() as WalletDoc | undefined;
   const symbols = fichaSymbols(strategy, w, (cfg.data()?.watchlist as string[] | undefined) ?? []);
   const doc = await buildFichas(symbols);
+  // USD de cada token nas carteiras (mesma normalizacao das fichas: WETH -> ETH etc.)
+  const held = new Map<string, number>();
+  for (const i of w?.items ?? []) {
+    const [sym] = fichaSymbols([], { ...w!, items: [{ ...i, value: Math.max(1, i.value) }] });
+    if (sym) held.set(sym, (held.get(sym) ?? 0) + i.value);
+  }
+  const c = { ...(cfg.data() as AppConfig) };
+  const satCapital = c.capitalUsdt !== undefined ? baseCapital(c, w) * allocOf(c).satellite : 0;
   try {
-    await situacoes(doc.items, strategy, latestSnap.docs.map((d) => d.data() as LatestDoc), new Set(fichaSymbols([], w)), !!cfg.data()?.reentry);
+    await situacoes(doc.items, strategy, latestSnap.docs.map((d) => d.data() as LatestDoc), held, !!c.reentry, satCapital);
   } catch (e) {
     doc.errors.push(`situacao: ${String(e)}`);
   }

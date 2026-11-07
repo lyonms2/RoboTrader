@@ -3,7 +3,8 @@ import type { User } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import { db } from "@/lib/firebaseClient";
-import type { AppConfig, LatestDoc, WalletDoc, WalletHistoryDoc, WalletItem } from "@/lib/types";
+import type { AppConfig, FichaDoc, LatestDoc, WalletDoc, WalletHistoryDoc, WalletItem } from "@/lib/types";
+import { allocOf } from "@/lib/positions";
 import { walletTotals } from "@/lib/walletMath";
 import { walletAddresses, walletKey } from "@/lib/addresses";
 import { AllocationBar, HistoryLine, ProtocolBars } from "./WalletCharts";
@@ -17,8 +18,8 @@ const CLASS_LABEL: Record<WalletItem["cls"], string> = { stable: "Dolar (stablec
 const COINS = ["BTC", "ETH", "SOL"] as const;
 
 // Carteira on-chain lida pelo servidor (Zerion + Lighter), comparada com a exposicao alvo da estrategia
-export default function WalletCard({ wallet, history, cfg, latest, user }: {
-  wallet: WalletDoc | null; history: WalletHistoryDoc[]; cfg: AppConfig; latest: LatestDoc[]; user: User;
+export default function WalletCard({ wallet, history, cfg, latest, user, fichas }: {
+  wallet: WalletDoc | null; history: WalletHistoryDoc[]; cfg: AppConfig; latest: LatestDoc[]; user: User; fichas: FichaDoc | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -68,6 +69,21 @@ export default function WalletCard({ wallet, history, cfg, latest, user }: {
   const lt = wallet.lighter;
   // Exposicao real por moeda: saldo a vista + perpetuos (comprado soma, vendido subtrai)
   const { byClass, perpExpo } = walletTotals(wallet);
+  // Blocos da carteira: nucleo (robo), satelite (rompimento), fora do sistema e dolar
+  const alloc = allocOf(cfg);
+  const coreTarget = COINS.reduce((s, c) => s + (latest.find((x) => x.symbol === `${c}USDT`)?.state.expo ?? 0) * (cfg.weights[`${c}USDT`] ?? 0) * cfg.capitalUsdt, 0);
+  const coreReal = byClass.BTC + byClass.ETH + byClass.SOL + Object.values(perpExpo).reduce((s, v) => s + v, 0);
+  const sat = (fichas?.items ?? []).filter((f) => !COINS.includes(f.symbol as (typeof COINS)[number]));
+  const inSystem = (code?: string) => ["manter", "reduzir", "entrada", "entrada_metade", "tendencia", "saida"].includes(code ?? "");
+  const satReal = sat.filter((f) => inSystem(f.situacao?.code)).reduce((s, f) => s + f.held, 0);
+  const satTarget = sat.reduce((s, f) => s + (f.target ?? 0), 0);
+  const outside = Math.max(0, byClass.outro - satReal);
+  const blocks = [
+    { name: "Nucleo", hint: "BTC/ETH/SOL pelo robo", target: coreTarget, real: coreReal },
+    { name: "Satelite", hint: "rompimento 55/20", target: alloc.satellite > 0 ? satTarget : 0, real: satReal },
+    { name: "Fora do sistema", hint: "outros tokens", target: 0, real: outside },
+    { name: "Dolar", hint: "stablecoins rendendo", target: null as number | null, real: byClass.stable },
+  ];
   const perpNotional = (lt?.perps ?? []).reduce((s, p) => s + p.notional, 0);
   const lev = lt && lt.value > 0 ? perpNotional / lt.value : 0;
   const totalLev = total > 0 ? (byClass.BTC + byClass.ETH + byClass.SOL + byClass.outro + perpNotional) / total : 0;
@@ -90,15 +106,40 @@ export default function WalletCard({ wallet, history, cfg, latest, user }: {
         <div><span className="muted small">Em dolar (stablecoins)</span><b>{fmt(byClass.stable)} ({pct(byClass.stable, total)})</b></div>
         <div><span className="muted small">Exposicao a cripto</span><b>{fmt((totalLev) * 100, 1)}% do patrimonio</b></div>
         <div>
-          <span className="muted small">Capital da estrategia</span>
+          <span className="muted small">Nucleo do robo ({fmt(alloc.core * 100, 0)}%)</span>
           <b>{fmt(cfg.capitalUsdt)} USDT</b>
-          {Math.abs(cfg.capitalUsdt - total) > 1 && (
-            <button className="ghost small-btn" onClick={() => setDoc(doc(db(), "config/main"), { capitalUsdt: Math.round(total * 100) / 100 }, { merge: true })}>
-              Usar {fmt(total)}
+          {!cfg.capitalFromWallet && (
+            <button className="ghost small-btn" title="O capital passa a ser o patrimonio das carteiras"
+              onClick={() => setDoc(doc(db(), "config/main"), { capitalFromWallet: true }, { merge: true })}>
+              Usar patrimonio da carteira
             </button>
           )}
         </div>
       </div>
+
+      <h3>Alocacao: real x alvo</h3>
+      <div className="table-scroll">
+        <table>
+          <thead><tr><th>Bloco</th><th>Alvo</th><th>Real</th><th>Diferenca</th></tr></thead>
+          <tbody>
+            {blocks.map((b) => (
+              <tr key={b.name}>
+                <td>{b.name} <span className="muted small">{b.hint}</span></td>
+                <td>{b.target === null ? "-" : `${fmt(b.target)} (${pct(b.target, total)})`}</td>
+                <td>{fmt(b.real)} ({pct(b.real, total)})</td>
+                <td className={b.target !== null && Math.abs(b.real - b.target) > Math.max(5, 0.1 * total) ? "warn" : "muted"}>
+                  {b.target === null ? "-" : signed(b.real - b.target)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted small">
+        Alvo do nucleo = exposicao do robo x peso x {fmt(alloc.core * 100, 0)}% do patrimonio; satelite = soma dos alvos das fichas
+        (ate 5 tokens, {fmt(alloc.satellite * 100, 0)}% do patrimonio); o resto fica em dolar rendendo. &quot;Fora do sistema&quot; =
+        tokens que nenhuma regra mandou comprar. Mude a divisao na Configuracao.
+      </p>
 
       <AllocationBar byClass={byClass} />
       <div className="viz-grid">
@@ -113,7 +154,7 @@ export default function WalletCard({ wallet, history, cfg, latest, user }: {
           <tbody>
             {COINS.map((c) => {
               const l = latest.find((x) => x.symbol === `${c}USDT`);
-              const target = l ? l.state.expo * (cfg.weights[`${c}USDT`] ?? 0) * total : 0;
+              const target = l ? l.state.expo * (cfg.weights[`${c}USDT`] ?? 0) * cfg.capitalUsdt : 0;
               const real = byClass[c] + (perpExpo[c] ?? 0);
               const diff = real - target;
               return (

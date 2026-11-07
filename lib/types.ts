@@ -11,7 +11,10 @@ export type AppConfig = {
   wallet?: string; // (antigo) um endereco so; agora vale "wallets"
   wallets?: string[]; // enderecos publicos: EVM 0x... (Rabby, Phantom EVM) e Solana (Phantom). So leitura
   watchlist?: string[]; // simbolos extras para as fichas (ex.: ["HYPE", "PENDLE"])
-  walletPositions?: boolean; // posicao da estrategia vem das carteiras (saldo a vista de BTC/ETH/SOL)
+  walletPositions?: boolean;
+  // Divisao do patrimonio: nucleo = robo (BTC/ETH/SOL); satelite = rompimento 55/20 em outros tokens (ate 5 posicoes)
+  alloc?: { core: number; satellite: number };
+  capitalFromWallet?: boolean; // capital = patrimonio das carteiras on-chain (no lugar de capitalUsdt) // posicao da estrategia vem das carteiras (saldo a vista de BTC/ETH/SOL)
   // Importacao automatica da Lighter: posicoes sincronizadas e operacoes desde "since" (ms)
   lighter?: { enabled: boolean; since: number };
 };
@@ -122,10 +125,13 @@ export type TokenFicha = {
   // use: entrada = filtro antes de comprar; saida = reduzir se exposto; olho = so acompanhar
   alerts: { level: "warn" | "info"; text: string; use?: ("entrada" | "saida" | "olho")[] }[];
   situacao: Situacao | null;
+  held: number; // USD que voce tem do token nas carteiras
+  target: number | null; // USD alvo no satelite (rompimento); null = sem alvo
+  action: string | null; // ex.: "comprar ~$40", "vender tudo (~$35)"
 };
 // Situacao do token: sinal de preco (robo ou rompimento 55/20) combinado com os alertas da ficha
 export type Situacao = {
-  code: "entrada" | "entrada_metade" | "manter" | "tendencia" | "saida" | "reduzir" | "observar" | "fora" | "sem_dados";
+  code: "entrada" | "entrada_metade" | "sem_vaga" | "manter" | "tendencia" | "saida" | "reduzir" | "observar" | "fora" | "fora_sistema" | "sem_dados";
   label: string;
   detail: string;
 };

@@ -81,7 +81,7 @@ export async function runJob({ force }: { force: boolean }) {
     const { closed, open } = data[symbol];
     const states = runStrategy(closed, params);
     const s = states[states.length - 1];
-    const capital = cfg.capitalUsdt * (cfg.weights[symbol] ?? 0);
+    const capital = eff.capitalUsdt * (cfg.weights[symbol] ?? 0); // capital do nucleo
     const pos = eff.positions[symbol] ?? 0;
     const decision = decide(s, capital, pos, params);
     const pStates = open ? runStrategy([...closed, open], params) : null;

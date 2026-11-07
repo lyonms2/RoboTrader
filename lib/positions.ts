@@ -3,6 +3,14 @@ import type { AppConfig, LighterSyncDoc, TradeDoc, WalletDoc } from "./types";
 
 const r8 = (v: number) => Math.round(v * 1e8) / 1e8;
 
+export const DEFAULT_ALLOC = { core: 0.75, satellite: 0.25 };
+export const allocOf = (cfg: Pick<AppConfig, "alloc">) => cfg.alloc ?? DEFAULT_ALLOC;
+
+// Patrimonio base: total das carteiras (se ligado e lido) ou o capital digitado na Configuracao
+export function baseCapital(cfg: AppConfig, wallet?: WalletDoc | null) {
+  return cfg.capitalFromWallet && wallet && wallet.address === walletKey(walletAddresses(cfg)) ? wallet.total : cfg.capitalUsdt;
+}
+
 // Posicao efetiva usada nos sinais e no painel:
 //   - com "posicao das carteiras" ligada: saldo a vista de cada moeda nas carteiras on-chain (valor / preco, entao
 //     cbBTC, stETH, JitoSOL etc. contam pelo equivalente em BTC/ETH/SOL), no lugar das posicoes manuais
@@ -31,7 +39,8 @@ export function effectiveConfig(cfg: AppConfig, sync: LighterSyncDoc | null | un
       realized[s] = r8((realized[s] ?? 0) + (sync.realized[s] ?? 0));
     }
   }
-  return { ...cfg, positions, avgPrice, realized };
+  // O robo usa so a parte do nucleo do patrimonio
+  return { ...cfg, positions, avgPrice, realized, capitalUsdt: r8(baseCapital(cfg, wallet) * allocOf(cfg).core) };
 }
 
 // So as operacoes lancadas a mao formam a posicao manual (as da Lighter vem prontas da conta)

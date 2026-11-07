@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { applyTrade, rebuild } from "@/lib/ledger";
 import { performance } from "@/lib/performance";
-import { effectiveConfig } from "@/lib/positions";
+import { DEFAULT_ALLOC, effectiveConfig } from "@/lib/positions";
 import { isEvmAddress, isSolAddress } from "@/lib/addresses";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
 import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type FichaDoc, type LighterSyncDoc, type TradeDoc, type WalletDoc, type WalletHistoryDoc } from "@/lib/types";
@@ -166,7 +166,7 @@ export default function Page() {
 
       <Summary cfg={eff} latest={latest} prices={prices} sync={cfg.lighter?.enabled ? sync : null} />
       <Performance cfg={eff} latest={latest} trades={trades} prices={prices} />
-      <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} user={user} />
+      <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} user={user} fichas={fichas} />
       <FichasCard fichas={fichas} user={user} />
 
       <div className="grid">
@@ -452,6 +452,18 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
       <div className="cfg-top">
         <label>Capital total (USDT) <NumInput value={draft.capitalUsdt} onChange={(v) => setDraft({ ...draft, capitalUsdt: v })} /></label>
         <label className="check">
+          <input type="checkbox" checked={!!draft.capitalFromWallet} onChange={(e) => setDraft({ ...draft, capitalFromWallet: e.target.checked })} />
+          Capital = patrimonio das carteiras
+        </label>
+        <label>Nucleo / robo (%)
+          <NumInput value={round8((draft.alloc ?? DEFAULT_ALLOC).core * 100)}
+            onChange={(v) => setDraft({ ...draft, alloc: { core: Math.min(100, Math.max(0, v)) / 100, satellite: 1 - Math.min(100, Math.max(0, v)) / 100 } })} />
+        </label>
+        <label>Satelite / rompimento (%)
+          <NumInput value={round8((draft.alloc ?? DEFAULT_ALLOC).satellite * 100)}
+            onChange={(v) => setDraft({ ...draft, alloc: { satellite: Math.min(100, Math.max(0, v)) / 100, core: 1 - Math.min(100, Math.max(0, v)) / 100 } })} />
+        </label>
+        <label className="check">
           <input type="checkbox" checked={draft.reentry} onChange={(e) => setDraft({ ...draft, reentry: e.target.checked })} />
           Reentrada no repique (meia posicao)
         </label>
@@ -488,7 +500,7 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
               <tr key={s}>
                 <td><b>{s.replace("USDT", "")}</b></td>
                 <td><NumInput value={round8(draft.weights[s] * 100)} onChange={(v) => setMap("weights", s, v / 100)} /></td>
-                <td className="muted">{fmt(draft.capitalUsdt * draft.weights[s])} USDT</td>
+                <td className="muted">{fmt(draft.capitalUsdt * (draft.alloc ?? DEFAULT_ALLOC).core * draft.weights[s])} USDT</td>
                 <td><NumInput value={draft.positions[s] ?? 0} onChange={(v) => setMap("positions", s, v)} /></td>
                 <td><NumInput value={draft.avgPrice?.[s] ?? 0} onChange={(v) => setMap("avgPrice", s, v)} /></td>
               </tr>
@@ -498,7 +510,7 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
             <tr>
               <td>Total</td>
               <td className={Math.abs(totalWeight - 1) > 0.011 ? "warn" : ""}>{fmt(totalWeight * 100, 0)}%</td>
-              <td className="muted">{fmt(draft.capitalUsdt * totalWeight)} USDT</td>
+              <td className="muted">{fmt(draft.capitalUsdt * (draft.alloc ?? DEFAULT_ALLOC).core * totalWeight)} USDT</td>
               <td colSpan={2} />
             </tr>
           </tfoot>

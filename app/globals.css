@@ -83,3 +83,11 @@ td.actions button { padding: 5px 7px; margin-left: 4px; }
 button.danger:hover { color: var(--sell); border-color: var(--sell); }
 tr.editing input, tr.editing select { max-width: 130px; padding: 4px 6px; }
 tr.editing input[type="datetime-local"] { max-width: 190px; }
+.zero { stroke: var(--line); stroke-width: 1; }
+.l-real { stroke: var(--accent); stroke-width: 2 !important; }
+.l-strat { stroke: var(--muted); stroke-dasharray: 5 4; }
+.k-real { background: var(--accent); } .k-strat { background: var(--muted); }
+.summary.perf { padding: 0; margin: 6px 0 10px; }
+.history { margin-top: 8px; }
+.history summary { cursor: pointer; color: var(--muted); }
+.history table { margin-top: 6px; }

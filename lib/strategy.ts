@@ -163,6 +163,39 @@ export function signalChanges(states: BarState[], last = 8): Change[] {
   return ch.slice(-last);
 }
 
+export type SignalEvent = {
+  t: number;
+  kind: "entrada" | "reentrada" | "cheia" | "meia" | "saida";
+  price: number;
+  reason: string;
+  ret: number | null; // na saida: variacao do preco desde a entrada (sem o tamanho da posicao)
+};
+
+// Historico de sinais com motivo: entradas, reentradas no repique, volta a posicao cheia e saidas
+export function signalEvents(states: BarState[], last = 20): SignalEvent[] {
+  const ev: SignalEvent[] = [];
+  let entry: number | null = null;
+  for (let i = 1; i < states.length; i++) {
+    const a = states[i - 1];
+    const b = states[i];
+    if (!b.ready) continue;
+    const base = { t: b.t, price: b.close };
+    if (a.expo === 0 && b.expo > 0) {
+      entry = b.close;
+      if (b.hmaMult < 1) ev.push({ ...base, kind: "reentrada", reason: "repique sobre a SMA (meia posicao)", ret: null });
+      else ev.push({ ...base, kind: "entrada", reason: a.st === 0 ? "fechou acima da SMA + buffer" : "a HMA voltou a subir", ret: null });
+    } else if (a.expo > 0 && b.expo === 0) {
+      ev.push({ ...base, kind: "saida", reason: exitReason(b), ret: entry ? b.close / entry - 1 : null });
+      entry = null;
+    } else if (b.expo > 0 && a.hmaMult < 1 && b.hmaMult === 1) {
+      ev.push({ ...base, kind: "cheia", reason: "a HMA voltou a subir (posicao cheia)", ret: null });
+    } else if (b.expo > 0 && a.hmaMult === 1 && b.hmaMult < 1) {
+      ev.push({ ...base, kind: "meia", reason: "a HMA virou para baixo, mas o repique manteve meia posicao", ret: null });
+    }
+  }
+  return ev.slice(-last);
+}
+
 export function exitReason(s: BarState): string {
   if (s.st === 0) return "fechou abaixo da SMA (com buffer)";
   if (s.turnDown) return "a HMA virou para baixo";

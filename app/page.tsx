@@ -4,9 +4,11 @@ import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, setDoc, w
 import { useEffect, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { applyTrade, rebuild } from "@/lib/ledger";
+import { performance } from "@/lib/performance";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
 import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type TradeDoc } from "@/lib/types";
 import Chart from "./Chart";
+import PerfChart from "./PerfChart";
 import { usePrices, type Prices } from "./usePrices";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -146,6 +148,7 @@ export default function Page() {
       {!latest.length && !error && <p className="muted">Nenhum sinal ainda. Clique em &quot;Recalcular agora&quot;.</p>}
 
       <Summary cfg={cfg} latest={latest} prices={prices} />
+      <Performance cfg={cfg} latest={latest} trades={trades} prices={prices} />
 
       <div className="grid">
         {[...latest].sort((a, b) => a.symbol.localeCompare(b.symbol)).map((l) => (
@@ -213,6 +216,41 @@ function Summary({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[];
   );
 }
 
+// Seu resultado real x a estrategia seguida a risca, desde a primeira operacao registrada
+function Performance({ cfg, latest, trades, prices }: { cfg: AppConfig; latest: LatestDoc[]; trades: TradeDoc[]; prices: Prices }) {
+  if (!trades.length) return null;
+  const perf = performance(cfg, latest, trades, prices.values);
+  if (!perf)
+    return (
+      <section className="card">
+        <h2>Real x estrategia</h2>
+        <p className="muted small">Clique em &quot;Recalcular agora&quot; para carregar a serie da estrategia.</p>
+      </section>
+    );
+  const last = perf.points[perf.points.length - 1];
+  const diff = last.real - last.strat;
+  const pctOf = (v: number) => (perf.capital > 0 ? ` (${signed((v / perf.capital) * 100, 1)}%)` : "");
+  return (
+    <section className="card">
+      <div className="row between"><h2>Real x estrategia</h2><span className="muted small">desde {day(perf.start)}</span></div>
+      <div className="summary perf">
+        <div><span className="muted small">Seu resultado</span><b className={pnlClass(last.real)}>{signed(last.real)} USDT{pctOf(last.real)}</b></div>
+        <div><span className="muted small">Estrategia a risca</span><b className={pnlClass(last.strat)}>{signed(last.strat)} USDT{pctOf(last.strat)}</b></div>
+        <div><span className="muted small">Diferenca</span><b className={pnlClass(diff)}>{signed(diff)} USDT</b></div>
+      </div>
+      <PerfChart points={perf.points} />
+      <p className="legend small"><i className="k-real" /> seu resultado <i className="k-strat" /> estrategia a risca</p>
+      <p className="muted small">
+        A estrategia usa o capital configurado de cada moeda ({fmt(perf.capital)} USDT) e opera no fechamento das 21:00.
+        A diferenca mostra atraso, preco e tamanho diferentes dos sinais. Sem taxas e funding nos dois.
+        {perf.clipped ? " As operacoes mais antigas que o grafico (240 dias) entram no primeiro dia." : ""}
+      </p>
+    </section>
+  );
+}
+
+const EVENT_LABEL = { entrada: "Compra", reentrada: "Reentrada", cheia: "Posicao cheia", meia: "Reduz a metade", saida: "Venda" } as const;
+
 function AssetCard({ l, cfg, prices }: { l: LatestDoc; cfg: AppConfig; prices: Prices }) {
   const s = l.state;
   const cur = currentPrice(l, prices);
@@ -269,7 +307,30 @@ function AssetCard({ l, cfg, prices }: { l: LatestDoc; cfg: AppConfig; prices: P
         {realized !== 0 && <><dt>Realizado</dt><dd className={pnlClass(realized)}>{signed(realized)} USDT</dd></>}
         {s.stop !== null && <><dt>Stop da reentrada</dt><dd>{fmtPx(s.stop)}</dd></>}
       </dl>
-      <p className="muted small">Ultimos sinais: {l.changes.map((c) => `${day(c.t)} ${c.on ? "compra" : "saida"}`).join(", ") || "-"}</p>
+      {l.events?.length ? (
+        <details className="history">
+          <summary className="small">Historico de sinais ({l.events.length})</summary>
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Data</th><th>Sinal</th><th>Preco</th><th>Motivo</th><th>Trade</th></tr></thead>
+              <tbody>
+                {[...l.events].reverse().map((e) => (
+                  <tr key={e.t}>
+                    <td>{day(e.t)}</td>
+                    <td className={e.kind === "saida" || e.kind === "meia" ? "neg" : "pos"}>{EVENT_LABEL[e.kind]}</td>
+                    <td>{fmtPx(e.price)}</td>
+                    <td className="muted">{e.reason}</td>
+                    <td className={e.ret === null ? "" : pnlClass(e.ret)}>{e.ret === null ? "" : `${signed(e.ret * 100, 1)}%`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted small">Trade = variacao do preco da entrada ate a saida (sem o tamanho da posicao).</p>
+        </details>
+      ) : (
+        <p className="muted small">Ultimos sinais: {l.changes.map((c) => `${day(c.t)} ${c.on ? "compra" : "saida"}`).join(", ") || "-"}</p>
+      )}
     </section>
   );
 }

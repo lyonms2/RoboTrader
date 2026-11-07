@@ -1,4 +1,4 @@
-import type { BarState, Change, Decision } from "./strategy";
+import type { BarState, Change, Decision, SignalEvent } from "./strategy";
 
 // Documento config/main
 export type AppConfig = {
@@ -28,7 +28,9 @@ export type LatestDoc = {
   state: BarState;
   decision: Decision;
   changes: Change[];
-  chart: { t: number[]; close: number[]; sma: (number | null)[]; hma: (number | null)[]; on: boolean[] };
+  events?: SignalEvent[]; // historico de sinais com motivo (gravado a partir desta versao)
+  // expo = exposicao alvo de cada dia (usada para comparar o real com a estrategia)
+  chart: { t: number[]; close: number[]; sma: (number | null)[]; hma: (number | null)[]; on: boolean[]; expo?: number[] };
   // Candle de hoje (ainda aberto) como se fechasse agora: so um alerta, o sinal vale no fechamento
   preview?: { state: BarState; decision: Decision } | null;
   updatedAt: number;

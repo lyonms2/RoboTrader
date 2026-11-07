@@ -1,6 +1,6 @@
 import { adminDb } from "./firebaseAdmin";
 import { fetchDaily } from "./market";
-import { DEFAULT_PARAMS, decide, runStrategy, signalChanges } from "./strategy";
+import { DEFAULT_PARAMS, decide, runStrategy, signalChanges, signalEvents } from "./strategy";
 import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc } from "./types";
 
 const CHART_DAYS = 240;
@@ -67,12 +67,14 @@ export async function runJob({ force }: { force: boolean }) {
       state: s,
       decision,
       changes: signalChanges(states),
+      events: signalEvents(states),
       chart: {
         t: tail.map((x) => x.t),
         close: tail.map((x) => x.close),
         sma: tail.map((x) => x.sma),
         hma: tail.map((x) => x.hma),
         on: tail.map((x) => x.expo > 0),
+        expo: tail.map((x) => x.expo),
       },
       preview: ps && pDecision ? { state: ps, decision: pDecision } : null,
       updatedAt: now,

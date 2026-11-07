@@ -4,6 +4,13 @@ import { useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
+import { monthLabel, type GastosSetup, type MonthDoc } from "@/lib/gastos";
+import GastosCard, { DebtsView, monthSnapshot } from "./GastosCard";
+
+type Sub = "resumo" | "invest" | "gastos" | "dividas";
+const SUBS: { id: Sub; label: string }[] = [
+  { id: "resumo", label: "Resumo" }, { id: "invest", label: "Investimentos" }, { id: "gastos", label: "Gastos" }, { id: "dividas", label: "Cartoes e dividas" },
+];
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
@@ -26,11 +33,25 @@ const KINDS: { key: FinKind; label: string; hint: string }[] = [
 ];
 
 // Aba Financas: tudo num lugar so (cripto das carteiras + reserva, Tesouro, acoes/FIIs e outros), em reais
-export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, onTab }: {
+export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, months, setup }: {
   cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; onChanged: () => void;
-  spend: { value: number; months: number } | null; // media de gastos (aba Gastos)
-  debt: { total: number; loans: number; cards: number }; onTab: () => void;
+  spend: { value: number; months: number } | null; // media de gastos
+  debt: { total: number; loans: number; cards: number };
+  months: Record<string, MonthDoc>; setup: GastosSetup;
 }) {
+  // Sub-aba aberta, lembrada neste navegador
+  const [sub, setSubState] = useState<Sub>(() => {
+    try {
+      const v = localStorage.getItem("finSub") as Sub | null;
+      return v && SUBS.some((x) => x.id === v) ? v : "resumo";
+    } catch {
+      return "resumo";
+    }
+  });
+  const setSub = (v: Sub) => {
+    setSubState(v);
+    try { localStorage.setItem("finSub", v); } catch { /* sem armazenamento */ }
+  };
   const items = cfg.finance ?? [];
   const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost);
   const [editing, setEditing] = useState<FinItem | null>(null);
@@ -55,12 +76,25 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
   const rows = [...s.rows].sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group) || (b.value ?? 0) - (a.value ?? 0));
   const notices = rows.flatMap((r) => [r.stale, r.problem].filter(Boolean).map((t) => `${r.item.name}: ${t}`));
   const cdi = cdiYear(fin);
+  const mon = monthSnapshot(months, setup);
+
+  const nav = (
+    <nav className="subtabs" role="tablist" aria-label="Financas">
+      {SUBS.map((x) => (
+        <button key={x.id} role="tab" aria-selected={sub === x.id} className={sub === x.id ? "pill on" : "pill"} onClick={() => setSub(x.id)}>{x.label}</button>
+      ))}
+    </nav>
+  );
+  if (sub === "gastos") return <>{nav}<GastosCard months={months} setup={setup} /></>;
+  if (sub === "dividas") return <>{nav}<DebtsView months={months} setup={setup} /></>;
 
   return (
     <>
+      {nav}
+      {sub === "resumo" && <>
       <section className="card">
         <div className="card-head">
-          <h2>Patrimonio total</h2>
+          <h2>Patrimonio</h2>
           <span className="muted small">{fin ? `dados de ${new Date(fin.at).toLocaleString("pt-BR")}` : "indices ainda nao carregados"}</span>
         </div>
         <div className="kpis">
@@ -78,9 +112,8 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
           {fin?.ipca12m != null && <span>IPCA 12 m {pctS(fin.ipca12m, 2)} ({fin.ipcaRef})</span>}
           {fin?.usdbrl && <span>Dolar R$ {fmt(fin.usdbrl, 4)} (PTAX)</span>}
           {spend
-            ? <span>Gasto medio {brl(spend.value, 0)}/mes <button className="link" onClick={onTab}>ver gastos</button></span>
+            ? <span>Gasto medio {brl(spend.value, 0)}/mes</span>
             : <MonthlyCost value={cfg.monthlyCost} />}
-          {debt.total > 0 && <span>Dividas: {debt.loans > 0 ? `emprestimos ${brl(debt.loans, 0)}` : ""}{debt.loans > 0 && debt.cards > 0 ? ", " : ""}{debt.cards > 0 ? `cartoes ${brl(debt.cards, 0)}` : ""}</span>}
         </p>
         <FinBar byGroup={s.byGroup} />
         {(notices.length > 0 || (fin?.errors.length ?? 0) > 0) && (
@@ -90,6 +123,45 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
           </ul>
         )}
       </section>
+
+      <div className="two-col">
+        <section className="card link-card" role="button" tabIndex={0} onClick={() => setSub("gastos")}>
+          <div className="card-head"><h2>{monthLabel(mon.m, true)}</h2><span className="muted small">ver gastos &rsaquo;</span></div>
+          {mon.count || mon.pendingN ? (
+            <div className="kpis compact">
+              <div><span>Gastos</span><b>{brl(mon.gastos, 0)}</b><small className="muted">{mon.avg ? `media ${brl(mon.avg.value, 0)}` : "-"}</small></div>
+              <div><span>Entradas</span><b>{brl(mon.receitas, 0)}</b></div>
+              <div><span>Sobrou</span><b className={mon.receitas - mon.gastos >= 0 ? "pos" : "neg"}>{brl(mon.receitas - mon.gastos, 0)}</b></div>
+              <div><span>Ainda a pagar</span><b className={mon.pending > 0 ? "warn" : ""}>{brl(mon.pending, 0)}</b><small className="muted">{mon.pendingN} fixos/parcelas</small></div>
+            </div>
+          ) : <p className="muted small">Nenhum gasto lancado neste mes. Importe o extrato do banco ou lance a mao.</p>}
+        </section>
+        <section className="card link-card" role="button" tabIndex={0} onClick={() => setSub("dividas")}>
+          <div className="card-head"><h2>Cartoes e dividas</h2><span className="muted small">ver detalhes &rsaquo;</span></div>
+          {debt.total > 0 || setup.cards.length || setup.loans.length ? (
+            <div className="kpis compact">
+              <div><span>Total devendo</span><b className={debt.total > 0 ? "warn" : ""}>{brl(debt.total, 0)}</b></div>
+              <div><span>Emprestimos</span><b>{brl(debt.loans, 0)}</b></div>
+              <div><span>Cartoes</span><b>{brl(debt.cards, 0)}</b><small className="muted">faturas a vencer</small></div>
+            </div>
+          ) : <p className="muted small">Nenhum cartao ou emprestimo cadastrado.</p>}
+        </section>
+      </div>
+
+      <section className="card link-card" role="button" tabIndex={0} onClick={() => setSub("invest")}>
+        <div className="card-head"><h2>Investimentos</h2><span className="muted small">{rows.length} cadastrados - ver lista &rsaquo;</span></div>
+        {rows.length ? (
+          <ul className="inv-mini small">
+            {rows.slice(0, 6).map((r) => (
+              <li key={r.item.id}><i className={`dot g-${r.group}`} aria-hidden="true" />{r.item.name}<span className="muted">{r.kindLabel}</span><b>{r.value !== null ? brl(r.value, 0) : "-"}</b></li>
+            ))}
+            {rows.length > 6 && <li className="muted">+ {rows.length - 6} outros</li>}
+          </ul>
+        ) : <p className="muted small">Nenhum investimento cadastrado.</p>}
+      </section>
+      </>}
+
+      {sub === "invest" && <>
 
       <section className="card">
         <div className="card-head">
@@ -119,6 +191,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       </section>
 
       <Dividends rows={s.rows} fin={fin} />
+      </>}
     </>
   );
 }

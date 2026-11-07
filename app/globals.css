@@ -370,3 +370,15 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
   .fin-form .cat-sel, .fin-form select { max-width: 100%; }
 }
 .fin-form label.grow input { font-family: inherit; font-size: inherit; }
+
+/* Sub-abas das Financas */
+.subtabs { display: flex; gap: 6px; margin: 0 0 14px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.subtabs::-webkit-scrollbar { display: none; }
+.subtabs .pill { white-space: nowrap; padding: 6px 14px; font-size: 14px; }
+.link-card { cursor: pointer; transition: border-color .15s; }
+.link-card:hover { border-color: var(--accent); }
+.kpis.compact b { font-size: 17px; }
+.inv-mini { list-style: none; padding: 0; margin: 0; columns: 2 260px; column-gap: 28px; }
+.inv-mini li { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line); break-inside: avoid; }
+.inv-mini li .muted { font-size: 12px; }
+.inv-mini li b { margin-left: auto; font-weight: 600; }

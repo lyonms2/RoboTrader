@@ -71,6 +71,42 @@ function cardStatus(c: Card, months: Record<string, MonthDoc>, today = todayBR()
   return { faturas, open, next: faturas[0] ?? null };
 }
 
+// Resumo do mes atual (para a pagina Resumo das Financas)
+export function monthSnapshot(months: Record<string, MonthDoc>, setup: GastosSetup) {
+  const m = monthOf(todayBR());
+  const items = months[m]?.items ?? [];
+  const s = summarize(items);
+  const pending = pendingFor(m, items, setup);
+  return { m, ...s, count: items.length, pending: pending.reduce((a, p) => a + p.v, 0), pendingN: pending.length, avg: avgMonthly(months) };
+}
+
+// Cartoes e dividas: resumo + cartoes + emprestimos
+export function DebtsView({ months, setup }: { months: Record<string, MonthDoc>; setup: GastosSetup }) {
+  const cards = setup.cards.map((c) => ({ c, st: cardStatus(c, months) }));
+  const d = debts(months, setup);
+  const today = todayBR();
+  const monthlyLoans = setup.loans.filter((l) => loanStatus(l, today).left > 0).reduce((s, l) => s + l.parcela, 0);
+  const nextBills = cards.filter((x) => x.st.next).map((x) => ({ name: x.c.name, ...x.st.next! })).sort((a, b) => a.due.localeCompare(b.due));
+  return (
+    <>
+      <section className="card">
+        <h2>Dividas</h2>
+        <div className="kpis">
+          <div><span>Total devendo</span><b className={d.total > 0 ? "warn" : ""}>{brl(d.total)}</b><small className="muted">emprestimos + faturas em aberto</small></div>
+          <div><span>Emprestimos</span><b>{brl(d.loans)}</b><small className="muted">{monthlyLoans > 0 ? `${brl(monthlyLoans)} por mes em parcelas` : "nenhum ativo"}</small></div>
+          <div><span>Cartoes</span><b>{brl(d.cards)}</b><small className="muted">faturas a vencer, com parcelas futuras</small></div>
+          <div><span>Proxima fatura</span><b>{nextBills[0] ? brl(nextBills[0].v) : "-"}</b>
+            <small className="muted">{nextBills[0] ? `${nextBills[0].name}, vence ${dm(nextBills[0].due)}` : "nenhuma lancada"}</small></div>
+        </div>
+      </section>
+      <div className="two-col">
+        <Cards cards={cards} setup={setup} />
+        <Loans setup={setup} />
+      </div>
+    </>
+  );
+}
+
 export default function GastosCard({ months, setup }: { months: Record<string, MonthDoc>; setup: GastosSetup }) {
   const [m, setM] = useState(monthOf(todayBR()));
   const [filter, setFilter] = useState<string | null>(null);
@@ -80,7 +116,6 @@ export default function GastosCard({ months, setup }: { months: Record<string, M
   const avg = avgMonthly(months);
   const pending = pendingFor(m, items, setup);
   const pendingTotal = pending.reduce((a, p) => a + p.v, 0);
-  const cards = setup.cards.map((c) => ({ c, st: cardStatus(c, months) }));
   const prevAvg = useMemo(() => {
     // media por categoria nos 3 meses anteriores ao mes aberto
     const keys = [1, 2, 3].map((k) => addMonths(m, -k)).filter((k) => months[k]?.items.length);
@@ -199,10 +234,6 @@ export default function GastosCard({ months, setup }: { months: Record<string, M
           Pagamento de fatura, aplicacoes e resgates nao contam como gasto (as compras do cartao ja contam).</p>
       </section>
 
-      <div className="two-col">
-        <Cards cards={cards} setup={setup} />
-        <Loans setup={setup} />
-      </div>
       <Fixos setup={setup} />
     </>
   );

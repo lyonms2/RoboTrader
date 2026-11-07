@@ -17,7 +17,7 @@ import WalletCard from "./WalletCard";
 import FichasCard from "./FichasCard";
 import CandidatesCard from "./CandidatesCard";
 import FinanceCard from "./FinanceCard";
-import GastosCard, { debts } from "./GastosCard";
+import { debts } from "./GastosCard";
 import { EMPTY_SETUP, avgMonthly, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import { financeSummary } from "@/lib/financeMath";
 import type { CandidatesDoc } from "@/lib/candidates";
@@ -99,8 +99,10 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const [tab, setTabState] = useState<TabId>("geral");
   useEffect(() => {
     try {
-      const t = localStorage.getItem("tab") as TabId | null;
-      if (t) setTabState(t);
+      const t = localStorage.getItem("tab");
+      // "gastos" virou sub-aba de Financas
+      if (t === "gastos") setTabState("financas");
+      else if (t) setTabState(t as TabId);
     } catch { /* sem armazenamento */ }
   }, []);
   const setTab = (t: TabId) => {
@@ -219,7 +221,6 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const tabs = [
     { id: "geral", label: "Visao geral" },
     { id: "financas", label: "Financas" },
-    { id: "gastos", label: "Gastos" },
     { id: "sinais", label: "Robo" },
     { id: "carteira", label: "Carteira" },
     { id: "tokens", label: "Tokens" },
@@ -276,9 +277,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             <CandidatesCard doc={candidates} />
           </>
         )}
-        {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} onTab={() => setTab("gastos")}
+        {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup}
           onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }} />}
-        {tab === "gastos" && <GastosCard months={months} setup={gSetup} />}
         {tab === "carteira" && <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} />}
         {tab === "tokens" && <FichasCard fichas={fichas} />}
         {tab === "operacoes" && (
@@ -301,7 +301,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   );
 }
 
-type TabId = "geral" | "financas" | "gastos" | "sinais" | "carteira" | "tokens" | "operacoes";
+type TabId = "geral" | "financas" | "sinais" | "carteira" | "tokens" | "operacoes";
 
 // Visao geral: patrimonio, o que fazer hoje, alocacao e posicoes do robo
 function Overview({ cfg, latest, prices, wallet, fichas, finance, spend, debt, sync, onTab }: {

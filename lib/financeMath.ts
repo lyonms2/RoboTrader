@@ -65,13 +65,16 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     const fl = flows.filter((x) => x.d > dayBR(at));
     const net = fl.reduce((s, x) => s + x.v, 0);
     const moved = fl.length ? ` + ${fl.length} ${fl.length > 1 ? "movimentos" : "movimento"} (${net >= 0 ? "+" : "-"}R$ ${Math.abs(net).toLocaleString("pt-BR", { maximumFractionDigits: 2 })})` : "";
-    if (!f?.cdi.d.length) return { ...r, value: bal + net, cost: bal + net, note: `${fmtP(pct)} do CDI${moved}`, problem: null };
+    // Movimentos ligados ate a data do saldo ja estao dentro dele (mostra para nao parecer que sumiram)
+    const inside = flows.length - fl.length;
+    const incl = inside > 0 ? ` (${inside} ${inside > 1 ? "movimentos anteriores ja estao" : "movimento anterior ja esta"} nesse saldo)` : "";
+    if (!f?.cdi.d.length) return { ...r, value: bal + net, cost: bal + net, note: `${fmtP(pct)} do CDI - saldo de ${fmtD(at)}${incl}${moved}`, problem: null };
     const value = bal * cdiFactor(f, dayBR(at), pct) + fl.reduce((s, x) => s + x.v * cdiFactor(f, x.d, pct), 0);
     const year = (1 + cdiDaily(f)! * pct) ** 252 - 1;
     const days = Math.floor((Date.now() - at) / DAY);
     return {
       ...r, value, cost: bal + net, monthly: monthlyOf(value, year), yieldYear: year,
-      note: `${(pct * 100).toLocaleString("pt-BR")}% do CDI - saldo de ${fmtD(at)}${moved} + rendimento estimado`,
+      note: `${(pct * 100).toLocaleString("pt-BR")}% do CDI - saldo de ${fmtD(at)}${incl}${moved} + rendimento estimado`,
       stale: days > 60 ? `saldo informado ha ${days} dias: confira no app do banco` : null,
     };
   }

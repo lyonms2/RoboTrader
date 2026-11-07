@@ -1,3 +1,5 @@
+import type { FinItem } from "./types";
+
 // Controle de gastos: lancamentos por mes, cartoes (faturas e parcelas), emprestimos e gastos fixos.
 // Tudo fica em config/* (unica pasta que o navegador pode gravar pelas regras do Firestore):
 //   config/gastos-AAAA-MM  -> { items: Gasto[] }  (um documento por mes)
@@ -17,6 +19,7 @@ export type Gasto = {
   parc?: [number, number]; // parcela k de n
   ref?: string; // id do fixo / emprestimo que gerou o lancamento
   io?: "in" | "out"; // entrou ou saiu da conta (importante nos neutros: guardar no cofrinho sai, resgatar entra)
+  inv?: string; // id do investimento (aba Investimentos) para onde foi / de onde veio o dinheiro
 };
 export type MonthDoc = { items: Gasto[] };
 export type Card = { id: string; name: string; closeDay: number; dueDay: number; limit?: number };
@@ -33,6 +36,7 @@ export type GastosSetup = {
   cards: Card[]; loans: Loan[]; fixos: Fixo[]; rules: Record<string, string>; categories?: string[];
   ownName?: string; // seu nome como aparece nos extratos: Pix para/de voce mesmo = transferencia entre contas (nao conta)
   account?: { balance: number; at: string }; // saldo em conta informado (soma das contas) e a data (AAAA-MM-DD)
+  invRules?: Record<string, string>; // descricao -> investimento escolhido (lembrado para as proximas)
 };
 export const EMPTY_SETUP: GastosSetup = { cards: [], loans: [], fixos: [], rules: {} };
 
@@ -417,3 +421,53 @@ export function accountBalance(months: Record<string, MonthDoc>, setup: GastosSe
   if (!base && !n) return null;
   return { value: (base?.balance ?? 0) + flow, informed: !!base, since: base?.at ?? first, flow, count: n };
 }
+
+// ---------- ligacao com os investimentos ----------
+export const INVEST_CAT = "Investimento";
+// So da para ligar a cofrinho/conta (saldo + CDI) e "outro" (valor a mao): Tesouro e acoes dependem de quantidade
+export const linkable = (items: FinItem[]) => items.filter((i) => i.kind === "caixa" || i.kind === "outro");
+
+// Movimentos ligados a cada investimento: + quando saiu da conta para ele (guardou), - quando voltou (resgatou)
+export function investFlows(months: Record<string, MonthDoc>) {
+  const out: Record<string, { d: string; v: number }[]> = {};
+  for (const md of Object.values(months))
+    for (const g of md.items) if (g.inv) (out[g.inv] ??= []).push({ d: g.d, v: -dirOf(g) * g.v });
+  return out;
+}
+
+const STOP = new Set(["do", "da", "de", "dos", "das", "no", "na", "meu", "minha", "banco", "conta", "para"]);
+// Destino sugerido: 1) o que voce ja escolheu para essa descricao, 2) nome do investimento na descricao,
+// 3) se so existe um cofrinho e a descricao fala de guardar/resgatar, ele
+export function suggestInv(desc: string, items: FinItem[], rules?: Record<string, string>) {
+  const list = linkable(items);
+  if (!list.length) return undefined;
+  const learned = rules?.[descKey(desc)];
+  if (learned && list.some((i) => i.id === learned)) return learned;
+  const d = plain(desc);
+  let best: string | undefined;
+  let bestScore = 0;
+  for (const i of list) {
+    const words = plain(i.name).split(" ").filter((w) => w.length > 2 && !STOP.has(w));
+    const hits = words.filter((w) => d.includes(w)).length;
+    const score = hits + (hits && hits === words.length ? 1 : 0);
+    if (hits && score > bestScore) { best = i.id; bestScore = score; }
+  }
+  if (best) return best;
+  const boxes = list.filter((i) => i.kind === "caixa");
+  if (boxes.length === 1 && /cofrinho|caixinha|porquinho|guardad|resgat|\brdb\b|\bcdb\b|aplica/.test(d)) return boxes[0].id;
+  return undefined;
+}
+
+// Nome para um cofrinho novo a partir do extrato: "No cofrinho Cofrinho do Cartao" -> "Cofrinho do Cartao"
+export function invNameFromDesc(desc: string) {
+  const m = desc.match(/(cofrinho|caixinha|porquinho|poupan[cç]a|cdb|rdb)[^-|]*$/i);
+  if (!m) return "Cofrinho";
+  const parts = m[0].trim().split(/\s+/);
+  // "cofrinho Cofrinho do Cartao": pula a palavra repetida
+  const start = parts.length > 1 && parts[0].toLowerCase() === parts[1].toLowerCase() ? 1 : 0;
+  const name = parts.slice(start).join(" ");
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+// Dia anterior (AAAA-MM-DD)
+export const prevDay = (d: string) => new Date(Date.parse(`${d}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10);

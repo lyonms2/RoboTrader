@@ -19,7 +19,7 @@ import CandidatesCard from "./CandidatesCard";
 import FinanceCard from "./FinanceCard";
 import { debts } from "./GastosCard";
 import type { NetWorthDoc } from "@/lib/patrimonio";
-import { EMPTY_SETUP, accountBalance, avgMonthly, type GastosSetup, type MonthDoc } from "@/lib/gastos";
+import { EMPTY_SETUP, accountBalance, avgMonthly, investFlows, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import { financeSummary } from "@/lib/financeMath";
 import type { CandidatesDoc } from "@/lib/candidates";
 import { usePrices, type Prices } from "./usePrices";
@@ -267,7 +267,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         {notice && <p className="banner">{notice}</p>}
 
         {tab === "geral" && (
-          <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} finance={finance} spend={spend} debt={debt.total} cash={accountBalance(months, gSetup)?.value ?? null}
+          <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} finance={finance} spend={spend} debt={debt.total} cash={accountBalance(months, gSetup)?.value ?? null} flows={investFlows(months)}
             sync={cfg.lighter?.enabled ? sync : null} onTab={setTab} />
         )}
         {tab === "sinais" && (
@@ -308,9 +308,9 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
 type TabId = "geral" | "financas" | "sinais" | "carteira" | "tokens" | "operacoes";
 
 // Visao geral: patrimonio, o que fazer hoje, alocacao e posicoes do robo
-function Overview({ cfg, latest, prices, wallet, fichas, finance, spend, debt, cash, sync, onTab }: {
+function Overview({ cfg, latest, prices, wallet, fichas, finance, spend, debt, cash, flows, sync, onTab }: {
   cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null; finance: FinanceDoc | null;
-  spend: { value: number } | null; debt: number; cash: number | null;
+  spend: { value: number } | null; debt: number; cash: number | null; flows: ReturnType<typeof investFlows>;
   sync: LighterSyncDoc | null; onTab: (t: TabId) => void;
 }) {
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
@@ -364,7 +364,7 @@ function Overview({ cfg, latest, prices, wallet, fichas, finance, spend, debt, c
   const blocks = total !== null && wallet ? allocationBlocks(wallet, cfg, latest, fichas) : [];
   const alloc = allocOf(cfg);
   const pctOf = (v: number) => (total ? `${fmt((v / total) * 100, 1)}%` : "");
-  const fin = cfg.finance?.length || cash ? financeSummary(cfg.finance ?? [], finance, total !== null ? wallet : null, spend?.value ?? cfg.monthlyCost, cash) : null;
+  const fin = cfg.finance?.length || cash ? financeSummary(cfg.finance ?? [], finance, total !== null ? wallet : null, spend?.value ?? cfg.monthlyCost, cash, flows) : null;
 
   return (
     <>

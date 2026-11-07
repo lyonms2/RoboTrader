@@ -347,7 +347,8 @@ i.key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; ma
 .pair-bars .mbar-fill { flex: 1; }
 .mbar.cur small { color: var(--text); font-weight: 600; }
 .gastos td { vertical-align: middle; }
-.gastos tr.neutral td, .gastos tr.off td { opacity: .5; }
+.gastos tr.off td { opacity: .5; }
+.gastos tr.neutral td:not([data-label="Categoria"]):not(.actions) { opacity: .55; }
 .gastos .cat-sel { max-width: 190px; padding: 3px 6px; font-size: 13px; }
 .gastos .cell { display: inline-flex; flex-direction: column; line-height: 1.3; }
 .import-list { max-height: 420px; overflow-y: auto; margin: 8px 0; }
@@ -404,3 +405,10 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 .acct button.link { padding: 0; }
 .acct-form { width: 100%; margin-top: 8px; gap: 8px 12px; align-items: flex-end; flex-wrap: wrap; }
 .acct-form label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+
+/* Destino do investimento nos lancamentos */
+.inv-sel { margin-top: 4px; }
+.inv-sel.unlinked { border-color: color-mix(in srgb, var(--warn, #c98500) 70%, transparent); color: var(--muted); }
+.gastos td .cell { gap: 2px; }
+.fin-form p.full { flex-basis: 100%; margin: 0; }
+.link-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 10px 0 0; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 8px; }

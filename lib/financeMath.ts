@@ -48,7 +48,9 @@ export function cdiFactor(f: FinanceDoc, from: string, pct: number) {
 export const divs12m = (divs: { t: number; v: number }[], now = Date.now()) =>
   divs.filter((d) => d.t > now - 365 * DAY && d.t <= now).reduce((s, d) => s + d.v, 0);
 
-export function financeRow(item: FinItem, f: FinanceDoc | null): FinRow {
+// flows = depositos (+) e resgates (-) lancados em Entradas e saidas e ligados a este investimento
+export type Flow = { d: string; v: number };
+export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = []): FinRow {
   const base: FinRow = {
     item, group: item.reserva ? "reserva" : "outro", kindLabel: "", value: null, cost: null, price: null, change: null,
     monthly: null, yieldYear: null, note: "", problem: null, stale: null,
@@ -59,13 +61,17 @@ export function financeRow(item: FinItem, f: FinanceDoc | null): FinRow {
     const bal = item.balance ?? 0;
     const pct = (item.cdiPct ?? 100) / 100;
     const at = item.balanceAt ?? Date.now();
-    if (!f?.cdi.d.length) return { ...r, value: bal, cost: bal, note: `${fmtP(pct)} do CDI`, problem: null };
-    const value = bal * cdiFactor(f, dayBR(at), pct);
+    // Depositos/resgates depois da data do saldo: cada um rende CDI a partir do proprio dia
+    const fl = flows.filter((x) => x.d > dayBR(at));
+    const net = fl.reduce((s, x) => s + x.v, 0);
+    const moved = fl.length ? ` + ${fl.length} ${fl.length > 1 ? "movimentos" : "movimento"} (${net >= 0 ? "+" : "-"}R$ ${Math.abs(net).toLocaleString("pt-BR", { maximumFractionDigits: 2 })})` : "";
+    if (!f?.cdi.d.length) return { ...r, value: bal + net, cost: bal + net, note: `${fmtP(pct)} do CDI${moved}`, problem: null };
+    const value = bal * cdiFactor(f, dayBR(at), pct) + fl.reduce((s, x) => s + x.v * cdiFactor(f, x.d, pct), 0);
     const year = (1 + cdiDaily(f)! * pct) ** 252 - 1;
     const days = Math.floor((Date.now() - at) / DAY);
     return {
-      ...r, value, cost: bal, monthly: monthlyOf(value, year), yieldYear: year,
-      note: `${(pct * 100).toLocaleString("pt-BR")}% do CDI - saldo de ${fmtD(at)} + rendimento estimado`,
+      ...r, value, cost: bal + net, monthly: monthlyOf(value, year), yieldYear: year,
+      note: `${(pct * 100).toLocaleString("pt-BR")}% do CDI - saldo de ${fmtD(at)}${moved} + rendimento estimado`,
       stale: days > 60 ? `saldo informado ha ${days} dias: confira no app do banco` : null,
     };
   }
@@ -106,17 +112,20 @@ export function financeRow(item: FinItem, f: FinanceDoc | null): FinRow {
     };
   }
   const days = item.valueAt ? Math.floor((Date.now() - item.valueAt) / DAY) : null;
+  const fl = flows.filter((x) => !item.valueAt || x.d > dayBR(item.valueAt));
+  const net = fl.reduce((s, x) => s + x.v, 0);
   return {
-    ...base, kindLabel: "Outro", value: item.value ?? 0, cost: null,
-    note: item.valueAt ? `valor informado em ${fmtD(item.valueAt)}` : "valor informado",
+    ...base, kindLabel: "Outro", value: (item.value ?? 0) + net, cost: null,
+    note: (item.valueAt ? `valor informado em ${fmtD(item.valueAt)}` : "valor informado") + (fl.length ? ` + ${fl.length} movimentos ligados` : ""),
     stale: days !== null && days > 90 ? `valor informado ha ${days} dias: atualize` : null,
   };
 }
 
 // Patrimonio total em R$: investimentos + carteiras cripto (dolar -> real pela PTAX)
 // cash = saldo em conta (aba Entradas e saidas), entra como o grupo "Conta corrente"
-export function financeSummary(items: FinItem[], f: FinanceDoc | null, wallet: WalletDoc | null, monthlyCost?: number, cash?: number | null) {
-  const rows = items.map((i) => financeRow(i, f));
+export function financeSummary(items: FinItem[], f: FinanceDoc | null, wallet: WalletDoc | null, monthlyCost?: number, cash?: number | null,
+  flows: Record<string, Flow[]> = {}) {
+  const rows = items.map((i) => financeRow(i, f, flows[i.id]));
   const byGroup = Object.fromEntries(GROUPS.map((g) => [g.key, 0])) as Record<FinGroup, number>;
   for (const r of rows) byGroup[r.group] += r.value ?? 0;
   const usd = f?.usdbrl ?? null;

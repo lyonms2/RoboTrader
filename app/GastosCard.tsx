@@ -2,10 +2,11 @@
 import { doc, setDoc } from "firebase/firestore";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
-import { accountBalance, cardStatus, debts } from "@/lib/gastos";
+import { INVEST_CAT, accountBalance, cardStatus, debts, invNameFromDesc, linkable, prevDay, suggestInv } from "@/lib/gastos";
+import type { FinItem } from "@/lib/types";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  monthOf, newId, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  dirOf, monthOf, newId, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
   type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 
@@ -68,7 +69,7 @@ export function DebtsView({ months, setup }: { months: Record<string, MonthDoc>;
   );
 }
 
-export default function GastosCard({ months, setup }: { months: Record<string, MonthDoc>; setup: GastosSetup }) {
+export default function GastosCard({ months, setup, invest = [] }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest?: FinItem[] }) {
   const [m, setM] = useState(monthOf(todayBR()));
   const [filter, setFilter] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -88,9 +89,18 @@ export default function GastosCard({ months, setup }: { months: Record<string, M
   const learnAndSet = async (g: Gasto, cat: string) => {
     const tipo = tipoOfCat(cat) ?? g.tipo;
     const key = descKey(g.desc);
+    // Virou Investimento: ja sugere o destino; deixou de ser: desliga
+    const inv = cat === INVEST_CAT ? (g.inv ?? suggestInv(g.desc, invest, setup.invRules)) : undefined;
     // Aplica a todos os lancamentos do mes com a mesma descricao e lembra para os proximos
-    await saveMonth(m, items.map((x) => (x.id === g.id || (key && descKey(x.desc) === key) ? { ...x, cat, tipo } : x)));
+    await saveMonth(m, items.map((x) => (x.id === g.id || (key && descKey(x.desc) === key) ? { ...x, cat, tipo, inv } : x)));
     if (key) await saveSetup({ rules: { ...setup.rules, [key]: cat } });
+  };
+  // Liga o lancamento (e os iguais do mes) a um investimento; "__new" cria um cofrinho com o nome do extrato
+  const linkInv = async (g: Gasto, id: string) => {
+    const target = id === "__new" ? await createBox(invest, g.desc, g.d) : id || undefined;
+    const key = descKey(g.desc);
+    await saveMonth(m, items.map((x) => (x.id === g.id || (key && x.cat === INVEST_CAT && descKey(x.desc) === key) ? { ...x, inv: target } : x)));
+    if (key && target) await saveSetup({ invRules: { ...(setup.invRules ?? {}), [key]: target } });
   };
   const removeItem = async (g: Gasto) => {
     if (!confirm(`Apagar "${g.desc}" (${brl(g.v)})?`)) return;
@@ -127,6 +137,7 @@ export default function GastosCard({ months, setup }: { months: Record<string, M
             <small className="muted">{pending.length ? `${pending.length} fixos/parcelas - previsto ${brl(s.gastos + pendingTotal, 0)}` : "fixos e parcelas em dia"}</small></div>
         </div>
         <AccountBox months={months} setup={setup} />
+        <AutoLink months={months} setup={setup} invest={invest} />
         {pending.length > 0 && (
           <ul className="pend small">
             {pending.map((p) => (
@@ -168,8 +179,8 @@ export default function GastosCard({ months, setup }: { months: Record<string, M
             <button className="ghost" onClick={() => setImporting(!importing)}>{importing ? "Fechar importacao" : "Importar extrato"}</button>
           </div>
         </div>
-        {importing ? <ImportPanel months={months} setup={setup} onDone={() => setImporting(false)} />
-          : <QuickAdd months={months} setup={setup} defaultDate={isNow ? todayBR() : `${m}-01`} />}
+        {importing ? <ImportPanel months={months} setup={setup} invest={invest} onDone={() => setImporting(false)} />
+          : <QuickAdd months={months} setup={setup} invest={invest} defaultDate={isNow ? todayBR() : `${m}-01`} />}
         {shown.length ? (
           <div className="table-scroll">
             <table className="stack gastos">
@@ -182,7 +193,10 @@ export default function GastosCard({ months, setup }: { months: Record<string, M
                       <td><span className="cell">{g.desc}<small className="muted">
                         {[dm(g.d), card ? `cartao ${card.name}` : null, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, g.tipo === "neutro" ? "nao conta nos gastos" : null].filter(Boolean).join(" - ")}
                       </small></span></td>
-                      <td data-label="Categoria"><CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} /></td>
+                      <td data-label="Categoria"><span className="cell">
+                        <CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} />
+                        {g.cat === INVEST_CAT && <InvSelect value={g.inv} desc={g.desc} invest={invest} out={dirOf(g) < 0} onChange={(id) => linkInv(g, id)} />}
+                      </span></td>
                       <td data-label="Valor" className={g.tipo === "receita" ? "pos" : g.tipo === "neutro" ? "muted" : ""}>{g.tipo === "receita" ? "+" : g.tipo === "gasto" ? "-" : ""}{brl(g.v)}</td>
                       <td className="actions"><button className="ghost small-btn" onClick={() => removeItem(g)} aria-label="Apagar">apagar</button></td>
                     </tr>
@@ -209,6 +223,57 @@ function CatSelect({ value, onChange }: { value: string; onChange: (c: string) =
       <optgroup label="Nao conta">{CATS_NEUTRO.map((c) => <option key={c}>{c}</option>)}</optgroup>
       {!tipoOfCat(value) && <option>{value}</option>}
     </select>
+  );
+}
+
+// Cria um cofrinho (saldo 0 no dia anterior ao movimento) na aba Investimentos; os movimentos ligados formam o saldo
+async function createBox(invest: FinItem[], desc: string, d: string) {
+  const name = window.prompt("Nome do cofrinho/investimento novo:", invNameFromDesc(desc));
+  if (!name?.trim()) return undefined;
+  const it: FinItem = { id: newId(), kind: "caixa", name: name.trim(), balance: 0, balanceAt: Date.parse(`${prevDay(d)}T12:00:00-03:00`), cdiPct: 100, reserva: true };
+  await setDoc(doc(db(), "config/main"), { finance: clean([...invest, it]) }, { merge: true });
+  return it.id;
+}
+
+// Para qual investimento foi (ou de qual veio) o dinheiro
+function InvSelect({ value, desc, invest, out, onChange }: { value?: string; desc: string; invest: FinItem[]; out: boolean; onChange: (id: string) => void }) {
+  const list = linkable(invest);
+  return (
+    <select className={`cat-sel inv-sel${value ? "" : " unlinked"}`} value={value ?? ""} onChange={(e) => onChange(e.target.value)}
+      title={out ? "Para onde foi o dinheiro" : "De onde veio o dinheiro"}>
+      <option value="">{out ? "foi para... (escolher)" : "veio de... (escolher)"}</option>
+      {list.map((i) => <option key={i.id} value={i.id}>{out ? "-> " : "<- "}{i.name}</option>)}
+      <option value="__new">+ novo cofrinho: {invNameFromDesc(desc)}</option>
+    </select>
+  );
+}
+
+// Movimentos de investimento sem destino (ex.: importados antes): liga todos de uma vez pela sugestao
+function AutoLink({ months, setup, invest }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[] }) {
+  const [busy, setBusy] = useState(false);
+  const pending: { m: string; id: string; inv: string }[] = [];
+  let noGuess = 0;
+  for (const [m, md] of Object.entries(months))
+    for (const g of md.items) {
+      if (g.cat !== INVEST_CAT || g.inv) continue;
+      const inv = suggestInv(g.desc, invest, setup.invRules);
+      if (inv) pending.push({ m, id: g.id, inv });
+      else noGuess++;
+    }
+  if (!pending.length && !noGuess) return null;
+  const apply = async () => {
+    setBusy(true);
+    const by: Record<string, Record<string, string>> = {};
+    for (const p of pending) (by[p.m] ??= {})[p.id] = p.inv;
+    await Promise.all(Object.entries(by).map(([m, ids]) => saveMonth(m, months[m].items.map((x) => (ids[x.id] ? { ...x, inv: ids[x.id] } : x)))));
+    setBusy(false);
+  };
+  return (
+    <div className="link-bar small">
+      <span>{pending.length + noGuess} {pending.length + noGuess > 1 ? "movimentos" : "movimento"} de investimento sem destino: o dinheiro sai da conta mas nao entra em nenhum investimento.</span>
+      {pending.length > 0 && <button className="primary small-btn" disabled={busy} onClick={apply}>{busy ? "Ligando..." : `Ligar ${pending.length} automaticamente`}</button>}
+      {noGuess > 0 && <span className="muted">{noGuess} sem sugestao: escolha o destino na lista de lancamentos (ou crie um cofrinho novo).</span>}
+    </div>
   );
 }
 
@@ -246,7 +311,7 @@ function AccountBox({ months, setup }: { months: Record<string, MonthDoc>; setup
 }
 
 // Lancamento rapido: categoria sugerida pela descricao; no cartao pode ser parcelado
-function QuickAdd({ months, setup, defaultDate }: { months: Record<string, MonthDoc>; setup: GastosSetup; defaultDate: string }) {
+function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; defaultDate: string }) {
   const [d, setD] = useState(defaultDate);
   const [desc, setDesc] = useState("");
   const [v, setV] = useState("");
@@ -257,6 +322,8 @@ function QuickAdd({ months, setup, defaultDate }: { months: Record<string, Month
   const [busy, setBusy] = useState(false);
   const auto = categorize(desc, entrada, setup.rules);
   const finalCat = cat ?? auto.cat;
+  const [inv, setInv] = useState<string | null>(null);
+  const finalInv = finalCat === INVEST_CAT ? (inv ?? suggestInv(desc, invest, setup.invRules) ?? "") : "";
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const total = num(v);
@@ -269,9 +336,11 @@ function QuickAdd({ months, setup, defaultDate }: { months: Record<string, Month
       id: newId(), d: dayIn(addMonths(monthOf(d), k), Number(d.slice(8, 10))), desc: desc.trim(), v: each, tipo, io: entrada ? "in" as const : "out" as const, cat: finalCat, src: "manual" as const,
       ...(card ? { card } : {}), ...(parcels > 1 ? { parc: [k + 1, parcels] as [number, number] } : {}),
     }));
-    await addItems(months, list);
+    const target = finalInv === "__new" ? await createBox(invest, desc, d) : finalInv || undefined;
+    await addItems(months, target ? list.map((x) => ({ ...x, inv: target })) : list);
     if (cat && descKey(desc)) await saveSetup({ rules: { ...setup.rules, [descKey(desc)]: cat } });
-    setDesc(""); setV(""); setCat(null); setN("1"); setBusy(false);
+    if (inv && target && descKey(desc)) await saveSetup({ invRules: { ...(setup.invRules ?? {}), [descKey(desc)]: target } });
+    setDesc(""); setV(""); setCat(null); setInv(null); setN("1"); setBusy(false);
   };
   return (
     <form className="fin-form quick" onSubmit={submit}>
@@ -284,7 +353,8 @@ function QuickAdd({ months, setup, defaultDate }: { months: Record<string, Month
         <label className="grow">Descricao<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={entrada ? "Salario" : "Mercado, ifood, aluguel..."} /></label>
         <label>Valor (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="0,00" /></label>
         <label>Categoria<CatSelect value={finalCat} onChange={setCat} /></label>
-        {!entrada && (
+        {finalCat === INVEST_CAT && <label>{entrada ? "Veio de" : "Foi para"}<InvSelect value={finalInv} desc={desc} invest={invest} out={!entrada} onChange={setInv} /></label>}
+        {!entrada && finalCat !== INVEST_CAT && (
           <label>Pagamento
             <select value={card} onChange={(e) => setCard(e.target.value)}>
               <option value="">Debito / Pix / dinheiro</option>
@@ -301,8 +371,8 @@ function QuickAdd({ months, setup, defaultDate }: { months: Record<string, Month
 }
 
 // Importar extrato OFX ou CSV: tudo e lido no seu navegador; so os lancamentos escolhidos sao gravados
-function ImportPanel({ months, setup, onDone }: { months: Record<string, MonthDoc>; setup: GastosSetup; onDone: () => void }) {
-  type Row = Raw & { on: boolean; cat: string; tipo: Tipo; dup: "" | "ja importado" | "parece repetido" };
+function ImportPanel({ months, setup, invest, onDone }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; onDone: () => void }) {
+  type Row = Raw & { on: boolean; cat: string; tipo: Tipo; inv?: string; dup: "" | "ja importado" | "parece repetido" };
   const [rows, setRows] = useState<Row[]>([]);
   const [file, setFile] = useState("");
   const [err, setErr] = useState("");
@@ -316,7 +386,8 @@ function ImportPanel({ months, setup, onDone }: { months: Record<string, MonthDo
     const { cat, tipo } = categorize(r.desc, r.amount > 0, setup.rules, ownName);
     const dup = exts.has(r.ext) ? "ja importado" as const
       : all.some((g) => g.d === r.d && Math.abs(g.v - Math.abs(r.amount)) < 0.005 && !g.ext) ? "parece repetido" as const : "" as const;
-    return { ...r, cat, tipo, dup, on: !dup };
+    const inv = cat === INVEST_CAT ? suggestInv(r.desc, invest, setup.invRules) : undefined;
+    return { ...r, cat, tipo, inv, dup, on: !dup };
   });
   const onFile = async (f: File) => {
     setErr("");
@@ -342,6 +413,7 @@ function ImportPanel({ months, setup, onDone }: { months: Record<string, MonthDo
     setBusy(true);
     if ((setup.ownName ?? "") !== ownName.trim()) await saveSetup({ ownName: ownName.trim() });
     await addItems(months, chosen.map((r) => ({
+      ...(r.inv && r.cat === INVEST_CAT ? { inv: r.inv } : {}),
       id: newId(), d: r.d, desc: r.desc, v: Math.abs(r.amount), tipo: r.tipo, io: r.amount > 0 ? "in" as const : "out" as const, cat: r.cat, src: "import" as const, ext: r.ext,
       ...(card ? { card } : {}), ...(parcOf(r.desc) ? { parc: parcOf(r.desc) } : {}),
     })));
@@ -384,7 +456,16 @@ function ImportPanel({ months, setup, onDone }: { months: Record<string, MonthDo
                     <td><input type="checkbox" checked={r.on} onChange={(e) => setRow(i, { on: e.target.checked })} aria-label="Importar" /></td>
                     <td data-label="Data">{dm(r.d)}</td>
                     <td data-label="Descricao"><span className="cell">{r.desc}{r.dup && <small className="warn">{r.dup}</small>}</span></td>
-                    <td data-label="Categoria"><CatSelect value={r.cat} onChange={(c) => setRow(i, { cat: c, tipo: tipoOfCat(c) ?? r.tipo })} /></td>
+                    <td data-label="Categoria"><span className="cell">
+                      <CatSelect value={r.cat} onChange={(c) => setRow(i, { cat: c, tipo: tipoOfCat(c) ?? r.tipo, inv: c === INVEST_CAT ? suggestInv(r.desc, invest, setup.invRules) : undefined })} />
+                      {r.cat === INVEST_CAT && <InvSelect value={r.inv} desc={r.desc} invest={invest} out={r.amount < 0} onChange={async (id) => {
+                        const target = id === "__new" ? await createBox(invest, r.desc, r.d) : id || undefined;
+                        const key = descKey(r.desc);
+                        // mesmo destino para os iguais do arquivo, e lembrado para as proximas importacoes
+                        setRows((rs) => rs.map((x, k) => (k === i || (key && x.cat === INVEST_CAT && descKey(x.desc) === key) ? { ...x, inv: target } : x)));
+                        if (key && target) await saveSetup({ invRules: { ...(setup.invRules ?? {}), [key]: target } });
+                      }} />}
+                    </span></td>
                     <td data-label="Valor" className={r.tipo === "receita" ? "pos" : r.tipo === "neutro" ? "muted" : ""}>{r.amount > 0 ? "+" : "-"}{brl(Math.abs(r.amount))}</td>
                   </tr>
                 ))}

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
-import { accountBalance, monthLabel, type GastosSetup, type MonthDoc } from "@/lib/gastos";
+import { accountBalance, investFlows, monthLabel, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import GastosCard, { DebtsView, monthSnapshot } from "./GastosCard";
 import NetWorthChart from "./NetWorthChart";
 import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
@@ -56,7 +56,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
   };
   const items = cfg.finance ?? [];
   const acct = accountBalance(months, setup);
-  const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost, acct?.value);
+  const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost, acct?.value, investFlows(months));
   const [editing, setEditing] = useState<FinItem | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -88,7 +88,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       ))}
     </nav>
   );
-  if (sub === "gastos") return <>{nav}<GastosCard months={months} setup={setup} /></>;
+  if (sub === "gastos") return <>{nav}<GastosCard months={months} setup={setup} invest={items} /></>;
   if (sub === "dividas") return <>{nav}<DebtsView months={months} setup={setup} /></>;
 
   return (
@@ -297,6 +297,8 @@ function ItemForm({ initial, fin, onSave, onCancel }: {
             <label>Saldo hoje (R$)<input value={balance} inputMode="decimal" onChange={(e) => setBalance(e.target.value)} placeholder="5.000,00" /></label>
             <label>Data do saldo<input type="date" value={balanceAt} onChange={(e) => setBalanceAt(e.target.value)} /></label>
             <label>% do CDI<input value={cdiPct} inputMode="decimal" onChange={(e) => setCdiPct(e.target.value)} /></label>
+            <p className="muted small full">Depositos e resgates lancados em Entradas e saidas (categoria Investimento) depois dessa data somam
+              e descontam sozinhos. Ao atualizar o saldo, use a data de hoje.</p>
           </>
         )}
         {kind === "tesouro" && (

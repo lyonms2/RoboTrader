@@ -2,7 +2,7 @@
 import { doc, setDoc } from "firebase/firestore";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
-import { INVEST_CAT, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
+import { CARD_PAY_CAT, INVEST_CAT, TRANSFER_CAT, looksDuplicate, suggestCard, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
@@ -91,8 +91,9 @@ export default function GastosCard({ months, setup, invest = [] }: { months: Rec
     const key = descKey(g.desc);
     // Virou Investimento: ja sugere o destino; deixou de ser: desliga
     const inv = cat === INVEST_CAT ? (g.inv ?? suggestInv(g.desc, invest, setup.invRules)) : undefined;
+    const payCard = cat === CARD_PAY_CAT && !g.card ? (g.payCard ?? suggestCard(g.desc, g.v, setup.cards, months)) : undefined;
     // Aplica a todos os lancamentos do mes com a mesma descricao e lembra para os proximos
-    await saveMonth(m, items.map((x) => (x.id === g.id || (key && descKey(x.desc) === key) ? { ...x, cat, tipo, inv } : x)));
+    await saveMonth(m, items.map((x) => (x.id === g.id || (key && descKey(x.desc) === key) ? clean({ ...x, cat, tipo, inv, payCard }) : x)));
     if (key) await saveSetup({ rules: { ...setup.rules, [key]: cat } });
   };
   // Liga o lancamento (e os iguais do mes) a um investimento; "__new" cria um cofrinho com o nome do extrato
@@ -137,7 +138,7 @@ export default function GastosCard({ months, setup, invest = [] }: { months: Rec
             <small className="muted">{pending.length ? `${pending.length} fixos/parcelas - previsto ${brl(s.gastos + pendingTotal, 0)}` : "fixos e parcelas em dia"}</small></div>
         </div>
         <AccountsPanel months={months} setup={setup} m={m} />
-        <AutoLink months={months} setup={setup} invest={invest} />
+        <Review months={months} setup={setup} invest={invest} />
         {pending.length > 0 && (
           <ul className="pend small">
             {pending.map((p) => (
@@ -198,6 +199,9 @@ export default function GastosCard({ months, setup, invest = [] }: { months: Rec
                       <td data-label="Categoria"><span className="cell">
                         <CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} />
                         {g.cat === INVEST_CAT && <InvSelect value={g.inv} desc={g.desc} invest={invest} out={dirOf(g) < 0} onChange={(id) => linkInv(g, id)} />}
+                        {g.cat === CARD_PAY_CAT && !g.card && setup.cards.length > 0 && (
+                          <CardPaySelect value={g.payCard} cards={setup.cards} onChange={(id) => saveMonth(m, items.map((x) => (x.id === g.id ? clean({ ...x, payCard: id || undefined }) : x)))} />
+                        )}
                       </span></td>
                       <td data-label="Valor" className={g.tipo === "receita" ? "pos" : g.tipo === "neutro" ? "muted" : ""}>{g.tipo === "receita" ? "+" : g.tipo === "gasto" ? "-" : ""}{brl(g.v)}</td>
                       <td className="actions"><button className="ghost small-btn" onClick={() => removeItem(g)} aria-label="Apagar">apagar</button></td>
@@ -208,8 +212,8 @@ export default function GastosCard({ months, setup, invest = [] }: { months: Rec
             </table>
           </div>
         ) : <p className="muted">Nenhum lancamento {filter ? "nesta categoria" : "neste mes"}.</p>}
-        <p className="muted small">Mudou a categoria de um lancamento? O site aplica aos iguais do mes e lembra para as proximas importacoes.
-          Pagamento de fatura, aplicacoes e resgates nao contam como gasto (as compras do cartao ja contam).</p>
+        <p className="muted small">Mudou a categoria de um lancamento? O site aplica aos iguais do mes e lembra para as proximas importacoes.</p>
+        <HowItWorks />
       </section>
 
       <Fixos setup={setup} />
@@ -237,6 +241,16 @@ async function createBox(invest: FinItem[], desc: string, d: string) {
   return it.id;
 }
 
+// Qual cartao este pagamento de fatura pagou
+function CardPaySelect({ value, cards, onChange }: { value?: string; cards: Card[]; onChange: (id: string) => void }) {
+  return (
+    <select className={`cat-sel inv-sel${value ? "" : " unlinked"}`} value={value ?? ""} onChange={(e) => onChange(e.target.value)} title="Qual cartao foi pago">
+      <option value="">pagou qual cartao? (escolher)</option>
+      {cards.map((c) => <option key={c.id} value={c.id}>pagou {c.name}</option>)}
+    </select>
+  );
+}
+
 // Para qual investimento foi (ou de qual veio) o dinheiro
 function InvSelect({ value, desc, invest, out, onChange }: { value?: string; desc: string; invest: FinItem[]; out: boolean; onChange: (id: string) => void }) {
   const list = linkable(invest);
@@ -250,32 +264,89 @@ function InvSelect({ value, desc, invest, out, onChange }: { value?: string; des
   );
 }
 
-// Movimentos de investimento sem destino (ex.: importados antes): liga todos de uma vez pela sugestao
-function AutoLink({ months, setup, invest }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[] }) {
+// Para revisar: tudo que deixaria um numero errado, com o conserto de 1 clique quando da
+function Review({ months, setup, invest }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[] }) {
   const [busy, setBusy] = useState(false);
-  const pending: { m: string; id: string; inv: string }[] = [];
-  let noGuess = 0;
+  const accounts = accountsOf(setup);
+  // 1) investimento sem destino  2) pagamento de fatura sem cartao
+  const fixes: { m: string; id: string; patch: Partial<Gasto> }[] = [];
+  let invMissing = 0;
+  let payMissing = 0;
   for (const [m, md] of Object.entries(months))
     for (const g of md.items) {
-      if (g.cat !== INVEST_CAT || g.inv) continue;
-      const inv = suggestInv(g.desc, invest, setup.invRules);
-      if (inv) pending.push({ m, id: g.id, inv });
-      else noGuess++;
+      if (g.cat === INVEST_CAT && !g.inv) {
+        invMissing++;
+        const inv = suggestInv(g.desc, invest, setup.invRules);
+        if (inv) fixes.push({ m, id: g.id, patch: { inv } });
+      }
+      if (g.cat === CARD_PAY_CAT && !g.card && !g.payCard && setup.cards.length) {
+        payMissing++;
+        const pc = suggestCard(g.desc, g.v, setup.cards, months);
+        if (pc) fixes.push({ m, id: g.id, patch: { payCard: pc } });
+      }
     }
-  if (!pending.length && !noGuess) return null;
-  const apply = async () => {
+  // 3) Pix para conta sua que nao esta no site  4) fatura vencida sem pagamento  5) conta sem saldo conferido
+  const lost = unmatchedTransfers(months, setup).filter((g) => dirOf(g) < 0);
+  const overdue = setup.cards.flatMap((c) => cardStatus(c, months).overdue.map((f) => ({ c, f })));
+  const st = accountsStatus(months, setup);
+  const noBalance = st.rows.filter((r) => r.used && !r.informed);
+  if (!invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length) return null;
+  const applyFixes = async () => {
     setBusy(true);
-    const by: Record<string, Record<string, string>> = {};
-    for (const p of pending) (by[p.m] ??= {})[p.id] = p.inv;
-    await Promise.all(Object.entries(by).map(([m, ids]) => saveMonth(m, months[m].items.map((x) => (ids[x.id] ? { ...x, inv: ids[x.id] } : x)))));
+    const by: Record<string, Record<string, Partial<Gasto>>> = {};
+    for (const f of fixes) (by[f.m] ??= {})[f.id] = { ...(by[f.m]?.[f.id] ?? {}), ...f.patch };
+    await Promise.all(Object.entries(by).map(([m, ids]) => saveMonth(m, months[m].items.map((x) => (ids[x.id] ? { ...x, ...ids[x.id] } : x)))));
     setBusy(false);
   };
+  // "Ja paguei": registra o pagamento do lado do cartao (nao mexe na conta; se o extrato da conta trouxer o mesmo pagamento, conta uma vez so)
+  const markPaid = async (c: Card, f: { m: string; due: string; rest: number }) => {
+    await addItems(months, [{ id: newId(), d: f.due, desc: `Pagamento de fatura ${c.name} ${monthLabel(f.m)} (marcado como pago)`, v: Math.round(f.rest * 100) / 100,
+      tipo: "neutro", cat: CARD_PAY_CAT, card: c.id, src: "manual" }]);
+  };
   return (
-    <div className="link-bar small">
-      <span>{pending.length + noGuess} {pending.length + noGuess > 1 ? "movimentos" : "movimento"} de investimento sem destino: o dinheiro sai da conta mas nao entra em nenhum investimento.</span>
-      {pending.length > 0 && <button className="primary small-btn" disabled={busy} onClick={apply}>{busy ? "Ligando..." : `Ligar ${pending.length} automaticamente`}</button>}
-      {noGuess > 0 && <span className="muted">{noGuess} sem sugestao: escolha o destino na lista de lancamentos (ou crie um cofrinho novo).</span>}
+    <div className="review small">
+      <b>Para revisar</b>
+      <ul>
+        {invMissing > 0 && <li>{invMissing} {invMissing > 1 ? "movimentos" : "movimento"} de investimento sem destino: o dinheiro sai da conta e nao entra em nenhum investimento.</li>}
+        {payMissing > 0 && <li>{payMissing} {payMissing > 1 ? "pagamentos" : "pagamento"} de fatura sem cartao: a fatura continua aparecendo como divida.</li>}
+        {fixes.length > 0 && <li><button className="primary small-btn" disabled={busy} onClick={applyFixes}>{busy ? "Ligando..." : `Ligar ${fixes.length} automaticamente`}</button>
+          {fixes.length < invMissing + payMissing && <span className="muted"> os outros: escolha na lista de lancamentos</span>}</li>}
+        {lost.map((g) => (
+          <li key={g.id}>{dm(g.d)}: {brl(g.v)} enviado para uma conta sua que nao esta no site ({g.desc.slice(0, 40)}). Ele some do patrimonio:
+            cadastre essa conta em &quot;Contas&quot; e importe o extrato dela, ou troque a categoria se foi pagamento a outra pessoa.</li>
+        ))}
+        {overdue.map(({ c, f }) => (
+          <li key={c.id + f.m}>Fatura {c.name} de {monthLabel(f.m)} venceu em {dm(f.due)} com {brl(f.rest)} sem pagamento lancado.
+            <button className="ghost small-btn" onClick={() => markPaid(c, f)}>ja paguei</button></li>
+        ))}
+        {noBalance.map((r) => <li key={r.acc.id}>Conta {r.acc.name} sem saldo conferido: informe o saldo do app do banco em &quot;Contas&quot; para o patrimonio ficar certo.</li>)}
+      </ul>
     </div>
+  );
+}
+
+// Como cada tipo de movimento entra nas contas
+function HowItWorks() {
+  return (
+    <details className="how small">
+      <summary>Como o site conta cada coisa (cartao, emprestimo, cripto, cofrinho, fixos)</summary>
+      <table>
+        <thead><tr><th>Situacao</th><th>Gasto do mes</th><th>Saldo da conta</th><th>Patrimonio</th></tr></thead>
+        <tbody>
+          <tr><td><b>Compra no cartao</b></td><td>conta no dia da compra</td><td>nao mexe</td><td>vira divida da fatura</td></tr>
+          <tr><td><b>Pagar a fatura</b> (no extrato: &quot;Pagamento de fatura&quot;)</td><td>nao conta (a compra ja contou)</td><td>sai da conta</td><td>a divida baixa; nao muda</td></tr>
+          <tr><td><b>Parcela de emprestimo</b></td><td>conta como gasto</td><td>sai da conta</td><td>o saldo devedor baixa sozinho pela data</td></tr>
+          <tr><td><b>Dinheiro do emprestimo caindo</b></td><td>nao e renda (&quot;Emprestimo recebido&quot;)</td><td>entra na conta</td><td>nao muda (cadastre a divida)</td></tr>
+          <tr><td><b>Guardar no cofrinho / resgatar</b></td><td>nao conta</td><td>sai / entra</td><td>nao muda (vai para o cofrinho)</td></tr>
+          <tr><td><b>Comprar cripto</b> (Pix para corretora/ramp)</td><td>nao conta (&quot;Compra de cripto&quot;)</td><td>sai da conta</td><td>nao muda (aparece na carteira)</td></tr>
+          <tr><td><b>Pix entre suas contas</b></td><td>nao conta</td><td>sai de uma, entra na outra</td><td>nao muda (se as duas estao no site)</td></tr>
+          <tr><td><b>Gasto fixo</b> (aluguel, internet...)</td><td>conta quando aparece no extrato</td><td>sai da conta</td><td>diminui</td></tr>
+        </tbody>
+      </table>
+      <p className="muted">Fixos e parcelas ficam em &quot;Ainda a pagar&quot; ate aparecer no mes um gasto com o mesmo valor (2%), em qualquer categoria.
+        So use &quot;marcar pago&quot; se o pagamento nao vai aparecer em nenhum extrato importado. Lancamento repetido (mesmo valor, ate 3 dias)
+        vem desmarcado na importacao.</p>
+    </details>
   );
 }
 
@@ -371,6 +442,8 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
   const finalCat = cat ?? auto.cat;
   const [inv, setInv] = useState<string | null>(null);
   const finalInv = finalCat === INVEST_CAT ? (inv ?? suggestInv(desc, invest, setup.invRules) ?? "") : "";
+  const [payCard, setPayCard] = useState<string | null>(null);
+  const finalPay = finalCat === CARD_PAY_CAT ? (payCard ?? suggestCard(desc, num(v), setup.cards, months) ?? "") : "";
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const total = num(v);
@@ -384,7 +457,7 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
       ...(card ? { card } : acc ? { acc } : {}), ...(parcels > 1 ? { parc: [k + 1, parcels] as [number, number] } : {}),
     }));
     const target = finalInv === "__new" ? await createBox(invest, desc, d) : finalInv || undefined;
-    await addItems(months, target ? list.map((x) => ({ ...x, inv: target })) : list);
+    await addItems(months, list.map((x) => ({ ...x, ...(target ? { inv: target } : {}), ...(finalPay && !card ? { payCard: finalPay } : {}) })));
     if (cat && descKey(desc)) await saveSetup({ rules: { ...setup.rules, [descKey(desc)]: cat } });
     if (inv && target && descKey(desc)) await saveSetup({ invRules: { ...(setup.invRules ?? {}), [descKey(desc)]: target } });
     setDesc(""); setV(""); setCat(null); setInv(null); setN("1"); setBusy(false);
@@ -400,11 +473,12 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
         <label className="grow">Descricao<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={entrada ? "Salario" : "Mercado, ifood, aluguel..."} /></label>
         <label>Valor (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="0,00" /></label>
         <label>Categoria<CatSelect value={finalCat} onChange={setCat} /></label>
+        {finalCat === CARD_PAY_CAT && setup.cards.length > 0 && <label>Cartao pago<CardPaySelect value={finalPay} cards={setup.cards} onChange={setPayCard} /></label>}
         {finalCat === INVEST_CAT && <label>{entrada ? "Veio de" : "Foi para"}<InvSelect value={finalInv} desc={desc} invest={invest} out={!entrada} onChange={setInv} /></label>}
         <label>{entrada ? "Entrou em" : "Pago com"}
           <select value={src} onChange={(e) => setSrc(e.target.value)}>
             {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>{entrada ? a.name : `${a.name} (debito / Pix)`}</option>)}
-            {!entrada && finalCat !== INVEST_CAT && setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>Cartao {c.name}</option>)}
+            {!entrada && finalCat !== INVEST_CAT && finalCat !== CARD_PAY_CAT && setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>Cartao {c.name}</option>)}
           </select>
         </label>
         {card && !entrada && <label>Parcelas<input value={n} inputMode="numeric" onChange={(e) => setN(e.target.value)} style={{ width: 70 }} /></label>}
@@ -417,7 +491,7 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
 
 // Importar extrato OFX ou CSV: tudo e lido no seu navegador; so os lancamentos escolhidos sao gravados
 function ImportPanel({ months, setup, invest, onDone }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; onDone: () => void }) {
-  type Row = Raw & { on: boolean; cat: string; tipo: Tipo; inv?: string; dup: "" | "ja importado" | "parece repetido" };
+  type Row = Raw & { on: boolean; cat: string; tipo: Tipo; inv?: string; payCard?: string; dup: "" | "ja importado" | "parece repetido" };
   const [rows, setRows] = useState<Row[]>([]);
   const [file, setFile] = useState("");
   const [err, setErr] = useState("");
@@ -437,9 +511,10 @@ function ImportPanel({ months, setup, invest, onDone }: { months: Record<string,
   const build = (raw: Raw[]): Row[] => raw.map((r) => {
     const { cat, tipo } = categorize(r.desc, r.amount > 0, setup.rules, ownName);
     const dup = exts.has(r.ext) ? "ja importado" as const
-      : all.some((g) => g.d === r.d && Math.abs(g.v - Math.abs(r.amount)) < 0.005 && !g.ext) ? "parece repetido" as const : "" as const;
+      : looksDuplicate(r.d, Math.abs(r.amount), all) ? "parece repetido" as const : "" as const;
     const inv = cat === INVEST_CAT ? suggestInv(r.desc, invest, setup.invRules) : undefined;
-    return { ...r, cat, tipo, inv, dup, on: !dup };
+    const payCard = cat === CARD_PAY_CAT ? suggestCard(r.desc, Math.abs(r.amount), setup.cards, months) : undefined;
+    return { ...r, cat, tipo, inv, payCard, dup, on: !dup };
   });
   const onFile = async (f: File) => {
     setErr("");
@@ -497,6 +572,7 @@ function ImportPanel({ months, setup, invest, onDone }: { months: Record<string,
     }
     await addItems(months, chosen.map((r) => ({
       ...(r.inv && r.cat === INVEST_CAT ? { inv: r.inv } : {}),
+      ...(r.payCard && r.cat === CARD_PAY_CAT && !card ? { payCard: r.payCard } : {}),
       id: newId(), d: r.d, desc: r.desc, v: Math.abs(r.amount), tipo: r.tipo, io: r.amount > 0 ? "in" as const : "out" as const, cat: r.cat, src: "import" as const, ext: r.ext,
       ...(card ? { card } : accId ? { acc: accId } : {}), ...(parcOf(r.desc) ? { parc: parcOf(r.desc) } : {}),
     })));
@@ -549,7 +625,9 @@ function ImportPanel({ months, setup, invest, onDone }: { months: Record<string,
                     <td data-label="Data">{dm(r.d)}</td>
                     <td data-label="Descricao"><span className="cell">{r.desc}{r.dup && <small className="warn">{r.dup}</small>}</span></td>
                     <td data-label="Categoria"><span className="cell">
-                      <CatSelect value={r.cat} onChange={(c) => setRow(i, { cat: c, tipo: tipoOfCat(c) ?? r.tipo, inv: c === INVEST_CAT ? suggestInv(r.desc, invest, setup.invRules) : undefined })} />
+                      <CatSelect value={r.cat} onChange={(c) => setRow(i, { cat: c, tipo: tipoOfCat(c) ?? r.tipo, inv: c === INVEST_CAT ? suggestInv(r.desc, invest, setup.invRules) : undefined,
+                        payCard: c === CARD_PAY_CAT ? suggestCard(r.desc, Math.abs(r.amount), setup.cards, months) : undefined })} />
+                      {r.cat === CARD_PAY_CAT && !card && setup.cards.length > 0 && <CardPaySelect value={r.payCard} cards={setup.cards} onChange={(id) => setRow(i, { payCard: id || undefined })} />}
                       {r.cat === INVEST_CAT && <InvSelect value={r.inv} desc={r.desc} invest={invest} out={r.amount < 0} onChange={async (id) => {
                         const target = id === "__new" ? await createBox(invest, r.desc, r.d) : id || undefined;
                         const key = descKey(r.desc);
@@ -623,10 +701,18 @@ function Cards({ cards, setup }: { cards: { c: Card; st: ReturnType<typeof cardS
             <span className="muted small">fecha dia {c.closeDay}, vence dia {c.dueDay}
               <button className="link" onClick={() => setForm(c)}>editar</button><button className="link" onClick={() => remove(c)}>remover</button></span>
           </div>
+          {st.overdue.map((f) => <p key={f.m} className="small warn">Fatura de {monthLabel(f.m)} vencida em {dm(f.due)}: {brl(f.rest)} sem pagamento lancado</p>)}
           {st.next ? (
-            <p className="small">Proxima fatura: <b>{brl(st.next.v)}</b> vence {dm(st.next.due)}
-              {st.faturas.length > 1 && <span className="muted"> - depois: {st.faturas.slice(1, 4).map((f) => `${monthLabel(f.m)} ${brl(f.v, 0)}`).join(", ")}{st.faturas.length > 4 ? "..." : ""}</span>}</p>
+            <p className="small">Proxima fatura: <b>{brl(st.next.v)}</b> vence {dm(st.next.due)} <span className="muted">({st.next.status === "fechada" ? "fechada" : "ainda aberta"})</span>
+              {(() => {
+                const later = st.faturas.filter((f) => f.status !== "vencida" && f.m > st.next!.m);
+                return later.length ? <span className="muted"> - depois: {later.slice(0, 3).map((f) => `${monthLabel(f.m)} ${brl(f.v, 0)}`).join(", ")}{later.length > 3 ? "..." : ""}</span> : null;
+              })()}</p>
           ) : <p className="muted small">Sem fatura em aberto lancada.</p>}
+          {(() => {
+            const last = [...st.all].reverse().find((f) => f.status === "paga");
+            return last ? <p className="muted small">Ultima paga: {monthLabel(last.m)} ({brl(last.v)})</p> : null;
+          })()}
           {c.limit ? (
             <div className="limit" title={`${brl(st.open)} de ${brl(c.limit)}`}>
               <span className={st.open > c.limit * 0.8 ? "limit-fill high" : "limit-fill"} style={{ width: `${Math.min(100, (st.open / c.limit) * 100)}%` }} />
@@ -635,6 +721,8 @@ function Cards({ cards, setup }: { cards: { c: Card; st: ReturnType<typeof cardS
           ) : st.open > 0 ? <p className="muted small">Em aberto (com parcelas futuras): {brl(st.open)}</p> : null}
         </div>
       )) : !form && <p className="muted small">Cadastre seus cartoes para ver a fatura de cada um e as parcelas que ainda vem.</p>}
+      {cards.length > 0 && <p className="muted small">A divida do cartao baixa quando o pagamento da fatura aparece no extrato da conta (ou na propria fatura).
+        Se pagar antes do vencimento, ja sai da divida no dia.</p>}
     </section>
   );
 }
@@ -755,7 +843,8 @@ function Fixos({ setup }: { setup: GastosSetup }) {
           <button className="primary" type="submit" disabled={!desc.trim() || !(num(v) > 0)}>Adicionar</button>
         </div>
       </form>
-      <p className="muted small">Fixos aparecem em &quot;Ainda a pagar&quot; todo mes ate voce marcar pago ou importar um extrato com o mesmo valor (2% de tolerancia) na mesma categoria.</p>
+      <p className="muted small">Fixos aparecem em &quot;Ainda a pagar&quot; todo mes ate aparecer no mes um gasto com o mesmo valor (2% de tolerancia), em qualquer categoria (o aluguel pago por Pix tambem vale).
+          Use &quot;marcar pago&quot; so se o pagamento nao vai aparecer em nenhum extrato importado.</p>
     </section>
   );
 }

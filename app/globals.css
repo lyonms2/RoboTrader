@@ -423,3 +423,14 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 .accts .acc-name { font-weight: 600; min-width: 110px; }
 .accts li button.link { margin-left: auto; padding: 0; }
 .accts p { margin: 6px 0 0; }
+
+/* Para revisar / Como funciona */
+.review { margin: 12px 0 0; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--g-fiis) 60%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--g-fiis) 7%, transparent); }
+.review ul { margin: 6px 0 0; padding-left: 18px; }
+.review li { margin: 4px 0; }
+.review li button { margin: 0 0 0 8px; }
+.how { margin-top: 12px; }
+.how summary { cursor: pointer; color: var(--accent); }
+.how table { margin-top: 8px; font-size: 12.5px; }
+.how td, .how th { white-space: normal; vertical-align: top; }
+@media (max-width: 600px) { .how table { display: block; overflow-x: auto; } }

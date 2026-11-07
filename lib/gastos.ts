@@ -21,6 +21,7 @@ export type Gasto = {
   io?: "in" | "out"; // entrou ou saiu da conta (importante nos neutros: guardar no cofrinho sai, resgatar entra)
   inv?: string; // id do investimento (aba Investimentos) para onde foi / de onde veio o dinheiro
   acc?: string; // conta (PicPay, Nubank...) por onde passou; sem cartao e sem conta = a primeira conta
+  payCard?: string; // pagamento de fatura feito pela conta: qual cartao foi pago
 };
 // Conta bancaria: saldo conferido numa data (ancora). O saldo em qualquer outro dia sai dos lancamentos
 export type Account = { id: string; name: string; balance?: number; at?: string };
@@ -49,13 +50,17 @@ export const CATS_GASTO = [
   "Educacao", "Lazer e viagem", "Pix e transferencias", "Emprestimos", "Impostos e tarifas", "Outros",
 ];
 export const CATS_RECEITA = ["Salario", "Renda extra", "Rendimentos", "Pix recebido", "Outras entradas"];
-export const CATS_NEUTRO = ["Fatura do cartao", "Investimento", "Transferencia entre contas"];
+// Neutros: o dinheiro so muda de lugar (nao e gasto nem renda). A conta sobe/desce, mas o patrimonio nao muda
+export const CATS_NEUTRO = ["Fatura do cartao", "Investimento", "Compra de cripto", "Venda de cripto", "Transferencia entre contas", "Emprestimo recebido"];
+export const CARD_PAY_CAT = "Fatura do cartao";
+export const TRANSFER_CAT = "Transferencia entre contas";
 export const tipoOfCat = (c: string): Tipo | null =>
   CATS_NEUTRO.includes(c) ? "neutro" : CATS_RECEITA.includes(c) ? "receita" : CATS_GASTO.includes(c) ? "gasto" : null;
 
 // Palavras-chave comuns em extratos brasileiros -> categoria (a primeira que bater)
 const KEYWORDS: [RegExp, string][] = [
   [/pagamento (de )?fatura|pagamento recebido|pgto fatura|fatura cart/, "Fatura do cartao"],
+  [/binance|mercado ?bitcoin|bitso|foxbit|novadax|bitpre[cç]o|coinext|transak|moonpay|banxa|ramp network|coinbase|kraken|\bokx\b|bybit|kucoin|ripio|\bbipa\b|paxos|alchemy pay|onramp|cripto|crypto|bitcoin|\busdt\b|\busdc\b/, "Compra de cripto"],
   [/aplica[cç][aã]o|resgate|\brdb\b|\bcdb\b|tesouro|caixinha|cofrinho|corretora|invest|dinheiro guardado|dinheiro resgatado|porquinho/, "Investimento"],
   [/sal[aá]rio|folha de pag|proventos? de sal/, "Salario"],
   [/rendimento|juros sobre|dividendo/, "Rendimentos"],
@@ -99,6 +104,9 @@ export function categorize(desc: string, entrada: boolean, rules: Record<string,
   for (const [re, cat] of KEYWORDS) {
     if (!re.test(low)) continue;
     const t = tipoOfCat(cat)!;
+    // Dinheiro voltando da cripto = venda; credito de emprestimo na conta = emprestimo recebido (vira divida, nao renda)
+    if (cat === "Compra de cripto") return { cat: entrada ? "Venda de cripto" : cat, tipo: "neutro" };
+    if (cat === "Emprestimos" && entrada) return { cat: "Emprestimo recebido", tipo: "neutro" };
     if (t === "neutro") return { cat, tipo: t };
     if (entrada && t === "gasto") return { cat: /pix|transfer/.test(low) ? "Pix recebido" : "Outras entradas", tipo: "receita" };
     if (!entrada && t === "receita") continue;
@@ -171,8 +179,12 @@ export function avgMonthly(months: Record<string, MonthDoc>, current = monthOf(t
 // Considera pago se ja existe lancamento ligado a ele, ou um gasto com valor parecido (2%) na mesma categoria.
 export function pendingFor(m: string, items: Gasto[], setup: GastosSetup) {
   const used = new Set<string>();
+  // Ja pago se ha lancamento ligado a ele; ou um gasto do mes com o mesmo valor (2%), de preferencia na mesma categoria
+  // (o aluguel pago por Pix costuma cair em "Pix e transferencias", por isso nao exige a categoria)
   const match = (ref: string, v: number, cat: string) => {
-    const hit = items.find((i) => !used.has(i.id) && i.tipo === "gasto" && (i.ref === ref || (i.cat === cat && Math.abs(i.v - v) <= v * 0.02)));
+    const free = items.filter((i) => !used.has(i.id) && i.tipo === "gasto");
+    const hit = free.find((i) => i.ref === ref) ?? free.find((i) => i.cat === cat && Math.abs(i.v - v) <= v * 0.02)
+      ?? free.find((i) => Math.abs(i.v - v) <= v * 0.02);
     if (hit) used.add(hit.id);
     return !!hit;
   };
@@ -378,6 +390,29 @@ export function debts(months: Record<string, MonthDoc>, setup: GastosSetup) {
 }
 
 // Fatura por mes de vencimento + parcelas futuras (que ainda nao apareceram em nenhum extrato)
+// Data em que fecha a fatura que vence no mes fm
+export function closeDateOf(c: Card, fm: string) {
+  return dayIn(c.dueDay > c.closeDay ? fm : addMonths(fm, -1), c.closeDay);
+}
+
+// Pagamentos de um cartao: pela conta (lancamento com payCard) ou pela propria fatura ("Pagamento recebido" com card).
+// O mesmo pagamento visto dos dois lados (mesmo valor, ate 5 dias) conta uma vez so.
+function cardPayments(c: Card, months: Record<string, MonthDoc>) {
+  const list: { d: string; v: number }[] = [];
+  for (const md of Object.values(months))
+    for (const g of md.items) {
+      const isPay = (g.payCard === c.id) || (g.card === c.id && g.tipo === "neutro");
+      if (!isPay) continue;
+      const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
+      if (list.some((x) => Math.abs(x.v - g.v) < 0.01 && days(x.d, g.d) <= 5)) continue;
+      list.push({ d: g.d, v: g.v });
+    }
+  return list.sort((a, b) => a.d.localeCompare(b.d));
+}
+
+// Faturas do cartao: compras por mes de vencimento + parcelas futuras - pagamentos.
+// Cada pagamento abate a fatura fechada mais recente ainda em aberto (pagar antes do vencimento ja tira da divida).
+// Pagamento sem nenhuma fatura acompanhada fechada antes dele e de uma fatura antiga (antes de voce importar): ignorado.
 export function cardStatus(c: Card, months: Record<string, MonthDoc>, today = todayBR()) {
   const fat: Record<string, number> = {};
   const lastParc = new Map<string, Gasto>();
@@ -403,12 +438,24 @@ export function cardStatus(c: Card, months: Record<string, MonthDoc>, today = to
       if (!seenParc.has(`${descKey(g.desc)}|${k}|${g.parc![1]}`)) future[m] = (future[m] ?? 0) + g.v;
     }
   }
-  const due = (m: string) => dayIn(m, c.dueDay);
-  const all = new Set([...Object.keys(fat), ...Object.keys(future)]);
-  const faturas = [...all].sort().map((m) => ({ m, due: due(m), v: (fat[m] ?? 0) + (future[m] ?? 0), futuro: future[m] ?? 0 }))
-    .filter((f) => f.due >= today && f.v > 0.005);
-  const open = faturas.reduce((s, f) => s + f.v, 0);
-  return { faturas, open, next: faturas[0] ?? null };
+  const all = [...new Set([...Object.keys(fat), ...Object.keys(future)])].sort();
+  const list = all.map((m) => ({ m, close: closeDateOf(c, m), due: dayIn(m, c.dueDay), v: (fat[m] ?? 0) + (future[m] ?? 0), futuro: future[m] ?? 0, paid: 0 }));
+  for (const p of cardPayments(c, months)) {
+    let left = p.v;
+    // da fatura fechada mais recente para a mais antiga
+    for (const f of [...list].reverse()) {
+      if (left <= 0.005) break;
+      if (f.close > p.d) continue;
+      const take = Math.min(left, f.v - f.paid);
+      if (take > 0.005) { f.paid += take; left -= take; }
+    }
+  }
+  const faturas = list.map((f) => ({ ...f, rest: Math.max(0, f.v - f.paid), status: f.v - f.paid <= 0.5 ? "paga" as const : f.due < today ? "vencida" as const : f.close <= today ? "fechada" as const : "aberta" as const }))
+    .filter((f) => f.v > 0.005);
+  const pend = faturas.filter((f) => f.status !== "paga");
+  const open = pend.reduce((s, f) => s + f.rest, 0);
+  const overdue = pend.filter((f) => f.status === "vencida");
+  return { faturas: pend.map((f) => ({ ...f, v: f.rest })), all: faturas, open, next: pend.find((f) => f.status !== "vencida") ?? null, overdue };
 }
 
 
@@ -560,3 +607,36 @@ export function invNameFromDesc(desc: string) {
 
 // Dia anterior (AAAA-MM-DD)
 export const prevDay = (d: string) => new Date(Date.parse(`${d}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+
+// Qual cartao um pagamento de fatura pagou: o unico cartao; o nome do cartao na descricao; ou o valor de uma fatura em aberto
+export function suggestCard(desc: string, v: number, cards: Card[], months: Record<string, MonthDoc>) {
+  if (!cards.length) return undefined;
+  if (cards.length === 1) return cards[0].id;
+  const d = plain(desc);
+  const byName = cards.find((c) => plain(c.name).split(" ").some((w) => w.length > 2 && d.includes(w)));
+  if (byName) return byName.id;
+  const byValue = cards.find((c) => cardStatus(c, months).all.some((f) => Math.abs(f.v - v) <= Math.max(1, f.v * 0.01)));
+  return byValue?.id;
+}
+
+// Pix entre suas contas: sem o outro lado (entrada em outra conta cadastrada, mesmo valor, ate 3 dias) o dinheiro
+// sai de uma conta e nao entra em nenhuma
+export function unmatchedTransfers(months: Record<string, MonthDoc>, setup: GastosSetup) {
+  const accounts = accountsOf(setup);
+  const all = Object.values(months).flatMap((md) => md.items).filter((g) => g.cat === TRANSFER_CAT && !g.card);
+  const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
+  const used = new Set<string>();
+  const out: Gasto[] = [];
+  for (const g of all) {
+    if (used.has(g.id)) continue;
+    const other = all.find((x) => x.id !== g.id && !used.has(x.id) && dirOf(x) === -dirOf(g) && Math.abs(x.v - g.v) < 0.01 && days(x.d, g.d) <= 3
+      && accIdOf(x, accounts) !== accIdOf(g, accounts));
+    if (other) { used.add(g.id); used.add(other.id); } else out.push(g);
+  }
+  return out;
+}
+
+// Ja lancado? mesmo valor, ate 3 dias de diferenca, lancado a mao ou por "marcar pago" (sem id de extrato)
+export function looksDuplicate(d: string, v: number, items: Gasto[]) {
+  return items.some((g) => !g.ext && Math.abs(g.v - v) < 0.005 && Math.abs(Date.parse(g.d) - Date.parse(d)) <= 3 * 86_400_000);
+}

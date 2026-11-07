@@ -5,6 +5,7 @@ import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type LighterSy
 import { syncLighter } from "./lighter";
 import { effectiveConfig } from "./positions";
 import { refreshWallet } from "./wallet";
+import { refreshFichas } from "./fichas";
 import { isEvmAddress, walletAddresses } from "./addresses";
 
 const CHART_DAYS = 240;
@@ -132,5 +133,11 @@ export async function runJob({ force }: { force: boolean }) {
     await telegram(`Robo de sinais - sinal EM FORMACAO (o candle ainda nao fechou; pode mudar ate 21:00)\n${forming.join("\n")}`);
   }
   if (official.length || forming.length) await notifyRef.set(notified);
-  return { skipped: false, results, wallet, lighter };
+  let fichas: unknown = null;
+  try {
+    fichas = await refreshFichas({ force: false, strategy: SYMBOLS.map((s) => s.replace("USDT", "")) });
+  } catch (e) {
+    fichas = { error: String(e) };
+  }
+  return { skipped: false, results, wallet, lighter, fichas };
 }

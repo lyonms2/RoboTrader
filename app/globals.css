@@ -123,3 +123,10 @@ label.grow input { max-width: 100%; width: 100%; font-family: ui-monospace, mono
 .ink { color: var(--text); }
 .tag { font-size: 10.5px; border: 1px solid var(--line); color: var(--muted); border-radius: 4px; padding: 0 4px; margin-left: 6px; }
 textarea { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; font: 13px ui-monospace, monospace; width: 100%; resize: vertical; }
+.fichas td { vertical-align: middle; white-space: nowrap; }
+.fichas img.coin { vertical-align: -3px; margin-right: 6px; border-radius: 50%; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+tr.detail td { white-space: normal; background: var(--bg); font-size: 13px; }
+.chip { display: inline-block; font-size: 11px; border: 1px solid var(--line); border-radius: 10px; padding: 0 7px; margin-right: 4px; color: var(--muted); }
+.chip.warn-chip { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }

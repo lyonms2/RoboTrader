@@ -8,10 +8,11 @@ import { performance } from "@/lib/performance";
 import { effectiveConfig } from "@/lib/positions";
 import { isEvmAddress, isSolAddress } from "@/lib/addresses";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
-import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type LighterSyncDoc, type TradeDoc, type WalletDoc, type WalletHistoryDoc } from "@/lib/types";
+import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type FichaDoc, type LighterSyncDoc, type TradeDoc, type WalletDoc, type WalletHistoryDoc } from "@/lib/types";
 import Chart from "./Chart";
 import PerfChart from "./PerfChart";
 import WalletCard from "./WalletCard";
+import FichasCard from "./FichasCard";
 import { usePrices, type Prices } from "./usePrices";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -70,6 +71,7 @@ export default function Page() {
   const [wallet, setWallet] = useState<WalletDoc | null>(null);
   const [walletHistory, setWalletHistory] = useState<WalletHistoryDoc[]>([]);
   const [sync, setSync] = useState<LighterSyncDoc | null>(null);
+  const [fichas, setFichas] = useState<FichaDoc | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showCfg, setShowCfg] = useState(false);
@@ -89,7 +91,8 @@ export default function Page() {
     const u5 = onSnapshot(query(collection(db(), "wallet_history"), orderBy("t"), limitToLast(365)),
       (s) => setWalletHistory(s.docs.map((d) => d.data() as WalletHistoryDoc)), onErr);
     const u6 = onSnapshot(doc(db(), "sync/lighter"), (s) => setSync(s.exists() ? (s.data() as LighterSyncDoc) : null), onErr);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
+    const u7 = onSnapshot(doc(db(), "fichas/main"), (s) => setFichas(s.exists() ? (s.data() as FichaDoc) : null), onErr);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, [user]);
 
   async function refresh() {
@@ -164,6 +167,7 @@ export default function Page() {
       <Summary cfg={eff} latest={latest} prices={prices} sync={cfg.lighter?.enabled ? sync : null} />
       <Performance cfg={eff} latest={latest} trades={trades} prices={prices} />
       <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} user={user} />
+      <FichasCard fichas={fichas} user={user} />
 
       <div className="grid">
         {[...latest].sort((a, b) => a.symbol.localeCompare(b.symbol)).map((l) => (
@@ -417,6 +421,7 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
   useEffect(() => setDraft(cfg), [cfg]);
 
   const [err, setErr] = useState("");
+  const [watchText, setWatchText] = useState((cfg.watchlist ?? []).join(", "));
   const [walletText, setWalletText] = useState((cfg.wallets?.length ? cfg.wallets : cfg.wallet ? [cfg.wallet] : []).join("\n"));
   async function save() {
     const clean = (m: Record<string, number> = {}) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, round8(v)]));
@@ -426,7 +431,9 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
     if (draft.lighter?.enabled && !wallets.some(isEvmAddress)) return setErr("Para importar da Lighter, informe um endereco EVM (0x...).");
     const wallet = wallets.find(isEvmAddress) ?? "";
     await setDoc(doc(db(), "config/main"), {
-      ...draft, wallet, wallets, weights: clean(draft.weights), positions: clean(draft.positions), avgPrice: clean(draft.avgPrice), realized: clean(draft.realized),
+      ...draft, wallet, wallets,
+      watchlist: [...new Set(watchText.split(/[\s,;]+/).map((t) => t.trim().toUpperCase()).filter((t) => /^[A-Z0-9]{2,12}$/.test(t)))],
+      weights: clean(draft.weights), positions: clean(draft.positions), avgPrice: clean(draft.avgPrice), realized: clean(draft.realized),
     });
     onClose();
   }
@@ -462,6 +469,9 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
         <label className="grow">Carteiras on-chain (enderecos publicos, um por linha: EVM 0x... e/ou Solana)
           <textarea rows={3} value={walletText} placeholder={"0x... (Rabby)\n7xKX... (Phantom Solana)"} spellCheck={false}
             onChange={(e) => setWalletText(e.target.value)} />
+        </label>
+        <label className="grow">Tokens extras nas fichas (simbolos separados por virgula, ex.: HYPE, PENDLE, JUP)
+          <input value={watchText} placeholder="HYPE, PENDLE" spellCheck={false} onChange={(e) => setWatchText(e.target.value)} />
         </label>
         <label className="check">
           <input type="checkbox" checked={!!draft.walletPositions} onChange={(e) => setDraft({ ...draft, walletPositions: e.target.checked })} />

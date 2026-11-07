@@ -10,6 +10,7 @@ export type AppConfig = {
   reentry: boolean;
   wallet?: string; // (antigo) um endereco so; agora vale "wallets"
   wallets?: string[]; // enderecos publicos: EVM 0x... (Rabby, Phantom EVM) e Solana (Phantom). So leitura
+  watchlist?: string[]; // simbolos extras para as fichas (ex.: ["HYPE", "PENDLE"])
   walletPositions?: boolean; // posicao da estrategia vem das carteiras (saldo a vista de BTC/ETH/SOL)
   // Importacao automatica da Lighter: posicoes sincronizadas e operacoes desde "since" (ms)
   lighter?: { enabled: boolean; since: number };
@@ -99,3 +100,25 @@ export type WalletDoc = {
 
 // Documento wallet_history/{AAAA-MM-DD}: ultimo retrato do dia, para o grafico de evolucao
 export type WalletHistoryDoc = { t: number; total: number; byClass: Record<WalletItem["cls"], number> };
+
+// Documento fichas/main: ficha de cada token (oferta, avaliacao, receita), gerada pelo servidor
+export type TokenFicha = {
+  id: string; // id da CoinGecko
+  symbol: string;
+  name: string;
+  image: string;
+  price: number;
+  rank: number | null;
+  mcap: number;
+  fdv: number | null;
+  circPct: number | null; // oferta circulante / maxima (ou total)
+  volume: number | null;
+  change30d: number | null;
+  athDrop: number | null; // % abaixo da maxima historica (negativo)
+  revenue30d: number | null; // USD, DefiLlama
+  revenuePrev30d: number | null;
+  pf: number | null; // valor de mercado / receita anualizada (so para tokens de protocolo)
+  kind: "rede" | "token"; // rede: receita = taxas pagas na rede
+  alerts: { level: "warn" | "info"; text: string }[];
+};
+export type FichaDoc = { at: number; items: TokenFicha[]; missing: string[]; errors: string[] };

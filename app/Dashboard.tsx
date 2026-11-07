@@ -10,12 +10,14 @@ import { allocationBlocks, walletNotices } from "@/lib/allocation";
 import { isEvmAddress, isSolAddress, walletAddresses, walletKey } from "@/lib/addresses";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
 import { health, referenceOf } from "@/lib/robotStats";
-import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type FichaDoc, type LighterSyncDoc, type TradeDoc, type WalletDoc, type WalletHistoryDoc } from "@/lib/types";
+import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type FichaDoc, type LighterSyncDoc, type FinanceDoc, type TradeDoc, type WalletDoc, type WalletHistoryDoc } from "@/lib/types";
 import Chart from "./Chart";
 import PerfChart from "./PerfChart";
 import WalletCard from "./WalletCard";
 import FichasCard from "./FichasCard";
 import CandidatesCard from "./CandidatesCard";
+import FinanceCard from "./FinanceCard";
+import { financeSummary } from "@/lib/financeMath";
 import type { CandidatesDoc } from "@/lib/candidates";
 import { usePrices, type Prices } from "./usePrices";
 
@@ -70,7 +72,7 @@ function NumInput({ value, onChange }: { value: number; onChange: (v: number) =>
 // Dados de exemplo para conferir o visual sem login (so usado em paginas de teste locais)
 export type Demo = {
   cfg: AppConfig; latest: LatestDoc[]; trades: (TradeDoc & { id: string })[]; wallet: WalletDoc | null;
-  walletHistory: WalletHistoryDoc[]; fichas: FichaDoc | null; candidates?: CandidatesDoc | null;
+  walletHistory: WalletHistoryDoc[]; fichas: FichaDoc | null; candidates?: CandidatesDoc | null; finance?: FinanceDoc | null;
 };
 
 export default function Dashboard({ demo }: { demo?: Demo }) {
@@ -83,6 +85,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const [sync, setSync] = useState<LighterSyncDoc | null>(null);
   const [fichas, setFichas] = useState<FichaDoc | null>(demo?.fichas ?? null);
   const [candidates, setCandidates] = useState<CandidatesDoc | null>(demo?.candidates ?? null);
+  const [finance, setFinance] = useState<FinanceDoc | null>(demo?.finance ?? null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showCfg, setShowCfg] = useState(false);
@@ -117,13 +120,27 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     const u6 = onSnapshot(doc(db(), "sync/lighter"), (s) => setSync(s.exists() ? (s.data() as LighterSyncDoc) : null), onErr);
     const u7 = onSnapshot(doc(db(), "fichas/main"), (s) => setFichas(s.exists() ? (s.data() as FichaDoc) : null), onErr);
     const u8 = onSnapshot(doc(db(), "candidates/main"), (s) => setCandidates(s.exists() ? (s.data() as CandidatesDoc) : null), onErr);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
+    const u9 = onSnapshot(doc(db(), "finance/main"), (s) => setFinance(s.exists() ? (s.data() as FinanceDoc) : null), onErr);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); };
   }, [user, demo]);
+
+  // Financas (cotacoes, CDI, Tesouro) numa chamada separada: o arquivo do Tesouro e grande e nao pode atrasar os sinais
+  async function refreshFinance() {
+    try {
+      const res = await fetch("/api/finance", { method: "POST", headers: { Authorization: `Bearer ${await user!.getIdToken()}` } });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; errors?: string[] };
+      if (!res.ok) return [`financas: ${body.error ?? `HTTP ${res.status}`}`];
+      return (body.errors ?? []).map((e) => `financas: ${e}`);
+    } catch (e) {
+      return [`financas: ${String(e)}`];
+    }
+  }
 
   async function refresh() {
     setBusy(true);
     setError("");
     setNotice("");
+    const finJob = refreshFinance();
     try {
       const res = await fetch("/api/refresh", { method: "POST", headers: { Authorization: `Bearer ${await user!.getIdToken()}` } });
       if (!res.ok) {
@@ -148,13 +165,14 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       // Le de novo os sinais (alem do tempo real), para mostrar erro de permissao se houver
       const snap = await getDocs(collection(db(), "latest"));
       setLatest(snap.docs.map((d) => d.data() as LatestDoc));
+      const finProblems = await finJob;
       const problems = [
-        body.wallet?.error, ...(body.wallet?.errors ?? []), body.fichas?.error, ...(body.fichas?.errors ?? []),
+        ...finProblems, body.wallet?.error, ...(body.wallet?.errors ?? []), body.fichas?.error, ...(body.fichas?.errors ?? []),
         snap.empty ? `nada foi encontrado em "latest" no projeto ${clientProject}` : undefined,
       ].filter(Boolean);
       setNotice(`Atualizado as ${new Date().toLocaleTimeString("pt-BR")}: sinais` +
         (body.wallet?.total !== undefined ? `, carteiras ($${fmt(body.wallet.total)})` : body.wallet?.reason ? ` (carteiras: ${body.wallet.reason})` : "") +
-        (body.fichas?.count !== undefined ? `, ${body.fichas.count} fichas` : "") + "." +
+        (body.fichas?.count !== undefined ? `, ${body.fichas.count} fichas` : "") + ", financas." +
         (problems.length ? ` Avisos: ${problems.join("; ")}` : ""));
     } catch (e) {
       setError(`Atualizar falhou: ${String(e)}`);
@@ -166,6 +184,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   // Posicao efetiva: lancamentos manuais + conta da Lighter (quando a importacao automatica esta ligada)
   const px = Object.fromEntries(SYMBOLS.map((s) => [s, priceOf(s, latest, prices)?.price ?? 0]));
   const eff = effectiveConfig(cfg, sync, wallet, px);
+  const walletOk = !!wallet && wallet.address === walletKey(walletAddresses(cfg));
 
   if (!firebaseConfigured && !demo)
     return <main className="wrap center"><h1>Robo de Sinais</h1><p className="error">Firebase nao configurado: cadastre as variaveis NEXT_PUBLIC_FIREBASE_* na Vercel e faca Redeploy.</p></main>;
@@ -181,6 +200,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
 
   const tabs = [
     { id: "geral", label: "Visao geral" },
+    { id: "financas", label: "Financas" },
     { id: "sinais", label: "Robo" },
     { id: "carteira", label: "Carteira" },
     { id: "tokens", label: "Tokens" },
@@ -223,7 +243,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         {notice && <p className="banner">{notice}</p>}
 
         {tab === "geral" && (
-          <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas}
+          <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} finance={finance}
             sync={cfg.lighter?.enabled ? sync : null} onTab={setTab} />
         )}
         {tab === "sinais" && (
@@ -237,6 +257,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             <CandidatesCard doc={candidates} />
           </>
         )}
+        {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }} />}
         {tab === "carteira" && <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} />}
         {tab === "tokens" && <FichasCard fichas={fichas} />}
         {tab === "operacoes" && (
@@ -259,11 +280,11 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   );
 }
 
-type TabId = "geral" | "sinais" | "carteira" | "tokens" | "operacoes";
+type TabId = "geral" | "financas" | "sinais" | "carteira" | "tokens" | "operacoes";
 
 // Visao geral: patrimonio, o que fazer hoje, alocacao e posicoes do robo
-function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab }: {
-  cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null;
+function Overview({ cfg, latest, prices, wallet, fichas, finance, sync, onTab }: {
+  cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null; finance: FinanceDoc | null;
   sync: LighterSyncDoc | null; onTab: (t: TabId) => void;
 }) {
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
@@ -317,12 +338,15 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab }: {
   const blocks = total !== null && wallet ? allocationBlocks(wallet, cfg, latest, fichas) : [];
   const alloc = allocOf(cfg);
   const pctOf = (v: number) => (total ? `${fmt((v / total) * 100, 1)}%` : "");
+  const fin = cfg.finance?.length ? financeSummary(cfg.finance, finance, total !== null ? wallet : null, cfg.monthlyCost) : null;
 
   return (
     <>
       <section className="card">
         <div className="kpis">
-          <div><span>Patrimonio</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
+          {fin && <div className="kpi-link" role="button" tabIndex={0} onClick={() => onTab("financas")}><span>Patrimonio total</span><b>R$ {fmt(fin.total)}</b>
+            <small className="muted">cripto + {cfg.finance!.length} investimentos &rsaquo;</small></div>}
+          <div><span>{fin ? "Cripto" : "Patrimonio"}</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
             <small className="muted">{total === null ? "cadastre as carteiras" : `nucleo $${fmt(cfg.capitalUsdt)}`}</small></div>
           <div><span>Lucro aberto (robo)</span><b className={pnlClass(open)}>{signed(open)}</b>
             <small className="muted">{invested > 0 ? `${signed((open / invested) * 100, 1)}% sobre $${fmt(invested)}` : "sem posicao"}</small></div>

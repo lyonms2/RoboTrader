@@ -19,6 +19,24 @@ export type AppConfig = {
   capitalFromWallet?: boolean; // capital = patrimonio das carteiras on-chain (no lugar de capitalUsdt) // posicao da estrategia vem das carteiras (saldo a vista de BTC/ETH/SOL)
   // Importacao automatica da Lighter: posicoes sincronizadas e operacoes desde "since" (ms)
   lighter?: { enabled: boolean; since: number };
+  // Financas fora da cripto (cofrinho, Tesouro, acoes/FIIs, outros), em reais. Lancadas a mao; precos automaticos
+  finance?: FinItem[];
+  monthlyCost?: number; // gasto mensal em R$ (para dizer quantos meses a reserva cobre)
+};
+
+// Investimento fora da cripto. Valores em R$
+export type FinKind = "caixa" | "tesouro" | "acao" | "outro";
+export type FinItem = {
+  id: string;
+  kind: FinKind;
+  name: string; // ex.: "Cofrinho Nubank", "TAEE11"
+  reserva?: boolean; // faz parte da reserva de emergencia
+  // caixa (cofrinho, CDB com liquidez diaria): saldo informado numa data + % do CDI -> rendimento estimado ate hoje
+  balance?: number; balanceAt?: number; cdiPct?: number;
+  title?: string; // tesouro: "Tesouro Selic|01/03/2029" (tipo|vencimento)
+  ticker?: string; // acao/FII/ETF na B3, sem ".SA"
+  qty?: number; avg?: number; // tesouro e acao: quantidade e preco medio por unidade (R$)
+  value?: number; valueAt?: number; // outro: valor informado a mao
 };
 
 // Ativos acompanhados pelo robo (pares do spot da Binance)
@@ -147,3 +165,19 @@ export type Situacao = {
   detail: string;
 };
 export type FichaDoc = { at: number; items: TokenFicha[]; missing: string[]; errors: string[] };
+
+// Documento finance/main: dados publicos para as financas (gravado pelo servidor)
+export type FinQuote = {
+  name: string; price: number; change: number; type: "acao" | "fii" | "etf"; at: number;
+  divs: { t: number; v: number }[]; // proventos por cota (data ex), ultimos 2 anos
+};
+export type TesouroTitle = { name: string; venc: string; pu: number; taxa: number };
+export type FinanceDoc = {
+  at: number;
+  usdbrl: number | null; // dolar (PTAX venda do BC)
+  cdi: { d: string[]; v: number[] }; // CDI diario (% ao dia), datas AAAA-MM-DD
+  ipca12m: number | null; ipcaRef: string | null;
+  tesouro: { date: string; at: number; titles: TesouroTitle[] } | null;
+  quotes: Record<string, FinQuote>;
+  errors: string[];
+};

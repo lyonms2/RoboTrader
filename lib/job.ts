@@ -7,6 +7,7 @@ import { effectiveConfig } from "./positions";
 import { refreshWallet } from "./wallet";
 import { robotStats } from "./robotStats";
 import { refreshCandidates } from "./candidates";
+import { refreshFinance } from "./finance";
 import { refreshFichas } from "./fichas";
 import { isEvmAddress, walletAddresses } from "./addresses";
 
@@ -151,5 +152,14 @@ export async function runJob({ force, fichas: withFichas = true }: { force: bool
       candidates = { error: String(e) };
     }
   }
-  return { skipped: false, results, wallet, lighter, fichas, candidates };
+  // Financas (cotacoes, CDI, Tesouro): pelo agendador, no maximo a cada 6 h
+  let finance: unknown = null;
+  if (withFichas) {
+    try {
+      finance = await refreshFinance({ force: false });
+    } catch (e) {
+      finance = { error: String(e) };
+    }
+  }
+  return { skipped: false, results, wallet, lighter, fichas, candidates, finance };
 }

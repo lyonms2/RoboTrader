@@ -2,11 +2,11 @@
 import { doc, setDoc } from "firebase/firestore";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
-import { INVEST_CAT, accountBalance, cardStatus, debts, invNameFromDesc, linkable, prevDay, suggestInv } from "@/lib/gastos";
+import { INVEST_CAT, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, monthOf, newId, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  dirOf, monthOf, newId, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
   type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 
@@ -136,7 +136,7 @@ export default function GastosCard({ months, setup, invest = [] }: { months: Rec
           <div><span>Ainda a pagar</span><b className={pendingTotal > 0 ? "warn" : ""}>{brl(pendingTotal)}</b>
             <small className="muted">{pending.length ? `${pending.length} fixos/parcelas - previsto ${brl(s.gastos + pendingTotal, 0)}` : "fixos e parcelas em dia"}</small></div>
         </div>
-        <AccountBox months={months} setup={setup} />
+        <AccountsPanel months={months} setup={setup} m={m} />
         <AutoLink months={months} setup={setup} invest={invest} />
         {pending.length > 0 && (
           <ul className="pend small">
@@ -188,10 +188,12 @@ export default function GastosCard({ months, setup, invest = [] }: { months: Rec
               <tbody>
                 {shown.map((g) => {
                   const card = setup.cards.find((c) => c.id === g.card);
+                  const accs = accountsOf(setup);
+                  const accName = !card && accs.length > 1 ? accs.find((a) => a.id === accIdOf(g, accs))?.name : null;
                   return (
                     <tr key={g.id} className={g.tipo === "neutro" ? "neutral" : ""}>
                       <td><span className="cell">{g.desc}<small className="muted">
-                        {[dm(g.d), card ? `cartao ${card.name}` : null, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, g.tipo === "neutro" ? "nao conta nos gastos" : null].filter(Boolean).join(" - ")}
+                        {[dm(g.d), card ? `cartao ${card.name}` : accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, g.tipo === "neutro" ? "nao conta nos gastos" : null].filter(Boolean).join(" - ")}
                       </small></span></td>
                       <td data-label="Categoria"><span className="cell">
                         <CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} />
@@ -278,35 +280,77 @@ function AutoLink({ months, setup, invest }: { months: Record<string, MonthDoc>;
 }
 
 // Saldo em conta: o que sobra (ou falta) dos lancamentos entra no patrimonio como "Conta corrente"
-function AccountBox({ months, setup }: { months: Record<string, MonthDoc>; setup: GastosSetup }) {
-  const acct = accountBalance(months, setup);
-  const [open, setOpen] = useState(false);
-  const [bal, setBal] = useState(setup.account ? fmt(setup.account.balance) : "");
-  const [at, setAt] = useState(setup.account?.at ?? todayBR());
-  const save = async (e: React.FormEvent) => {
+function AccountsPanel({ months, setup, m }: { months: Record<string, MonthDoc>; setup: GastosSetup; m: string }) {
+  const st = accountsStatus(months, setup, m);
+  const [edit, setEdit] = useState<string | null>(null); // id da conta em edicao ou "__new"
+  const accounts = accountsOf(setup);
+  const saveAccounts = (list: Account[]) => saveSetup({ accounts: clean(list), account: null } as Partial<GastosSetup>);
+  const beforeData = !!st.first && `${m}-31` < st.first;
+  const isNow = m === monthOf(todayBR());
+  return (
+    <div className="accts small">
+      <div className="accts-head">
+        <b>Contas</b>
+        {beforeData ? <span className="muted">sem lancamentos neste mes ou antes</span> : (
+          <span>
+            inicio do mes <b>{brl(st.start)}</b> &rarr; {isNow ? "hoje" : "fim do mes"} <b className={st.end < 0 ? "neg" : ""}>{brl(st.end)}</b>
+            <span className={st.end - st.start >= 0 ? "pos" : "neg"}> ({st.end - st.start >= 0 ? "+" : "-"}{brl(Math.abs(st.end - st.start))})</span>
+          </span>
+        )}
+        <button className="link" onClick={() => setEdit("__new")}>+ conta</button>
+      </div>
+      <ul>
+        {st.rows.map((r) => (
+          <li key={r.acc.id}>
+            <span className="acc-name">{r.acc.name}</span>
+            <span><b className={r.now < 0 ? "neg" : ""}>{brl(r.now)}</b> <span className="muted">hoje</span></span>
+            <span className={r.informed ? "muted" : "warn"}>
+              {r.informed ? `saldo conferido em ${dm(r.acc.at!)}; o resto vem dos lancamentos` : r.used ? "sem saldo conferido: so o movimento desde o 1o lancamento" : "sem lancamentos"}
+            </span>
+            <button className="link" onClick={() => setEdit(r.acc.id)}>{r.informed ? "conferir saldo" : "informar saldo"}</button>
+          </li>
+        ))}
+      </ul>
+      {edit && (
+        <AccountForm acc={edit === "__new" ? null : accounts.find((a) => a.id === edit)!} canRemove={edit !== "__new" && accounts.length > 1 && !st.rows.find((r) => r.acc.id === edit)?.used}
+          onCancel={() => setEdit(null)}
+          onRemove={async () => { await saveAccounts(accounts.filter((a) => a.id !== edit)); setEdit(null); }}
+          onSave={async (a) => {
+            const base = setup.accounts?.length ? accounts : accounts.map((x) => ({ ...x }));
+            await saveAccounts(base.some((x) => x.id === a.id) ? base.map((x) => (x.id === a.id ? a : x)) : [...base, a]);
+            setEdit(null);
+          }} />
+      )}
+      <p className="muted">O total das contas entra no patrimonio como &quot;Conta corrente&quot;. Confira o saldo de vez em quando com o app do banco:
+        o site recalcula todos os meses a partir dele.</p>
+    </div>
+  );
+}
+
+function AccountForm({ acc, canRemove, onSave, onCancel, onRemove }: {
+  acc: Account | null; canRemove: boolean; onSave: (a: Account) => void; onCancel: () => void; onRemove: () => void;
+}) {
+  const [name, setName] = useState(acc?.name ?? "");
+  const [bal, setBal] = useState(acc?.balance !== undefined ? fmt(acc.balance) : "");
+  const [at, setAt] = useState(todayBR());
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name.trim()) return;
     const t = bal.trim();
-    await saveSetup({ account: t ? { balance: num(t.replace(/\u2212/g, "-")), at } : null } as unknown as Partial<GastosSetup>);
-    setOpen(false);
+    const { balance: _b, at: _a, ...rest } = acc ?? { id: newId(), name: "" };
+    onSave({ ...rest, id: acc?.id ?? newId(), name: name.trim(), ...(t ? { balance: num(t.replace(/\u2212/g, "-")), at } : {}) });
   };
   return (
-    <div className="acct small">
-      <span>Saldo em conta {acct?.informed ? "" : "(sobra acumulada)"}: <b className={acct && acct.value < 0 ? "neg" : ""}>{acct ? brl(acct.value) : "-"}</b></span>
-      <span className="muted">
-        {acct?.informed ? `saldo de ${dm(setup.account!.at)} + movimentos depois` : acct ? `entradas - saidas da conta desde ${dm(acct.since)}` : "sem lancamentos"}
-        {" "}- entra no patrimonio como Conta corrente
-      </span>
-      {!open && <button className="link" onClick={() => setOpen(true)}>{setup.account ? "atualizar saldo" : "informar saldo atual"}</button>}
-      {open && (
-        <form className="row wrapline acct-form" onSubmit={save}>
-          <label>Saldo somado das contas (R$)<input value={bal} inputMode="decimal" onChange={(e) => setBal(e.target.value)} placeholder="ex.: 1.250,00" /></label>
-          <label>Em<input type="date" value={at} onChange={(e) => setAt(e.target.value)} /></label>
-          <button className="primary" type="submit">Salvar</button>
-          <button className="ghost" type="button" onClick={() => setOpen(false)}>Cancelar</button>
-          <span className="muted">Lancamentos ate essa data ja estao no saldo; os seguintes somam ou descontam. Deixe vazio para voltar a sobra acumulada.</span>
-        </form>
-      )}
-    </div>
+    <form className="row wrapline acct-form" onSubmit={submit}>
+      <label>Conta<input value={name} onChange={(e) => setName(e.target.value)} placeholder="PicPay, Nubank..." /></label>
+      <label>Saldo no app do banco (R$)<input value={bal} inputMode="decimal" onChange={(e) => setBal(e.target.value)} placeholder="ex.: 1.250,00" /></label>
+      <label>No fim do dia<input type="date" value={at} onChange={(e) => setAt(e.target.value)} /></label>
+      <button className="primary" type="submit">Salvar</button>
+      <button className="ghost" type="button" onClick={onCancel}>Cancelar</button>
+      {canRemove && <button className="ghost" type="button" onClick={onRemove}>remover conta</button>}
+      <span className="muted">O saldo vale para o fim do dia escolhido: lancamentos ate esse dia ja estao nele, os seguintes somam ou descontam,
+        e os meses anteriores sao recalculados de tras para frente. Deixe vazio para mostrar so o movimento.</span>
+    </form>
   );
 }
 
@@ -317,7 +361,10 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
   const [v, setV] = useState("");
   const [entrada, setEntrada] = useState(false);
   const [cat, setCat] = useState<string | null>(null);
-  const [card, setCard] = useState("");
+  const accs = accountsOf(setup);
+  const [src, setSrc] = useState(`acc:${accs[0].id}`); // "acc:id" ou "card:id"
+  const card = src.startsWith("card:") ? src.slice(5) : "";
+  const acc = src.startsWith("acc:") ? src.slice(4) : "";
   const [n, setN] = useState("1");
   const [busy, setBusy] = useState(false);
   const auto = categorize(desc, entrada, setup.rules);
@@ -334,7 +381,7 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
     const each = Math.round((total / parcels) * 100) / 100;
     const list: Gasto[] = Array.from({ length: parcels }, (_, k) => ({
       id: newId(), d: dayIn(addMonths(monthOf(d), k), Number(d.slice(8, 10))), desc: desc.trim(), v: each, tipo, io: entrada ? "in" as const : "out" as const, cat: finalCat, src: "manual" as const,
-      ...(card ? { card } : {}), ...(parcels > 1 ? { parc: [k + 1, parcels] as [number, number] } : {}),
+      ...(card ? { card } : acc ? { acc } : {}), ...(parcels > 1 ? { parc: [k + 1, parcels] as [number, number] } : {}),
     }));
     const target = finalInv === "__new" ? await createBox(invest, desc, d) : finalInv || undefined;
     await addItems(months, target ? list.map((x) => ({ ...x, inv: target })) : list);
@@ -346,7 +393,7 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
     <form className="fin-form quick" onSubmit={submit}>
       <div className="kind-pick">
         <button type="button" className={!entrada ? "pill on" : "pill"} onClick={() => { setEntrada(false); setCat(null); }}>Gasto</button>
-        <button type="button" className={entrada ? "pill on" : "pill"} onClick={() => { setEntrada(true); setCat(null); setCard(""); }}>Entrada</button>
+        <button type="button" className={entrada ? "pill on" : "pill"} onClick={() => { setEntrada(true); setCat(null); if (card) setSrc(`acc:${accs[0].id}`); }}>Entrada</button>
       </div>
       <div className="row wrapline">
         <label>Data<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
@@ -354,14 +401,12 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
         <label>Valor (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="0,00" /></label>
         <label>Categoria<CatSelect value={finalCat} onChange={setCat} /></label>
         {finalCat === INVEST_CAT && <label>{entrada ? "Veio de" : "Foi para"}<InvSelect value={finalInv} desc={desc} invest={invest} out={!entrada} onChange={setInv} /></label>}
-        {!entrada && finalCat !== INVEST_CAT && (
-          <label>Pagamento
-            <select value={card} onChange={(e) => setCard(e.target.value)}>
-              <option value="">Debito / Pix / dinheiro</option>
-              {setup.cards.map((c) => <option key={c.id} value={c.id}>Cartao {c.name}</option>)}
-            </select>
-          </label>
-        )}
+        <label>{entrada ? "Entrou em" : "Pago com"}
+          <select value={src} onChange={(e) => setSrc(e.target.value)}>
+            {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>{entrada ? a.name : `${a.name} (debito / Pix)`}</option>)}
+            {!entrada && finalCat !== INVEST_CAT && setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>Cartao {c.name}</option>)}
+          </select>
+        </label>
         {card && !entrada && <label>Parcelas<input value={n} inputMode="numeric" onChange={(e) => setN(e.target.value)} style={{ width: 70 }} /></label>}
         <button type="submit" className="primary" disabled={busy || !desc.trim() || !(num(v) > 0)}>Lancar</button>
       </div>
@@ -376,7 +421,14 @@ function ImportPanel({ months, setup, invest, onDone }: { months: Record<string,
   const [rows, setRows] = useState<Row[]>([]);
   const [file, setFile] = useState("");
   const [err, setErr] = useState("");
-  const [card, setCard] = useState("");
+  const accs = accountsOf(setup);
+  const implicit = !setup.accounts?.length; // ainda so existe a "Conta principal" automatica
+  const [dest, setDest] = useState(`acc:${accs[0].id}`); // "acc:id", "card:id" ou "new"
+  const [newName, setNewName] = useState("");
+  const [bank, setBank] = useState<string | null>(null);
+  const [fileBal, setFileBal] = useState<{ v: number; d: string } | null>(null);
+  const [useBal, setUseBal] = useState(true);
+  const card = dest.startsWith("card:") ? dest.slice(5) : "";
   const [busy, setBusy] = useState(false);
   const [ownName, setOwnName] = useState(setup.ownName ?? "");
   const [info, setInfo] = useState("");
@@ -394,28 +446,59 @@ function ImportPanel({ months, setup, invest, onDone }: { months: Record<string,
     setInfo("");
     setFile(f.name);
     const text = decode(await f.arrayBuffer());
+    const b = guessBank(text, f.name);
+    setBank(b);
+    // Conta de destino: cartao (fatura), a conta com o nome do banco, a "Conta principal" automatica (vira o banco) ou uma nova
+    const pickAccount = (isCard: boolean) => {
+      if (isCard && setup.cards.length) return setDest(`card:${setup.cards[0].id}`);
+      const match = b && accs.find((a) => plain(a.name).includes(plain(b)) || plain(b).includes(plain(a.name)));
+      if (match) return setDest(`acc:${match.id}`);
+      if (implicit || !b) return setDest(`acc:${accs[0].id}`);
+      setNewName(b);
+      setDest("new");
+    };
     if (/<OFX>|OFXHEADER/i.test(text)) {
       const raw = parseOFX(text);
       if (!raw.length) return setErr("Nenhum lancamento encontrado no OFX.");
-      if (/<CREDITCARDMSGSRSV1>/i.test(text) && setup.cards.length) setCard(setup.cards[0].id);
+      const isCard = /<CREDITCARDMSGSRSV1>/i.test(text);
+      pickAccount(isCard);
+      setFileBal(isCard ? null : ofxBalance(text));
       setRows(build(raw));
     } else {
       const r = parseCSV(text);
       if (r.error) return setErr(`CSV: ${r.error}. Se puder, exporte em OFX ou me mande o modelo do banco.`);
       setInfo(r.info ?? "");
-      if (r.cardStyle && setup.cards.length) setCard(setup.cards[0].id);
+      pickAccount(r.cardStyle);
+      setFileBal(r.balance ?? null);
       setRows(build(r.rows));
     }
+    setUseBal(true);
   };
   const invert = () => setRows(build(rows.map((r) => ({ ...r, amount: -r.amount }))));
   const chosen = rows.filter((r) => r.on);
+  // Conta que recebe os lancamentos (cria a nova / renomeia a automatica) e saldo do extrato, se houver
+  const targetId = dest === "new" ? "__new" : dest.startsWith("acc:") ? dest.slice(4) : null;
+  const target = targetId && targetId !== "__new" ? accs.find((a) => a.id === targetId) : null;
+  const renameTo = implicit && target?.id === "main" && bank ? bank : null;
+  const balNewer = !!fileBal && (!target?.at || target.at <= fileBal.d);
   const save = async () => {
     setBusy(true);
     if ((setup.ownName ?? "") !== ownName.trim()) await saveSetup({ ownName: ownName.trim() });
+    let accId: string | null = null;
+    if (targetId) {
+      let list = accs.map((a) => ({ ...a }));
+      if (targetId === "__new") {
+        accId = newId();
+        list.push({ id: accId, name: newName.trim() || bank || "Conta" });
+      } else accId = targetId;
+      if (renameTo) list = list.map((a) => (a.id === accId ? { ...a, name: renameTo } : a));
+      if (fileBal && useBal && (targetId === "__new" || balNewer)) list = list.map((a) => (a.id === accId ? { ...a, balance: fileBal.v, at: fileBal.d } : a));
+      await saveSetup({ accounts: clean(list), account: null } as Partial<GastosSetup>);
+    }
     await addItems(months, chosen.map((r) => ({
       ...(r.inv && r.cat === INVEST_CAT ? { inv: r.inv } : {}),
       id: newId(), d: r.d, desc: r.desc, v: Math.abs(r.amount), tipo: r.tipo, io: r.amount > 0 ? "in" as const : "out" as const, cat: r.cat, src: "import" as const, ext: r.ext,
-      ...(card ? { card } : {}), ...(parcOf(r.desc) ? { parc: parcOf(r.desc) } : {}),
+      ...(card ? { card } : accId ? { acc: accId } : {}), ...(parcOf(r.desc) ? { parc: parcOf(r.desc) } : {}),
     })));
     setBusy(false);
     onDone();
@@ -430,10 +513,12 @@ function ImportPanel({ months, setup, invest, onDone }: { months: Record<string,
       <div className="row wrapline">
         <label className="file-btn">Escolher arquivo<input type="file" accept=".ofx,.csv,.txt,.qfx" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} /></label>
         <span className="muted small">{file}</span>
-        <label>De onde e<select value={card} onChange={(e) => setCard(e.target.value)}>
-          <option value="">Conta (debito / Pix)</option>
-          {setup.cards.map((c) => <option key={c.id} value={c.id}>Fatura do cartao {c.name}</option>)}
+        <label>De onde e<select value={dest} onChange={(e) => setDest(e.target.value)}>
+          {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>Conta {renameTo && a.id === "main" ? renameTo : a.name}</option>)}
+          {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>Fatura do cartao {c.name}</option>)}
+          <option value="new">+ nova conta{bank ? `: ${bank}` : ""}</option>
         </select></label>
+        {dest === "new" && <label>Nome da conta<input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={bank ?? "Nubank, Inter..."} /></label>}
         {rows.length > 0 && <button type="button" className="ghost small-btn" onClick={invert}>inverter sinais</button>}
       </div>
       <div className="row wrapline">
@@ -444,7 +529,14 @@ function ImportPanel({ months, setup, invest, onDone }: { months: Record<string,
       {err && <p className="error small">{err}</p>}
       {rows.length > 0 && (
         <>
-          {info && <p className="muted small">Lido: {info}.</p>}
+          {info && <p className="muted small">Lido: {info}{bank ? ` - banco: ${bank}` : ""}.</p>}
+          {renameTo && <p className="small">A &quot;Conta principal&quot; passa a se chamar <b>{renameTo}</b> (os lancamentos dela continuam la).</p>}
+          {targetId && fileBal && (dest === "new" || balNewer) && (
+            <label className="check small"><input type="checkbox" checked={useBal} onChange={(e) => setUseBal(e.target.checked)} />
+              Usar o saldo do extrato como saldo conferido da conta: <b>{brl(fileBal.v)}</b> no fim de {dm(fileBal.d)}</label>
+          )}
+          {targetId && !fileBal && <p className="muted small">Este arquivo nao traz o saldo. Depois de importar, informe o saldo atual da conta em &quot;Contas&quot;
+            (uma vez so: depois o site recalcula sozinho).</p>}
           <p className="small">{rows.length} lancamentos no arquivo - {chosen.length} marcados: gastos {brl(out)}, entradas {brl(inn)}.
             {rows.some((r) => r.dup) && <span className="muted"> Os ja importados ou repetidos vieram desmarcados.</span>}</p>
           <div className="table-scroll import-list">

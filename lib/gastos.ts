@@ -20,7 +20,10 @@ export type Gasto = {
   ref?: string; // id do fixo / emprestimo que gerou o lancamento
   io?: "in" | "out"; // entrou ou saiu da conta (importante nos neutros: guardar no cofrinho sai, resgatar entra)
   inv?: string; // id do investimento (aba Investimentos) para onde foi / de onde veio o dinheiro
+  acc?: string; // conta (PicPay, Nubank...) por onde passou; sem cartao e sem conta = a primeira conta
 };
+// Conta bancaria: saldo conferido numa data (ancora). O saldo em qualquer outro dia sai dos lancamentos
+export type Account = { id: string; name: string; balance?: number; at?: string };
 export type MonthDoc = { items: Gasto[] };
 export type Card = { id: string; name: string; closeDay: number; dueDay: number; limit?: number };
 export type Loan = {
@@ -35,7 +38,8 @@ export type Fixo = { id: string; desc: string; v: number; cat: string; dia: numb
 export type GastosSetup = {
   cards: Card[]; loans: Loan[]; fixos: Fixo[]; rules: Record<string, string>; categories?: string[];
   ownName?: string; // seu nome como aparece nos extratos: Pix para/de voce mesmo = transferencia entre contas (nao conta)
-  account?: { balance: number; at: string }; // saldo em conta informado (soma das contas) e a data (AAAA-MM-DD)
+  account?: { balance: number; at: string } | null; // (antigo) um saldo so; agora vale "accounts"
+  accounts?: Account[];
   invRules?: Record<string, string>; // descricao -> investimento escolhido (lembrado para as proximas)
 };
 export const EMPTY_SETUP: GastosSetup = { cards: [], loans: [], fixos: [], rules: {} };
@@ -77,7 +81,7 @@ export function descKey(desc: string) {
 }
 
 // Categoria automatica: 1) o que voce ja escolheu para essa descricao, 2) palavras-chave, 3) padrao pelo sinal
-const plain = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+export const plain = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 // Transferencia para/de voce mesmo: o nome completo (ou nome + ultimo sobrenome) aparece na descricao
 export function isOwn(desc: string, ownName?: string) {
   const n = plain(ownName ?? "");
@@ -259,13 +263,14 @@ const isDescH = (h: string) => /^tipo$|tipo de (transacao|lancamento|movimento)|
   && !/forma de pagamento|categoria|^data|valor|saldo/.test(h);
 const isIdH = (h: string) => /identificador|^id$|fitid|reference_id|^documento|docto|n.? ?(do )?documento|^codigo da transacao/.test(h);
 const isTimeH = (h: string) => /^hora|^time|horario/.test(h);
+const isSaldoH = (h: string) => /^saldo|balance/.test(h) && !/anterior|inicial/.test(h);
 const SKIP = /^saldo\b|saldo (anterior|do dia|final|disponivel|em conta|inicial)|^s ?a ?l ?d ?o|^total\b|^lancamentos futuros/i;
 
 function bestSep(line: string) {
   return [";", ",", "\t", "|"].map((c) => [c, splitCsv(line, c).length] as const).sort((a, b) => b[1] - a[1])[0][0];
 }
 
-export function parseCSV(text: string): { rows: Raw[]; cardStyle: boolean; error?: string; info?: string } {
+export function parseCSV(text: string): { rows: Raw[]; cardStyle: boolean; error?: string; info?: string; balance?: { v: number; d: string } } {
   const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
   let hi = -1;
   let sep = ",";
@@ -276,14 +281,14 @@ export function parseCSV(text: string): { rows: Raw[]; cardStyle: boolean; error
     const h = splitCsv(lines[i], sp).map(normH);
     if (h.some(isDateH) && h.some((x) => isValH(x) || isCredH(x) || isDebH(x))) { hi = i; sep = sp; head = h; break; }
   }
-  type Cols = { d: number; v: number; c: number; db: number; desc: number[]; id: number; time: number };
+  type Cols = { d: number; v: number; c: number; db: number; desc: number[]; id: number; time: number; bal?: number };
   let cols: Cols;
   let body: string[];
   if (hi >= 0) {
     const find = (f: (h: string) => boolean) => head.findIndex(f);
     cols = {
       d: find(isDateH), v: find(isValH), c: find(isCredH), db: find(isDebH),
-      desc: head.map((h, i) => (isDescH(h) ? i : -1)).filter((i) => i >= 0), id: find(isIdH), time: find(isTimeH),
+      desc: head.map((h, i) => (isDescH(h) ? i : -1)).filter((i) => i >= 0), id: find(isIdH), time: find(isTimeH), bal: find(isSaldoH),
     };
     body = lines.slice(hi + 1);
   } else {
@@ -309,6 +314,7 @@ export function parseCSV(text: string): { rows: Raw[]; cardStyle: boolean; error
 
   const rows: Raw[] = [];
   const seen: Record<string, number> = {};
+  const bals: { d: string; v: number; i: number }[] = []; // saldo depois de cada linha (quando o banco informa)
   for (const l of body) {
     if (!l.trim()) continue;
     const c = splitCsv(l, sep);
@@ -321,6 +327,10 @@ export function parseCSV(text: string): { rows: Raw[]; cardStyle: boolean; error
       const db = cols.db >= 0 ? toNum(c[cols.db] ?? "") : NaN;
       amount = (Number.isFinite(cr) ? Math.abs(cr) : 0) - (Number.isFinite(db) ? Math.abs(db) : 0);
       if (!Number.isFinite(cr) && !Number.isFinite(db)) amount = NaN;
+    }
+    if (cols.bal !== undefined && cols.bal >= 0) {
+      const b = toNum(c[cols.bal] ?? "");
+      if (Number.isFinite(b) && (c[cols.bal] ?? "").trim()) bals.push({ d, v: b, i: bals.length });
     }
     if (!Number.isFinite(amount) || amount === 0) continue;
     const parts = cols.desc.map((i) => (c[i] ?? "").trim()).filter(Boolean);
@@ -337,7 +347,16 @@ export function parseCSV(text: string): { rows: Raw[]; cardStyle: boolean; error
   const info = `colunas: ${label(cols.d)}, ${cols.desc.map(label).join(" + ")}, ${cols.v >= 0 ? label(cols.v) : [cols.c, cols.db].filter((i) => i >= 0).map(label).join(" / ")}`;
   const isCardHead = hi >= 0 && head.includes("title");
   const cardStyle = isCardHead || (cols.v >= 0 && rows.filter((r) => r.amount > 0).length > rows.length * 0.7);
-  return { rows: cardStyle ? rows.map((r) => ({ ...r, amount: -r.amount })) : rows, cardStyle, info };
+  // Saldo final: o da data mais recente; no mesmo dia, o ultimo na ordem do arquivo (ou o primeiro, se o arquivo vem do mais novo)
+  let balance: { v: number; d: string } | undefined;
+  if (bals.length && !cardStyle) {
+    const desc = bals[0].d > bals[bals.length - 1].d;
+    const maxD = bals.reduce((m, b) => (b.d > m ? b.d : m), "");
+    const same = bals.filter((b) => b.d === maxD);
+    const pick = desc ? same[0] : same[same.length - 1];
+    balance = { v: pick.v, d: pick.d };
+  }
+  return { rows: cardStyle ? rows.map((r) => ({ ...r, amount: -r.amount })) : rows, cardStyle, info, ...(balance ? { balance } : {}) };
 }
 
 // "Parcela 2/10" ou "2/10" no fim da descricao
@@ -402,24 +421,94 @@ export function dirOf(g: Gasto): 1 | -1 {
   return /resgat|recebid|estorno|devolu|reembols/i.test(g.desc) ? 1 : -1;
 }
 
-// Saldo em conta = saldo informado + o que entrou - o que saiu da conta depois daquela data.
-// Conta tudo que passa pela conta (inclusive guardar no cofrinho e pagar a fatura); compras no cartao ficam de fora
-// (elas viram divida da fatura). Sem saldo informado, comeca do zero no primeiro lancamento: e a sobra acumulada.
-export function accountBalance(months: Record<string, MonthDoc>, setup: GastosSetup) {
-  const base = setup.account;
-  let flow = 0;
-  let first = "";
-  let n = 0;
+// Contas cadastradas; sem nenhuma, uma "Conta principal" (com o saldo antigo, se havia)
+export function accountsOf(setup: GastosSetup): Account[] {
+  if (setup.accounts?.length) return setup.accounts;
+  return [{ id: "main", name: "Conta principal", ...(setup.account ? { balance: setup.account.balance, at: setup.account.at } : {}) }];
+}
+export const accIdOf = (g: Gasto, accounts: Account[]) =>
+  g.card ? null : g.acc && accounts.some((a) => a.id === g.acc) ? g.acc : accounts[0].id;
+
+// Saldo da conta no fim do dia "date". Com saldo conferido (B no dia A): para frente B + movimentos depois de A,
+// para tras B - movimentos entre a data e A. Sem saldo conferido: soma dos movimentos desde o primeiro (comeca do zero).
+// Conta tudo que passa pela conta: gastos, entradas, cofrinho, pagamento de fatura. Compras no cartao ficam de fora.
+export function balanceAt(months: Record<string, MonthDoc>, accounts: Account[], accId: string, date: string) {
+  const acc = accounts.find((a) => a.id === accId)!;
+  const anchored = acc.balance !== undefined && !!acc.at;
+  let v = anchored ? acc.balance! : 0;
   for (const md of Object.values(months))
     for (const g of md.items) {
-      if (g.card) continue;
-      if (base && g.d <= base.at) continue;
-      flow += dirOf(g) * g.v;
-      n++;
+      if (accIdOf(g, accounts) !== accId) continue;
+      const f = dirOf(g) * g.v;
+      if (anchored) {
+        if (g.d > acc.at! && g.d <= date) v += f;
+        else if (g.d > date && g.d <= acc.at!) v -= f;
+      } else if (g.d <= date) v += f;
+    }
+  return v;
+}
+
+// Situacao das contas no mes m: saldo no inicio (fim do mes anterior), no fim do mes (ou hoje) e agora
+export function accountsStatus(months: Record<string, MonthDoc>, setup: GastosSetup, m = monthOf(todayBR())) {
+  const accounts = accountsOf(setup);
+  const today = todayBR();
+  const endOfMonth = `${m}-31`;
+  const end = endOfMonth < today ? endOfMonth : today;
+  const startDay = `${addMonths(m, -1)}-31`;
+  const used = new Set<string>();
+  let first = "";
+  for (const md of Object.values(months))
+    for (const g of md.items) {
+      const id = accIdOf(g, accounts);
+      if (!id) continue;
+      used.add(id);
       if (!first || g.d < first) first = g.d;
     }
-  if (!base && !n) return null;
-  return { value: (base?.balance ?? 0) + flow, informed: !!base, since: base?.at ?? first, flow, count: n };
+  const rows = accounts.map((a) => ({
+    acc: a, informed: a.balance !== undefined && !!a.at, used: used.has(a.id),
+    start: balanceAt(months, accounts, a.id, startDay), end: balanceAt(months, accounts, a.id, end), now: balanceAt(months, accounts, a.id, today),
+  }));
+  const sum = (k: "start" | "end" | "now") => rows.reduce((s, r) => s + r[k], 0);
+  return { rows, start: sum("start"), end: sum("end"), now: sum("now"), allInformed: rows.every((r) => r.informed || !r.used), first, endDay: end };
+}
+
+// Total em conta hoje (vai para o patrimonio como "Conta corrente")
+export function accountBalance(months: Record<string, MonthDoc>, setup: GastosSetup) {
+  const st = accountsStatus(months, setup);
+  if (!st.rows.some((r) => r.informed || r.used)) return null;
+  return { value: st.now, informed: st.allInformed, since: st.first, count: st.rows.length };
+}
+
+// ---------- banco e saldo tirados do arquivo ----------
+const BANK_CODES: Record<string, string> = {
+  "380": "PicPay", "260": "Nubank", "077": "Inter", "77": "Inter", "341": "Itau", "237": "Bradesco", "001": "Banco do Brasil", "1": "Banco do Brasil",
+  "104": "Caixa", "033": "Santander", "33": "Santander", "336": "C6 Bank", "323": "Mercado Pago", "290": "PagBank", "212": "Banco Original",
+  "756": "Sicoob", "748": "Sicredi", "655": "Neon", "403": "Cora", "197": "Stone", "208": "BTG", "102": "XP",
+};
+const BANK_NAMES = ["PicPay", "Nubank", "Inter", "Itau", "Bradesco", "Santander", "Caixa", "C6", "Mercado Pago", "PagBank", "Neon", "Sicoob", "Sicredi", "BTG", "XP", "Banco do Brasil"];
+export function guessBank(text: string, fileName = "") {
+  const ofxId = text.match(/<BANKID>\s*0*(\d+)/i)?.[1];
+  if (ofxId && BANK_CODES[ofxId]) return BANK_CODES[ofxId];
+  const org = text.match(/<ORG>([^<\r\n]+)/i)?.[1]?.trim();
+  const hay = plain(`${fileName} ${org ?? ""}`);
+  const byName = BANK_NAMES.find((b) => hay.includes(plain(b)) || (b === "Banco do Brasil" && /\bbb\b/.test(hay)));
+  if (byName) return byName;
+  const head = plain(text.slice(0, 400));
+  if (head.includes("origem / destino")) return "PicPay";
+  if (head.includes("identificador") && head.includes("descri")) return "Nubank";
+  if (/^date,title,amount/.test(head)) return "Nubank";
+  if (head.includes("release_date")) return "Mercado Pago";
+  if (head.includes("titulo") && head.includes("entrada(r$)")) return "C6";
+  if (head.includes("extrato conta corrente") && head.includes("data lancamento")) return "Inter";
+  return null;
+}
+// Saldo final do extrato OFX (LEDGERBAL)
+export function ofxBalance(text: string) {
+  const b = text.match(/<LEDGERBAL>[\s\S]*?<BALAMT>\s*([-\d.,]+)[\s\S]*?<DTASOF>\s*(\d{8})/i);
+  if (!b) return null;
+  const v = Number(b[1].replace(",", "."));
+  const d = toIso(b[2]);
+  return Number.isFinite(v) && d ? { v, d } : null;
 }
 
 // ---------- ligacao com os investimentos ----------

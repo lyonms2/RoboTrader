@@ -26,11 +26,13 @@ const KINDS: { key: FinKind; label: string; hint: string }[] = [
 ];
 
 // Aba Financas: tudo num lugar so (cripto das carteiras + reserva, Tesouro, acoes/FIIs e outros), em reais
-export default function FinanceCard({ cfg, fin, wallet, onChanged }: {
+export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, onTab }: {
   cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; onChanged: () => void;
+  spend: { value: number; months: number } | null; // media de gastos (aba Gastos)
+  debt: { total: number; loans: number; cards: number }; onTab: () => void;
 }) {
   const items = cfg.finance ?? [];
-  const s = financeSummary(items, fin, wallet, cfg.monthlyCost);
+  const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost);
   const [editing, setEditing] = useState<FinItem | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -62,10 +64,10 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged }: {
           <span className="muted small">{fin ? `dados de ${new Date(fin.at).toLocaleString("pt-BR")}` : "indices ainda nao carregados"}</span>
         </div>
         <div className="kpis">
-          <div><span>Patrimonio total</span><b>{brl(s.total)}</b>
-            <small className="muted">{s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluida` : wallet ? "falta o dolar: clique em Atualizar tudo" : "sem carteiras cripto"}</small></div>
+          <div><span>{debt.total > 0 ? "Patrimonio liquido" : "Patrimonio total"}</span><b>{brl(s.total - debt.total)}</b>
+            <small className="muted">{debt.total > 0 ? `${brl(s.total, 0)} em bens - ${brl(debt.total, 0)} de dividas` : s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluida` : wallet ? "falta o dolar: clique em Atualizar tudo" : "sem carteiras cripto"}</small></div>
           <div><span>Reserva de emergencia</span><b>{brl(s.reserve)}</b>
-            <small className="muted">{s.reserveMonths !== null ? `cobre ${fmt(s.reserveMonths, 1)} meses de gastos` : "informe o gasto mensal abaixo"}</small></div>
+            <small className="muted">{s.reserveMonths !== null ? `cobre ${fmt(s.reserveMonths, 1)} meses de gastos` : "informe o gasto mensal abaixo"}{spend ? ` (media de ${spend.months} ${spend.months > 1 ? "meses" : "mes"})` : ""}</small></div>
           <div><span>Rende por mes (estimado)</span><b>{brl(s.monthly)}</b>
             <small className="muted">{s.dividends > 0 ? `${brl(s.dividends)} de proventos` : "juros + proventos, antes de IR"}</small></div>
           <div><span>Lucro / prejuizo</span><b className={pnlClass(s.gain)}>{s.cost > 0 ? signed(s.gain) : "-"}</b>
@@ -75,7 +77,10 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged }: {
           {cdi !== null && <span>CDI {pctS(cdi, 2)} ao ano</span>}
           {fin?.ipca12m != null && <span>IPCA 12 m {pctS(fin.ipca12m, 2)} ({fin.ipcaRef})</span>}
           {fin?.usdbrl && <span>Dolar R$ {fmt(fin.usdbrl, 4)} (PTAX)</span>}
-          <MonthlyCost value={cfg.monthlyCost} />
+          {spend
+            ? <span>Gasto medio {brl(spend.value, 0)}/mes <button className="link" onClick={onTab}>ver gastos</button></span>
+            : <MonthlyCost value={cfg.monthlyCost} />}
+          {debt.total > 0 && <span>Dividas: {debt.loans > 0 ? `emprestimos ${brl(debt.loans, 0)}` : ""}{debt.loans > 0 && debt.cards > 0 ? ", " : ""}{debt.cards > 0 ? `cartoes ${brl(debt.cards, 0)}` : ""}</span>}
         </p>
         <FinBar byGroup={s.byGroup} />
         {(notices.length > 0 || (fin?.errors.length ?? 0) > 0) && (
@@ -203,7 +208,7 @@ function ItemForm({ initial, fin, onSave, onCancel }: {
         ))}
       </div>
       <p className="muted small">{KINDS.find((k) => k.key === kind)!.hint}</p>
-      <div className="row wrap">
+      <div className="row wrapline">
         {(kind === "caixa" || kind === "outro") && (
           <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "caixa" ? "Cofrinho do banco" : "Previdencia"} /></label>
         )}

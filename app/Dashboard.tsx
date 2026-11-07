@@ -1,6 +1,6 @@
 "use client";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
-import { addDoc, collection, doc, getDocs, limitToLast, onSnapshot, orderBy, query, setDoc, writeBatch } from "firebase/firestore";
+import { addDoc, collection, doc, documentId, getDocs, limitToLast, onSnapshot, orderBy, query, setDoc, where, writeBatch } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { applyTrade, rebuild } from "@/lib/ledger";
@@ -17,6 +17,8 @@ import WalletCard from "./WalletCard";
 import FichasCard from "./FichasCard";
 import CandidatesCard from "./CandidatesCard";
 import FinanceCard from "./FinanceCard";
+import GastosCard, { debts } from "./GastosCard";
+import { EMPTY_SETUP, avgMonthly, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import { financeSummary } from "@/lib/financeMath";
 import type { CandidatesDoc } from "@/lib/candidates";
 import { usePrices, type Prices } from "./usePrices";
@@ -73,6 +75,7 @@ function NumInput({ value, onChange }: { value: number; onChange: (v: number) =>
 export type Demo = {
   cfg: AppConfig; latest: LatestDoc[]; trades: (TradeDoc & { id: string })[]; wallet: WalletDoc | null;
   walletHistory: WalletHistoryDoc[]; fichas: FichaDoc | null; candidates?: CandidatesDoc | null; finance?: FinanceDoc | null;
+  months?: Record<string, MonthDoc>; setup?: GastosSetup;
 };
 
 export default function Dashboard({ demo }: { demo?: Demo }) {
@@ -86,6 +89,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const [fichas, setFichas] = useState<FichaDoc | null>(demo?.fichas ?? null);
   const [candidates, setCandidates] = useState<CandidatesDoc | null>(demo?.candidates ?? null);
   const [finance, setFinance] = useState<FinanceDoc | null>(demo?.finance ?? null);
+  const [months, setMonths] = useState<Record<string, MonthDoc>>(demo?.months ?? {});
+  const [gSetup, setGSetup] = useState<GastosSetup>(demo?.setup ?? EMPTY_SETUP);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showCfg, setShowCfg] = useState(false);
@@ -121,7 +126,18 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     const u7 = onSnapshot(doc(db(), "fichas/main"), (s) => setFichas(s.exists() ? (s.data() as FichaDoc) : null), onErr);
     const u8 = onSnapshot(doc(db(), "candidates/main"), (s) => setCandidates(s.exists() ? (s.data() as CandidatesDoc) : null), onErr);
     const u9 = onSnapshot(doc(db(), "finance/main"), (s) => setFinance(s.exists() ? (s.data() as FinanceDoc) : null), onErr);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); };
+    // Gastos: config/gastos-AAAA-MM (um por mes) e config/gastos-setup
+    const u10 = onSnapshot(query(collection(db(), "config"), where(documentId(), ">=", "gastos-"), where(documentId(), "<", "gastos-\uf8ff")), (s) => {
+      const ms: Record<string, MonthDoc> = {};
+      let st: GastosSetup = EMPTY_SETUP;
+      for (const d of s.docs) {
+        if (d.id === "gastos-setup") st = { ...EMPTY_SETUP, ...(d.data() as GastosSetup) };
+        else ms[d.id.slice(7)] = { items: (d.data() as MonthDoc).items ?? [] };
+      }
+      setMonths(ms);
+      setGSetup(st);
+    }, onErr);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); };
   }, [user, demo]);
 
   // Financas (cotacoes, CDI, Tesouro) numa chamada separada: o arquivo do Tesouro e grande e nao pode atrasar os sinais
@@ -185,6 +201,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const px = Object.fromEntries(SYMBOLS.map((s) => [s, priceOf(s, latest, prices)?.price ?? 0]));
   const eff = effectiveConfig(cfg, sync, wallet, px);
   const walletOk = !!wallet && wallet.address === walletKey(walletAddresses(cfg));
+  const spend = avgMonthly(months);
+  const debt = debts(months, gSetup);
 
   if (!firebaseConfigured && !demo)
     return <main className="wrap center"><h1>Robo de Sinais</h1><p className="error">Firebase nao configurado: cadastre as variaveis NEXT_PUBLIC_FIREBASE_* na Vercel e faca Redeploy.</p></main>;
@@ -201,6 +219,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const tabs = [
     { id: "geral", label: "Visao geral" },
     { id: "financas", label: "Financas" },
+    { id: "gastos", label: "Gastos" },
     { id: "sinais", label: "Robo" },
     { id: "carteira", label: "Carteira" },
     { id: "tokens", label: "Tokens" },
@@ -243,7 +262,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         {notice && <p className="banner">{notice}</p>}
 
         {tab === "geral" && (
-          <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} finance={finance}
+          <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} finance={finance} spend={spend} debt={debt.total}
             sync={cfg.lighter?.enabled ? sync : null} onTab={setTab} />
         )}
         {tab === "sinais" && (
@@ -257,7 +276,9 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             <CandidatesCard doc={candidates} />
           </>
         )}
-        {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }} />}
+        {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} onTab={() => setTab("gastos")}
+          onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }} />}
+        {tab === "gastos" && <GastosCard months={months} setup={gSetup} />}
         {tab === "carteira" && <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} />}
         {tab === "tokens" && <FichasCard fichas={fichas} />}
         {tab === "operacoes" && (
@@ -280,11 +301,12 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   );
 }
 
-type TabId = "geral" | "financas" | "sinais" | "carteira" | "tokens" | "operacoes";
+type TabId = "geral" | "financas" | "gastos" | "sinais" | "carteira" | "tokens" | "operacoes";
 
 // Visao geral: patrimonio, o que fazer hoje, alocacao e posicoes do robo
-function Overview({ cfg, latest, prices, wallet, fichas, finance, sync, onTab }: {
+function Overview({ cfg, latest, prices, wallet, fichas, finance, spend, debt, sync, onTab }: {
   cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null; finance: FinanceDoc | null;
+  spend: { value: number } | null; debt: number;
   sync: LighterSyncDoc | null; onTab: (t: TabId) => void;
 }) {
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
@@ -338,14 +360,14 @@ function Overview({ cfg, latest, prices, wallet, fichas, finance, sync, onTab }:
   const blocks = total !== null && wallet ? allocationBlocks(wallet, cfg, latest, fichas) : [];
   const alloc = allocOf(cfg);
   const pctOf = (v: number) => (total ? `${fmt((v / total) * 100, 1)}%` : "");
-  const fin = cfg.finance?.length ? financeSummary(cfg.finance, finance, total !== null ? wallet : null, cfg.monthlyCost) : null;
+  const fin = cfg.finance?.length ? financeSummary(cfg.finance, finance, total !== null ? wallet : null, spend?.value ?? cfg.monthlyCost) : null;
 
   return (
     <>
       <section className="card">
         <div className="kpis">
-          {fin && <div className="kpi-link" role="button" tabIndex={0} onClick={() => onTab("financas")}><span>Patrimonio total</span><b>R$ {fmt(fin.total)}</b>
-            <small className="muted">cripto + {cfg.finance!.length} investimentos &rsaquo;</small></div>}
+          {fin && <div className="kpi-link" role="button" tabIndex={0} onClick={() => onTab("financas")}><span>{debt > 0 ? "Patrimonio liquido" : "Patrimonio total"}</span><b>R$ {fmt(fin.total - debt)}</b>
+            <small className="muted">{debt > 0 ? `descontadas dividas de R$ ${fmt(debt, 0)}` : `cripto + ${cfg.finance!.length} investimentos`} &rsaquo;</small></div>}
           <div><span>{fin ? "Cripto" : "Patrimonio"}</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
             <small className="muted">{total === null ? "cadastre as carteiras" : `nucleo $${fmt(cfg.capitalUsdt)}`}</small></div>
           <div><span>Lucro aberto (robo)</span><b className={pnlClass(open)}>{signed(open)}</b>

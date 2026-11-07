@@ -28,7 +28,10 @@ export type Loan = {
   rate?: number; // juros % ao mes (opcional: deixa o saldo devedor mais certo)
 };
 export type Fixo = { id: string; desc: string; v: number; cat: string; dia: number; card?: string };
-export type GastosSetup = { cards: Card[]; loans: Loan[]; fixos: Fixo[]; rules: Record<string, string>; categories?: string[] };
+export type GastosSetup = {
+  cards: Card[]; loans: Loan[]; fixos: Fixo[]; rules: Record<string, string>; categories?: string[];
+  ownName?: string; // seu nome como aparece nos extratos: Pix para/de voce mesmo = transferencia entre contas (nao conta)
+};
 export const EMPTY_SETUP: GastosSetup = { cards: [], loans: [], fixos: [], rules: {} };
 
 export const CATS_GASTO = [
@@ -43,17 +46,17 @@ export const tipoOfCat = (c: string): Tipo | null =>
 // Palavras-chave comuns em extratos brasileiros -> categoria (a primeira que bater)
 const KEYWORDS: [RegExp, string][] = [
   [/pagamento (de )?fatura|pagamento recebido|pgto fatura|fatura cart/, "Fatura do cartao"],
-  [/aplica[cç][aã]o|resgate|\brdb\b|\bcdb\b|tesouro|caixinha|cofrinho|corretora|invest/, "Investimento"],
+  [/aplica[cç][aã]o|resgate|\brdb\b|\bcdb\b|tesouro|caixinha|cofrinho|corretora|invest|dinheiro guardado|dinheiro resgatado|porquinho/, "Investimento"],
   [/sal[aá]rio|folha de pag|proventos? de sal/, "Salario"],
   [/rendimento|juros sobre|dividendo/, "Rendimentos"],
-  [/ifood|rappi|restaurante|lanchonete|padaria|burger|mc ?donald|pizza|sushi|churrasc|\bbar\b|cafe|cafeteria|delivery/, "Alimentacao"],
-  [/supermerc|mercado(?! ?livre|pago)|atacad|assa[ií]|carrefour|p[aã]o de a[cç]|hortifruti|a[cç]ougue|sacol[aã]o|dia %|\bextra\b/, "Mercado"],
+  [/ifood|rappi|restaurante|lanchonete|padaria|burger|mc ?donald|pizza|sushi|churrasc|\bbar\b|cafe|cafeteria|delivery|a[cç]a[ií]|sorvet|lanche|pastel|hamburg|food/, "Alimentacao"],
+  [/supermerc|mercado(?! ?(livre|pago))|atacad|assa[ií]|carrefour|p[aã]o de a[cç]|hortifruti|a[cç]ougue|sacol[aã]o|dia %|\bextra\b/, "Mercado"],
   [/uber|\b99 ?(app|pop|taxi)?\b|posto|combust|shell|ipiranga|petrobras|estaciona|sem parar|conectcar|ped[aá]gio|metr[oô]|[oô]nibus|bilhete [uú]nico|recarga bu/, "Transporte"],
   [/aluguel|condom[ií]nio|imobili[aá]ria/, "Moradia"],
-  [/enel|cemig|copel|light s|celesc|coelba|energia|sabesp|copasa|sanepar|[aá]gua e esgoto|comg[aá]s|\bg[aá]s\b|vivo|claro|\btim\b|\boi\b|internet|telefon/, "Contas (luz, agua, internet)"],
+  [/enel|cemig|copel|light s|celesc|coelba|energia|sabesp|copasa|sanepar|[aá]gua e esgoto|comg[aá]s|\bg[aá]s\b|vivo|claro|\btim\b|\boi\b|internet|telefon|telecom|fibra/, "Contas (luz, agua, internet)"],
   [/netflix|spotify|prime video|amazon prime|disney|hbo|\bmax\b|globoplay|youtube|apple\.com|icloud|google (one|storage)|chatgpt|openai|deezer|paramount/, "Assinaturas"],
-  [/farm[aá]cia|drogaria|droga ?raia|drogasil|pague menos|panvel|hospital|cl[ií]nica|laborat|unimed|amil|hapvida|odonto|m[eé]dic|dentista|psic/, "Saude"],
-  [/amazon|mercado ?livre|mercadolivre|shopee|magalu|magazine luiza|americanas|aliexpress|shein|renner|riachuelo|c&a|centauro|netshoes|kabum/, "Compras"],
+  [/farm[aá]cia|drogaria|droga ?raia|drogasil|pague menos|panvel|hospital|cl[ií]nica|laborat|unimed|amil|hapvida|odonto|m[eé]dic|dentista|psic|academia|smart ?fit|bluefit|crossfit|gym\b/, "Saude"],
+  [/amazon|mercado ?livre|mercadolivre|shopee|magalu|magazine luiza|americanas|aliexpress|shein|renner|riachuelo|c&a|centauro|netshoes|kabum|madeira ?madeira|casas bahia|leroy|tok ?stok|temu/, "Compras"],
   [/escola|col[eé]gio|curso|faculdade|universidade|udemy|alura|livraria|mensalidade/, "Educacao"],
   [/cinema|ingresso|steam|playstation|xbox|nintendo|hotel|airbnb|booking|latam|\bgol\b|azul linhas|decolar|viagem/, "Lazer e viagem"],
   [/\biof\b|tarifa|anuidade|juros|multa|ipva|iptu|darf|imposto|taxa/, "Impostos e tarifas"],
@@ -68,7 +71,18 @@ export function descKey(desc: string) {
 }
 
 // Categoria automatica: 1) o que voce ja escolheu para essa descricao, 2) palavras-chave, 3) padrao pelo sinal
-export function categorize(desc: string, entrada: boolean, rules: Record<string, string>): { cat: string; tipo: Tipo } {
+const plain = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+// Transferencia para/de voce mesmo: o nome completo (ou nome + ultimo sobrenome) aparece na descricao
+export function isOwn(desc: string, ownName?: string) {
+  const n = plain(ownName ?? "");
+  if (n.split(" ").length < 2) return false;
+  const d = plain(desc);
+  const w = n.split(" ");
+  return d.includes(n) || d.includes(`${w[0]} ${w[w.length - 1]}`);
+}
+
+export function categorize(desc: string, entrada: boolean, rules: Record<string, string>, ownName?: string): { cat: string; tipo: Tipo } {
+  if (isOwn(desc, ownName) && /pix|transf|\bted\b|\bdoc\b/i.test(desc)) return { cat: "Transferencia entre contas", tipo: "neutro" };
   const learned = rules[descKey(desc)];
   if (learned && tipoOfCat(learned)) return { cat: learned, tipo: tipoOfCat(learned)! };
   const low = desc.toLowerCase();
@@ -163,15 +177,27 @@ export function pendingFor(m: string, items: Gasto[], setup: GastosSetup) {
 
 // ---------- importacao de extrato ----------
 export type Raw = { d: string; desc: string; amount: number; ext: string }; // amount < 0 = saida
-const toNum = (s: string) => {
-  let t = s.replace(/[\sR$"]/g, "");
-  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
-  return Number(t);
-};
+// Valor em qualquer formato de banco: "-45.90", "−R$ 1.000,00" (sinal tipografico), "+R$ 2.915,14", "(12,50)", "12,50-", "12,50 D"
+export function toNum(raw: string) {
+  let t = raw.trim().replace(/[\u2212\u2013\u2014]/g, "-").replace(/R\$/gi, "").replace(/[\s"'\u00a0]/g, "");
+  if (!t) return NaN;
+  let neg = false;
+  if (/^\(.*\)$/.test(t)) { neg = true; t = t.slice(1, -1); }
+  if (/[DC]$/i.test(t)) { neg = /D$/i.test(t); t = t.slice(0, -1); }
+  if (t.endsWith("-")) { neg = true; t = t.slice(0, -1); }
+  if (t.startsWith("+")) t = t.slice(1);
+  if (t.startsWith("-")) { neg = !neg; t = t.slice(1); }
+  if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  else if (t.includes(",")) t = t.replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  if (!/^\d*\.?\d+$/.test(t)) return NaN;
+  const v = Number(t);
+  return neg ? -v : v;
+}
 const toIso = (s: string) => {
   const t = s.trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
-  const m = t.match(/^(\d{2})\/(\d{2})\/(\d{2,4})/);
+  const m = t.match(/^(\d{2})[/.-](\d{2})[/.-](\d{2,4})/);
   if (m) return `${m[3].length === 2 ? `20${m[3]}` : m[3]}-${m[2]}-${m[1]}`;
   if (/^\d{8}/.test(t)) return `${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)}`;
   return "";
@@ -214,33 +240,98 @@ function splitCsv(line: string, sep: string) {
   return out.map((s) => s.trim());
 }
 
-// CSV: Nubank conta (Data,Valor,Identificador,Descricao), Nubank cartao (date,title,amount) e outros com cabecalho parecido.
+// CSV de qualquer banco: acha a linha de cabecalho (pode ter texto antes), as colunas de data, valor (ou credito/debito),
+// descricao (juntando tipo + origem/destino + historico...) e id. Sem cabecalho, deduz as colunas pelo conteudo.
+// Modelos testados: PicPay, Nubank conta e cartao, Inter, Itau, Bradesco, Santander, BB, Caixa, C6, Mercado Pago.
 // cardStyle = valores positivos sao compras (fatura de cartao); nesse caso o sinal e invertido.
-export function parseCSV(text: string): { rows: Raw[]; cardStyle: boolean; error?: string } {
-  const lines = text.replace(/^﻿/, "").split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return { rows: [], cardStyle: false, error: "arquivo vazio" };
-  const sep = (lines[0].match(/;/g)?.length ?? 0) > (lines[0].match(/,/g)?.length ?? 0) ? ";" : ",";
-  const head = splitCsv(lines[0], sep).map((h) => h.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
-  const find = (re: RegExp) => head.findIndex((h) => re.test(h));
-  const iD = find(/^data|date/);
-  const iV = find(/valor|amount|value|quantia/);
-  const iDesc = find(/descri|title|historico|lancamento|estabelecimento|memo/);
-  const iId = find(/identificador|^id$|fitid/);
-  if (iD < 0 || iV < 0 || iDesc < 0) return { rows: [], cardStyle: false, error: "nao encontrei as colunas de data, valor e descricao no cabecalho" };
+const normH = (h: string) => h.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/["']/g, "").replace(/\s+/g, " ").trim();
+const isDateH = (h: string) => /^(data|date|dt|dia)\b|data (do |de )?(lancamento|movimento|transacao|compra)|release_date|^data$/.test(h) && !/venc/.test(h);
+const isValH = (h: string) => /^valor|amount|^value|quantia|net_amount|^montante|^vlr/.test(h) && !/saldo|balance|original|dolar|usd|cotacao/.test(h);
+const isCredH = (h: string) => /^credito|^creditos|^entrada|^entradas|\(\+\)|^receita/.test(h) && !/forma|cartao/.test(h);
+const isDebH = (h: string) => /^debito|^debitos|^saida|^saidas|\(-\)|^despesa/.test(h) && !/forma|cartao/.test(h);
+const isDescH = (h: string) => /^tipo$|tipo de (transacao|lancamento|movimento)|transaction_type|^lancamento|historico|descri|title|titulo|estabelecimento|origem|destino|favorecido|beneficiario|contraparte|^memo|detalhe|^nome|identificacao/.test(h)
+  && !/forma de pagamento|categoria|^data|valor|saldo/.test(h);
+const isIdH = (h: string) => /identificador|^id$|fitid|reference_id|^documento|docto|n.? ?(do )?documento|^codigo da transacao/.test(h);
+const isTimeH = (h: string) => /^hora|^time|horario/.test(h);
+const SKIP = /^saldo\b|saldo (anterior|do dia|final|disponivel|em conta|inicial)|^s ?a ?l ?d ?o|^total\b|^lancamentos futuros/i;
+
+function bestSep(line: string) {
+  return [";", ",", "\t", "|"].map((c) => [c, splitCsv(line, c).length] as const).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+export function parseCSV(text: string): { rows: Raw[]; cardStyle: boolean; error?: string; info?: string } {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
+  let hi = -1;
+  let sep = ",";
+  let head: string[] = [];
+  for (let i = 0; i < Math.min(lines.length, 40); i++) {
+    if (!lines[i].trim()) continue;
+    const sp = bestSep(lines[i]);
+    const h = splitCsv(lines[i], sp).map(normH);
+    if (h.some(isDateH) && h.some((x) => isValH(x) || isCredH(x) || isDebH(x))) { hi = i; sep = sp; head = h; break; }
+  }
+  type Cols = { d: number; v: number; c: number; db: number; desc: number[]; id: number; time: number };
+  let cols: Cols;
+  let body: string[];
+  if (hi >= 0) {
+    const find = (f: (h: string) => boolean) => head.findIndex(f);
+    cols = {
+      d: find(isDateH), v: find(isValH), c: find(isCredH), db: find(isDebH),
+      desc: head.map((h, i) => (isDescH(h) ? i : -1)).filter((i) => i >= 0), id: find(isIdH), time: find(isTimeH),
+    };
+    body = lines.slice(hi + 1);
+  } else {
+    // Sem cabecalho: coluna com data, coluna com numero (a ultima que parece valor) e o texto mais longo como descricao
+    const data = lines.filter((l) => l.trim()).slice(0, 50);
+    if (!data.length) return { rows: [], cardStyle: false, error: "arquivo vazio" };
+    sep = bestSep(data[0]);
+    const grid = data.map((l) => splitCsv(l, sep));
+    const n = Math.max(...grid.map((r) => r.length));
+    const share = (f: (x: string) => boolean, i: number) => grid.filter((r) => r[i] !== undefined && f(r[i])).length / grid.length;
+    const idx = Array.from({ length: n }, (_, i) => i);
+    const d = idx.find((i) => share((x) => !!toIso(x), i) > 0.6) ?? -1;
+    const nums = idx.filter((i) => i !== d && share((x) => Number.isFinite(toNum(x)) && /\d[.,]\d{2}\b/.test(x), i) > 0.6);
+    const descs = idx.filter((i) => i !== d && !nums.includes(i) && share((x) => /[a-z]{3}/i.test(x), i) > 0.5);
+    if (d < 0 || !nums.length || !descs.length)
+      return { rows: [], cardStyle: false, error: "nao reconheci o formato (faltou achar as colunas de data, valor e descricao)" };
+    // Com mais de uma coluna numerica, a ultima costuma ser o saldo: usa a primeira
+    cols = { d, v: nums[0], c: -1, db: -1, desc: descs, id: -1, time: -1 };
+    body = data;
+  }
+  if (cols.d < 0 || (cols.v < 0 && cols.c < 0 && cols.db < 0))
+    return { rows: [], cardStyle: false, error: "nao encontrei as colunas de data e valor" };
+
   const rows: Raw[] = [];
   const seen: Record<string, number> = {};
-  for (const l of lines.slice(1)) {
+  for (const l of body) {
+    if (!l.trim()) continue;
     const c = splitCsv(l, sep);
-    const d = toIso(c[iD] ?? "");
-    const amount = toNum(c[iV] ?? "");
-    const desc = c[iDesc] || "(sem descricao)";
-    if (!d || !Number.isFinite(amount)) continue;
-    const base = iId >= 0 && c[iId] ? c[iId] : `${d}|${desc}|${amount}`;
+    const d = toIso(c[cols.d] ?? "");
+    if (!d) continue;
+    let amount: number;
+    if (cols.v >= 0) amount = toNum(c[cols.v] ?? "");
+    else {
+      const cr = cols.c >= 0 ? toNum(c[cols.c] ?? "") : NaN;
+      const db = cols.db >= 0 ? toNum(c[cols.db] ?? "") : NaN;
+      amount = (Number.isFinite(cr) ? Math.abs(cr) : 0) - (Number.isFinite(db) ? Math.abs(db) : 0);
+      if (!Number.isFinite(cr) && !Number.isFinite(db)) amount = NaN;
+    }
+    if (!Number.isFinite(amount) || amount === 0) continue;
+    const parts = cols.desc.map((i) => (c[i] ?? "").trim()).filter(Boolean);
+    const desc = [...new Set(parts)].join(" - ") || "(sem descricao)";
+    if (SKIP.test(desc)) continue;
+    const id = cols.id >= 0 ? (c[cols.id] ?? "").trim() : "";
+    const time = cols.time >= 0 ? (c[cols.time] ?? "").trim() : "";
+    const base = id.length >= 8 ? id : `${d}${time ? ` ${time}` : ""}|${desc}|${amount}${id ? `|${id}` : ""}`;
     seen[base] = (seen[base] ?? 0) + 1; // mesma compra duas vezes no mesmo dia
     rows.push({ d, desc, amount, ext: seen[base] > 1 ? `${base}#${seen[base]}` : base });
   }
-  const cardStyle = head.includes("title") || rows.filter((r) => r.amount > 0).length > rows.length * 0.7;
-  return { rows: cardStyle ? rows.map((r) => ({ ...r, amount: -r.amount })) : rows, cardStyle };
+  if (!rows.length) return { rows: [], cardStyle: false, error: "nenhum lancamento com data e valor encontrado" };
+  const label = (i: number) => (hi >= 0 ? head[i] : `coluna ${i + 1}`);
+  const info = `colunas: ${label(cols.d)}, ${cols.desc.map(label).join(" + ")}, ${cols.v >= 0 ? label(cols.v) : [cols.c, cols.db].filter((i) => i >= 0).map(label).join(" / ")}`;
+  const isCardHead = hi >= 0 && head.includes("title");
+  const cardStyle = isCardHead || (cols.v >= 0 && rows.filter((r) => r.amount > 0).length > rows.length * 0.7);
+  return { rows: cardStyle ? rows.map((r) => ({ ...r, amount: -r.amount })) : rows, cardStyle, info };
 }
 
 // "Parcela 2/10" ou "2/10" no fim da descricao

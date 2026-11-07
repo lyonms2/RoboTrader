@@ -274,16 +274,19 @@ function ImportPanel({ months, setup, onDone }: { months: Record<string, MonthDo
   const [err, setErr] = useState("");
   const [card, setCard] = useState("");
   const [busy, setBusy] = useState(false);
+  const [ownName, setOwnName] = useState(setup.ownName ?? "");
+  const [info, setInfo] = useState("");
   const all = Object.values(months).flatMap((md) => md.items);
   const exts = new Set(all.map((g) => g.ext).filter(Boolean));
   const build = (raw: Raw[]): Row[] => raw.map((r) => {
-    const { cat, tipo } = categorize(r.desc, r.amount > 0, setup.rules);
+    const { cat, tipo } = categorize(r.desc, r.amount > 0, setup.rules, ownName);
     const dup = exts.has(r.ext) ? "ja importado" as const
       : all.some((g) => g.d === r.d && Math.abs(g.v - Math.abs(r.amount)) < 0.005 && !g.ext) ? "parece repetido" as const : "" as const;
     return { ...r, cat, tipo, dup, on: !dup };
   });
   const onFile = async (f: File) => {
     setErr("");
+    setInfo("");
     setFile(f.name);
     const text = decode(await f.arrayBuffer());
     if (/<OFX>|OFXHEADER/i.test(text)) {
@@ -293,7 +296,8 @@ function ImportPanel({ months, setup, onDone }: { months: Record<string, MonthDo
       setRows(build(raw));
     } else {
       const r = parseCSV(text);
-      if (r.error) return setErr(`CSV: ${r.error}.`);
+      if (r.error) return setErr(`CSV: ${r.error}. Se puder, exporte em OFX ou me mande o modelo do banco.`);
+      setInfo(r.info ?? "");
       if (r.cardStyle && setup.cards.length) setCard(setup.cards[0].id);
       setRows(build(r.rows));
     }
@@ -302,6 +306,7 @@ function ImportPanel({ months, setup, onDone }: { months: Record<string, MonthDo
   const chosen = rows.filter((r) => r.on);
   const save = async () => {
     setBusy(true);
+    if ((setup.ownName ?? "") !== ownName.trim()) await saveSetup({ ownName: ownName.trim() });
     await addItems(months, chosen.map((r) => ({
       id: newId(), d: r.d, desc: r.desc, v: Math.abs(r.amount), tipo: r.tipo, cat: r.cat, src: "import" as const, ext: r.ext,
       ...(card ? { card } : {}), ...(parcOf(r.desc) ? { parc: parcOf(r.desc) } : {}),
@@ -314,7 +319,7 @@ function ImportPanel({ months, setup, onDone }: { months: Record<string, MonthDo
   const inn = chosen.filter((r) => r.tipo === "receita").reduce((s, r) => s + Math.abs(r.amount), 0);
   return (
     <div className="fin-form">
-      <p className="small">No app do banco, exporte o extrato ou a fatura em <b>OFX</b> (quase todos os bancos) ou <b>CSV</b> (ex.: Nubank) e escolha o arquivo.
+      <p className="small">No app do banco, exporte o extrato ou a fatura em <b>OFX</b> (quase todos os bancos) ou <b>CSV</b> (PicPay, Nubank, Inter, Itau, Bradesco, BB, C6, Mercado Pago...) e escolha o arquivo.
         Ele e lido aqui no navegador; nada e enviado para o banco e nenhuma senha e pedida.</p>
       <div className="row wrapline">
         <label className="file-btn">Escolher arquivo<input type="file" accept=".ofx,.csv,.txt,.qfx" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} /></label>
@@ -325,9 +330,15 @@ function ImportPanel({ months, setup, onDone }: { months: Record<string, MonthDo
         </select></label>
         {rows.length > 0 && <button type="button" className="ghost small-btn" onClick={invert}>inverter sinais</button>}
       </div>
+      <div className="row wrapline">
+        <label className="grow">Seu nome como aparece no extrato (Pix entre suas contas nao conta como gasto)
+          <input value={ownName} onChange={(e) => setOwnName(e.target.value)} onBlur={() => rows.length && setRows(build(rows))} placeholder="Nome Sobrenome" autoComplete="off" />
+        </label>
+      </div>
       {err && <p className="error small">{err}</p>}
       {rows.length > 0 && (
         <>
+          {info && <p className="muted small">Lido: {info}.</p>}
           <p className="small">{rows.length} lancamentos no arquivo - {chosen.length} marcados: gastos {brl(out)}, entradas {brl(inn)}.
             {rows.some((r) => r.dup) && <span className="muted"> Os ja importados ou repetidos vieram desmarcados.</span>}</p>
           <div className="table-scroll import-list">

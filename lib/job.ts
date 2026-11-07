@@ -1,8 +1,10 @@
 import { adminDb } from "./firebaseAdmin";
 import { fetchDaily } from "./market";
 import { DEFAULT_PARAMS, decide, runStrategy, signalChanges, signalEvents } from "./strategy";
-import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc } from "./types";
-import { refreshWallet } from "./wallet";
+import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type LighterSyncDoc } from "./types";
+import { syncLighter } from "./lighter";
+import { effectiveConfig } from "./positions";
+import { isAddress, refreshWallet } from "./wallet";
 
 const CHART_DAYS = 240;
 // Trava contra chamadas repetidas: o agendador roda a cada 15 min; abaixo disso o calculo e ignorado
@@ -45,6 +47,18 @@ export async function runJob({ force }: { force: boolean }) {
     cfg.positions = { ...cfg.positions, [s]: cfg.positions[s] ?? 0 };
   }
   if (!cfgSnap.exists || missing.length) await db.doc("config/main").set(cfg);
+  // Lighter: posicoes e operacoes automaticas (API publica). Uma falha aqui nao impede os sinais.
+  let lighter: unknown = null;
+  let eff = cfg;
+  if (cfg.lighter?.enabled && isAddress(cfg.wallet)) {
+    try {
+      lighter = await syncLighter(cfg.wallet, cfg.lighter.since);
+      const sync = (await db.doc("sync/lighter").get()).data() as LighterSyncDoc | undefined;
+      eff = effectiveConfig(cfg, sync);
+    } catch (e) {
+      lighter = { error: String(e) };
+    }
+  }
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
   const notifyRef = db.doc("meta/notify");
   const notified = ((await notifyRef.get()).data() ?? {}) as Record<string, string>;
@@ -57,7 +71,7 @@ export async function runJob({ force }: { force: boolean }) {
     const states = runStrategy(closed, params);
     const s = states[states.length - 1];
     const capital = cfg.capitalUsdt * (cfg.weights[symbol] ?? 0);
-    const pos = cfg.positions[symbol] ?? 0;
+    const pos = eff.positions[symbol] ?? 0;
     const decision = decide(s, capital, pos, params);
     const pStates = open ? runStrategy([...closed, open], params) : null;
     const ps = pStates ? pStates[pStates.length - 1] : null;
@@ -116,5 +130,5 @@ export async function runJob({ force }: { force: boolean }) {
       wallet = { error: String(e) };
     }
   }
-  return { skipped: false, results, wallet };
+  return { skipped: false, results, wallet, lighter };
 }

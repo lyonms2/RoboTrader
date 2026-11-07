@@ -7,8 +7,8 @@ import { walletTotals } from "./walletMath";
 //   Lighter = conta de perpetuos, API publica sem chave
 const ZERION = "https://api.zerion.io/v1";
 const LIGHTER = "https://mainnet.zklighter.elliot.ai/api/v1";
-// Atualiza no maximo 1 vez por hora pelo agendador (limite do plano gratuito da Zerion)
-const AUTO_INTERVAL_MS = 60 * 60_000;
+// Atualiza no maximo a cada 30 min pelo agendador (48 chamadas/dia; o plano gratuito da Zerion aguenta folgado)
+const AUTO_INTERVAL_MS = 30 * 60_000;
 
 export const isAddress = (a: unknown): a is string => typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a);
 
@@ -124,7 +124,7 @@ export async function refreshWallet({ force }: { force: boolean }) {
   if (!isAddress(address)) return { skipped: true, reason: "sem endereco de carteira na Configuracao" };
   const ref = db.doc("wallet/main");
   const prev = (await ref.get()).data() as WalletDoc | undefined;
-  if (!force && prev?.address === address && Date.now() - prev.at < AUTO_INTERVAL_MS) return { skipped: true, reason: "atualizada ha menos de 1 hora" };
+  if (!force && prev?.address === address && Date.now() - prev.at < AUTO_INTERVAL_MS) return { skipped: true, reason: "atualizada ha menos de 30 min" };
   const doc = await readWallet(address);
   await ref.set(doc);
   // Um retrato por dia (o ultimo do dia vale) para o grafico de evolucao; so com a leitura completa

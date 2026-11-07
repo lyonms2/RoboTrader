@@ -5,8 +5,9 @@ import { useEffect, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { applyTrade, rebuild } from "@/lib/ledger";
 import { performance } from "@/lib/performance";
+import { effectiveConfig } from "@/lib/positions";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
-import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type TradeDoc, type WalletDoc, type WalletHistoryDoc } from "@/lib/types";
+import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type LighterSyncDoc, type TradeDoc, type WalletDoc, type WalletHistoryDoc } from "@/lib/types";
 import Chart from "./Chart";
 import PerfChart from "./PerfChart";
 import WalletCard from "./WalletCard";
@@ -67,6 +68,7 @@ export default function Page() {
   const [trades, setTrades] = useState<(TradeDoc & { id: string })[]>([]);
   const [wallet, setWallet] = useState<WalletDoc | null>(null);
   const [walletHistory, setWalletHistory] = useState<WalletHistoryDoc[]>([]);
+  const [sync, setSync] = useState<LighterSyncDoc | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showCfg, setShowCfg] = useState(false);
@@ -85,7 +87,8 @@ export default function Page() {
     const u4 = onSnapshot(doc(db(), "wallet/main"), (s) => setWallet(s.exists() ? (s.data() as WalletDoc) : null), onErr);
     const u5 = onSnapshot(query(collection(db(), "wallet_history"), orderBy("t"), limitToLast(365)),
       (s) => setWalletHistory(s.docs.map((d) => d.data() as WalletHistoryDoc)), onErr);
-    return () => { u1(); u2(); u3(); u4(); u5(); };
+    const u6 = onSnapshot(doc(db(), "sync/lighter"), (s) => setSync(s.exists() ? (s.data() as LighterSyncDoc) : null), onErr);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
   }, [user]);
 
   async function refresh() {
@@ -122,6 +125,9 @@ export default function Page() {
     }
   }
 
+  // Posicao efetiva: lancamentos manuais + conta da Lighter (quando a importacao automatica esta ligada)
+  const eff = effectiveConfig(cfg, sync);
+
   if (!firebaseConfigured)
     return <main className="wrap center"><h1>Robo de Sinais</h1><p className="error">Firebase nao configurado: cadastre as variaveis NEXT_PUBLIC_FIREBASE_* na Vercel e faca Redeploy.</p></main>;
   if (user === undefined) return <main className="wrap"><p>Carregando...</p></main>;
@@ -153,13 +159,13 @@ export default function Page() {
       {notice && <p className="muted small">{notice}</p>}
       {!latest.length && !error && <p className="muted">Nenhum sinal ainda. Clique em &quot;Recalcular agora&quot;.</p>}
 
-      <Summary cfg={cfg} latest={latest} prices={prices} />
-      <Performance cfg={cfg} latest={latest} trades={trades} prices={prices} />
-      <WalletCard wallet={wallet} history={walletHistory} cfg={cfg} latest={latest} user={user} />
+      <Summary cfg={eff} latest={latest} prices={prices} sync={cfg.lighter?.enabled ? sync : null} />
+      <Performance cfg={eff} latest={latest} trades={trades} prices={prices} />
+      <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} user={user} />
 
       <div className="grid">
         {[...latest].sort((a, b) => a.symbol.localeCompare(b.symbol)).map((l) => (
-          <AssetCard key={l.symbol} l={l} cfg={cfg} prices={prices} />
+          <AssetCard key={l.symbol} l={l} cfg={eff} prices={prices} />
         ))}
       </div>
 
@@ -177,7 +183,7 @@ export default function Page() {
 }
 
 // Resumo do lucro: usa o preco ao vivo, entao funciona mesmo antes do primeiro "Recalcular agora"
-function Summary({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[]; prices: Prices }) {
+function Summary({ cfg, latest, prices, sync }: { cfg: AppConfig; latest: LatestDoc[]; prices: Prices; sync: LighterSyncDoc | null }) {
   let open = 0;
   let invested = 0;
   let value = 0;
@@ -218,7 +224,11 @@ function Summary({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[];
         </table>
       )}
       {unknown && <p className="warn small full">Ha posicao sem preco medio: informe-o em Configuracao para calcular o lucro.</p>}
-      <p className="muted small full">Sem taxas e sem funding. Preco {prices.at ? `ao vivo da Binance (${ago(prices.at)})` : "do ultimo recalculo"}.</p>
+      {sync?.shorts.length ? <p className="warn small full">Posicao vendida na Lighter ({sync.shorts.join(", ")}): fica fora da conta, a estrategia e so comprada.</p> : null}
+      <p className="muted small full">
+        Sem taxas e sem funding. Preco {prices.at ? `ao vivo da Binance (${ago(prices.at)})` : "do ultimo recalculo"}.
+        {sync ? ` Inclui a conta da Lighter (sincronizada ${ago(sync.at)}).` : ""}
+      </p>
     </section>
   );
 }
@@ -409,6 +419,7 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
     const clean = (m: Record<string, number> = {}) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, round8(v)]));
     const wallet = (draft.wallet ?? "").trim();
     if (wallet && !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return setErr("Endereco da carteira invalido: deve ser 0x seguido de 40 caracteres.");
+    if (draft.lighter?.enabled && !wallet) return setErr("Para importar da Lighter, informe o endereco da carteira.");
     await setDoc(doc(db(), "config/main"), {
       ...draft, wallet, weights: clean(draft.weights), positions: clean(draft.positions), avgPrice: clean(draft.avgPrice), realized: clean(draft.realized),
     });
@@ -432,6 +443,17 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
           <input type="checkbox" checked={draft.reentry} onChange={(e) => setDraft({ ...draft, reentry: e.target.checked })} />
           Reentrada no repique (meia posicao)
         </label>
+        <label className="check">
+          <input type="checkbox" checked={!!draft.lighter?.enabled}
+            onChange={(e) => setDraft({ ...draft, lighter: { enabled: e.target.checked, since: draft.lighter?.since ?? Date.now() - 30 * 86_400_000 } })} />
+          Importar da Lighter automaticamente
+        </label>
+        {draft.lighter?.enabled && (
+          <label>Operacoes a partir de
+            <input type="date" value={new Date(draft.lighter.since).toISOString().slice(0, 10)}
+              onChange={(e) => e.target.value && setDraft({ ...draft, lighter: { enabled: true, since: Date.parse(`${e.target.value}T00:00:00Z`) } })} />
+          </label>
+        )}
         <label className="grow">Carteira on-chain (endereco publico 0x..., opcional)
           <input value={draft.wallet ?? ""} placeholder="0x..." spellCheck={false} onChange={(e) => setDraft({ ...draft, wallet: e.target.value })} />
         </label>
@@ -439,7 +461,7 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
       <div className="table-scroll">
         <table className="cfg-table">
           <thead>
-            <tr><th>Moeda</th><th>Peso (%)</th><th>Capital alocado</th><th>Posicao (moedas)</th><th>Preco medio (USDT)</th></tr>
+            <tr><th>Moeda</th><th>Peso (%)</th><th>Capital alocado</th><th>Posicao manual (moedas)</th><th>Preco medio (USDT)</th></tr>
           </thead>
           <tbody>
             {symbols.map((s) => (
@@ -471,7 +493,8 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
         <p className="warn small">Os pesos somam {fmt(totalWeight * 100, 0)}%: o normal e 100% do capital.</p>
       )}
       <p className="muted small">
-        Posicao e preco medio sao atualizados sozinhos ao registrar operacoes; edite aqui so para corrigir.
+        Posicao e preco medio manuais sao atualizados sozinhos ao registrar operacoes; edite aqui so para corrigir.
+        Com a Lighter ligada, a posicao de la e somada automaticamente (o agendador sincroniza a cada 15 min).
         A reentrada muda o calculo do servidor: depois de alterar, clique em &quot;Recalcular agora&quot;.
       </p>
     </section>
@@ -525,7 +548,7 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
     if (coin && t.symbol !== coin) return false;
     if (side && t.side !== side) return false;
     if (!q) return true;
-    const text = [new Date(t.t).toLocaleString("pt-BR"), t.symbol, t.side, fmtQty(t.qty), fmtPx(t.price), String(t.qty), String(t.price)]
+    const text = [new Date(t.t).toLocaleString("pt-BR"), t.symbol, t.side, fmtQty(t.qty), fmtPx(t.price), String(t.qty), String(t.price), t.source ?? "manual", t.note ?? ""]
       .join(" ").toLowerCase();
     return text.includes(q);
   });
@@ -617,12 +640,12 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
                 ) : (
                   <tr key={t.id}>
                     <td>{new Date(t.t).toLocaleString("pt-BR")}</td>
-                    <td>{t.symbol.replace("USDT", "")}</td>
-                    <td className={t.side === "compra" ? "pos" : "neg"}>{t.side}</td>
+                    <td>{t.symbol.replace("USDT", "")}{t.source === "lighter" && <span className="tag">Lighter</span>}</td>
+                    <td className={t.side === "compra" ? "pos" : "neg"}>{t.side}{t.note ? ` (${t.note})` : ""}</td>
                     <td>{fmtQty(t.qty)}</td>
                     <td>{fmtPx(t.price)}</td>
                     <td>{fmt(t.qty * t.price)}</td>
-                    <td className="actions">
+                    <td className="actions">{t.source === "lighter" ? <span className="muted small" title="Importada da Lighter: edite la">auto</span> : <>
                       <button className="ghost icon" title="Editar" aria-label="Editar"
                         onClick={() => setEditing({ id: t.id, symbol: t.symbol, side: t.side, qty: String(t.qty), price: String(t.price), when: toLocalInput(t.t) })}>
                         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
@@ -630,7 +653,7 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
                       <button className="ghost icon danger" title="Excluir" aria-label="Excluir" onClick={() => remove(t)}>
                         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /></svg>
                       </button>
-                    </td>
+                    </>}</td>
                   </tr>
                 ))}
               </tbody>

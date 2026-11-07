@@ -121,3 +121,4 @@ label.grow input { max-width: 100%; width: 100%; font-family: ui-monospace, mono
 .chart .cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
 .chart .dot { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
 .ink { color: var(--text); }
+.tag { font-size: 10.5px; border: 1px solid var(--line); color: var(--muted); border-radius: 4px; padding: 0 4px; margin-left: 6px; }

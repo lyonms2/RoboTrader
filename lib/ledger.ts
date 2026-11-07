@@ -19,7 +19,7 @@ export function applyTrade(b: Book, side: TradeDoc["side"], qty: number, price: 
 // Refaz posicao, preco medio e realizado de uma moeda a partir de todas as operacoes dela, em ordem de data
 export function rebuild(trades: TradeDoc[], symbol: string): Book {
   const b = trades
-    .filter((t) => t.symbol === symbol)
+    .filter((t) => t.symbol === symbol && t.source !== "lighter")
     .sort((a, z) => a.t - z.t)
     .reduce((acc, t) => applyTrade(acc, t.side, t.qty, t.price), { pos: 0, avg: 0, realized: 0 } as Book);
   return { pos: round8(b.pos), avg: round8(b.avg), realized: round8(b.realized) };

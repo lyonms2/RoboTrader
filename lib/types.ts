@@ -9,6 +9,8 @@ export type AppConfig = {
   realized: Record<string, number>; // lucro/prejuizo ja realizado em vendas, em USDT (sem taxas)
   reentry: boolean;
   wallet?: string; // endereco publico 0x... da carteira on-chain (opcional, so leitura)
+  // Importacao automatica da Lighter: posicoes sincronizadas e operacoes desde "since" (ms)
+  lighter?: { enabled: boolean; since: number };
 };
 
 // Ativos acompanhados pelo robo (pares do spot da Binance)
@@ -38,7 +40,28 @@ export type LatestDoc = {
 };
 
 // Documento trades/{id}: operacao registrada manualmente
-export type TradeDoc = { symbol: string; side: "compra" | "venda"; qty: number; price: number; t: number };
+export type TradeDoc = {
+  symbol: string;
+  side: "compra" | "venda";
+  qty: number;
+  price: number;
+  t: number;
+  source?: "lighter"; // importada automaticamente (so leitura); sem source = lancada a mao
+  ext?: string; // id da ordem na Lighter
+  note?: string;
+};
+
+// Documento sync/lighter: posicoes da conta na Lighter (somadas as manuais no painel)
+export type LighterSyncDoc = {
+  at: number;
+  account: number;
+  since: number;
+  positions: Record<string, number>;
+  avgPrice: Record<string, number>;
+  realized: Record<string, number>;
+  shorts: string[]; // posicoes vendidas (a estrategia e so comprada; ficam fora da conta)
+  lastFill: number;
+};
 
 // Documento wallet/main: retrato da carteira on-chain (Zerion + Lighter), gravado pelo servidor
 export type WalletItem = {

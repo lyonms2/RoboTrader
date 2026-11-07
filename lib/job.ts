@@ -5,6 +5,7 @@ import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type LighterSy
 import { syncLighter } from "./lighter";
 import { effectiveConfig } from "./positions";
 import { refreshWallet } from "./wallet";
+import { robotStats } from "./robotStats";
 import { refreshFichas } from "./fichas";
 import { isEvmAddress, walletAddresses } from "./addresses";
 
@@ -95,6 +96,7 @@ export async function runJob({ force, fichas: withFichas = true }: { force: bool
       decision,
       changes: signalChanges(states),
       events: signalEvents(states),
+      stats: robotStats(closed, states),
       chart: {
         t: tail.map((x) => x.t),
         close: tail.map((x) => x.close),

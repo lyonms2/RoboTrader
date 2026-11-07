@@ -1,4 +1,5 @@
 import type { BarState, Change, Decision, SignalEvent } from "./strategy";
+import type { RobotStats } from "./robotStats";
 
 // Documento config/main
 export type AppConfig = {
@@ -39,6 +40,7 @@ export type LatestDoc = {
   decision: Decision;
   changes: Change[];
   events?: SignalEvent[]; // historico de sinais com motivo (gravado a partir desta versao)
+  stats?: RobotStats | null; // resultados da estrategia nos candles disponiveis (~2,7 anos)
   // expo = exposicao alvo de cada dia (usada para comparar o real com a estrategia)
   chart: { t: number[]; close: number[]; sma: (number | null)[]; hma: (number | null)[]; on: boolean[]; expo?: number[] };
   // Candle de hoje (ainda aberto) como se fechasse agora: so um alerta, o sinal vale no fechamento

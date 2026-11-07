@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { refreshCandidates } from "@/lib/candidates";
 import { refreshFichas } from "@/lib/fichas";
 import { serverProjectId } from "@/lib/firebaseAdmin";
 import { runJob } from "@/lib/job";
@@ -26,7 +27,9 @@ export async function POST(req: Request) {
     const wallet = await step(() => refreshWallet({ force: true }));
     const job = await runJob({ force: true, fichas: false });
     const fichas = await step(() => refreshFichas({ force: true, strategy: SYMBOLS.map((s) => s.replace("USDT", "")) }));
-    return NextResponse.json({ ok: true, projectId: serverProjectId(), ...job, wallet, fichas });
+    // Outras moedas: so se a avaliacao tiver mais de 1 semana
+    const candidates = await step(() => refreshCandidates({ force: false }));
+    return NextResponse.json({ ok: true, projectId: serverProjectId(), ...job, wallet, fichas, candidates });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

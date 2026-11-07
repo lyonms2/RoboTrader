@@ -276,3 +276,9 @@ td button.link.small { margin: 0 0 0 6px; }
 @media (max-width: 420px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
 .events.trades li { padding: 4px 0; }
 .history dl { margin: 8px 0; }
+.sit-candidato { color: var(--buy); border-color: color-mix(in srgb, var(--buy) 55%, transparent); background: color-mix(in srgb, var(--buy) 12%, transparent); }
+.sit-no_robo { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.sit-nao_serve { color: var(--sell); }
+.cands td { vertical-align: top; }
+.cands td:first-child { min-width: 160px; }
+tr.cand-row td { background: color-mix(in srgb, var(--buy) 5%, transparent); }

@@ -12,6 +12,8 @@ export type RobotStats = {
   last12: { strat: number; bh: number } | null;
   trades: TradeResult[]; // mais recentes primeiro (o primeiro pode estar aberto)
   count: number; win: number; avgWin: number; avgLoss: number; streakNow: number; streakMax: number;
+  // Periodo dividido ao meio: o robo foi bem nas duas metades ou so numa? (robo e so segurar)
+  halves?: { strat: [number, number]; bh: [number, number] };
 };
 
 // Resultado da estrategia nos candles fechados, com a mesma conta do backtest (referencias_robo_lab.py):
@@ -62,6 +64,11 @@ export function robotStats(k: Kline[], states: BarState[]): RobotStats | null {
   }
   const years = (k[k.length - 1][0] - k[first][0]) / DAY_MS / 365.25;
   const n = curve.length;
+  const mid = Math.floor(n / 2); // curve[i] corresponde ao candle first + i
+  const halves = {
+    strat: [curve[mid] / curve[0] - 1, curve[n - 1] / curve[mid] - 1] as [number, number],
+    bh: [k[first + mid][4] / k[first][4] - 1, k[k.length - 1][4] / k[first + mid][4] - 1] as [number, number],
+  };
   const j = k.length - 365;
   return {
     since: k[first][0], years,
@@ -72,7 +79,7 @@ export function robotStats(k: Kline[], states: BarState[]): RobotStats | null {
     count: closed.length, win: closed.length ? wins.length / closed.length : 0,
     avgWin: wins.length ? wins.reduce((s, t) => s + t.ret, 0) / wins.length : 0,
     avgLoss: losses.length ? losses.reduce((s, t) => s + t.ret, 0) / losses.length : 0,
-    streakNow: streak, streakMax,
+    streakNow: streak, streakMax, halves,
   };
 }
 

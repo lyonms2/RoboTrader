@@ -6,6 +6,7 @@ import { syncLighter } from "./lighter";
 import { effectiveConfig } from "./positions";
 import { refreshWallet } from "./wallet";
 import { robotStats } from "./robotStats";
+import { refreshCandidates } from "./candidates";
 import { refreshFichas } from "./fichas";
 import { isEvmAddress, walletAddresses } from "./addresses";
 
@@ -142,5 +143,13 @@ export async function runJob({ force, fichas: withFichas = true }: { force: bool
   } catch (e) {
     fichas = { error: String(e) };
   }
-  return { skipped: false, results, wallet, lighter, fichas };
+  let candidates: unknown = null;
+  if (withFichas) {
+    try {
+      candidates = await refreshCandidates({ force: false });
+    } catch (e) {
+      candidates = { error: String(e) };
+    }
+  }
+  return { skipped: false, results, wallet, lighter, fichas, candidates };
 }

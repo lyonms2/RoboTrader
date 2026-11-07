@@ -15,6 +15,8 @@ import Chart from "./Chart";
 import PerfChart from "./PerfChart";
 import WalletCard from "./WalletCard";
 import FichasCard from "./FichasCard";
+import CandidatesCard from "./CandidatesCard";
+import type { CandidatesDoc } from "@/lib/candidates";
 import { usePrices, type Prices } from "./usePrices";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -68,7 +70,7 @@ function NumInput({ value, onChange }: { value: number; onChange: (v: number) =>
 // Dados de exemplo para conferir o visual sem login (so usado em paginas de teste locais)
 export type Demo = {
   cfg: AppConfig; latest: LatestDoc[]; trades: (TradeDoc & { id: string })[]; wallet: WalletDoc | null;
-  walletHistory: WalletHistoryDoc[]; fichas: FichaDoc | null;
+  walletHistory: WalletHistoryDoc[]; fichas: FichaDoc | null; candidates?: CandidatesDoc | null;
 };
 
 export default function Dashboard({ demo }: { demo?: Demo }) {
@@ -80,6 +82,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const [walletHistory, setWalletHistory] = useState<WalletHistoryDoc[]>(demo?.walletHistory ?? []);
   const [sync, setSync] = useState<LighterSyncDoc | null>(null);
   const [fichas, setFichas] = useState<FichaDoc | null>(demo?.fichas ?? null);
+  const [candidates, setCandidates] = useState<CandidatesDoc | null>(demo?.candidates ?? null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showCfg, setShowCfg] = useState(false);
@@ -113,7 +116,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       (s) => setWalletHistory(s.docs.map((d) => d.data() as WalletHistoryDoc)), onErr);
     const u6 = onSnapshot(doc(db(), "sync/lighter"), (s) => setSync(s.exists() ? (s.data() as LighterSyncDoc) : null), onErr);
     const u7 = onSnapshot(doc(db(), "fichas/main"), (s) => setFichas(s.exists() ? (s.data() as FichaDoc) : null), onErr);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
+    const u8 = onSnapshot(doc(db(), "candidates/main"), (s) => setCandidates(s.exists() ? (s.data() as CandidatesDoc) : null), onErr);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
   }, [user, demo]);
 
   async function refresh() {
@@ -230,6 +234,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
                 <AssetCard key={l.symbol} l={l} cfg={eff} prices={prices} />
               ))}
             </div>
+            <CandidatesCard doc={candidates} />
           </>
         )}
         {tab === "carteira" && <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} />}

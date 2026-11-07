@@ -1,10 +1,11 @@
 import { adminDb } from "./firebaseAdmin";
 import { fetchDaily } from "./market";
 import { DEFAULT_PARAMS, decide, runStrategy, signalChanges, signalEvents } from "./strategy";
-import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type LighterSyncDoc } from "./types";
+import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type LighterSyncDoc, type WalletDoc } from "./types";
 import { syncLighter } from "./lighter";
 import { effectiveConfig } from "./positions";
-import { isAddress, refreshWallet } from "./wallet";
+import { refreshWallet } from "./wallet";
+import { isEvmAddress, walletAddresses } from "./addresses";
 
 const CHART_DAYS = 240;
 // Trava contra chamadas repetidas: o agendador roda a cada 15 min; abaixo disso o calculo e ignorado
@@ -49,16 +50,25 @@ export async function runJob({ force }: { force: boolean }) {
   if (!cfgSnap.exists || missing.length) await db.doc("config/main").set(cfg);
   // Lighter: posicoes e operacoes automaticas (API publica). Uma falha aqui nao impede os sinais.
   let lighter: unknown = null;
-  let eff = cfg;
-  if (cfg.lighter?.enabled && isAddress(cfg.wallet)) {
+  const evm = walletAddresses(cfg).find(isEvmAddress);
+  if (cfg.lighter?.enabled && evm) {
     try {
-      lighter = await syncLighter(cfg.wallet, cfg.lighter.since);
-      const sync = (await db.doc("sync/lighter").get()).data() as LighterSyncDoc | undefined;
-      eff = effectiveConfig(cfg, sync);
+      lighter = await syncLighter(evm, cfg.lighter.since);
     } catch (e) {
       lighter = { error: String(e) };
     }
   }
+  // Carteiras on-chain: no maximo a cada 30 min (o botao do painel le na hora)
+  let wallet: unknown = null;
+  try {
+    wallet = await refreshWallet({ force: false });
+  } catch (e) {
+    wallet = { error: String(e) };
+  }
+  const data = Object.fromEntries(await Promise.all(SYMBOLS.map(async (s) => [s, await fetchDaily(s)] as const)));
+  const [syncSnap, walletSnap] = await Promise.all([db.doc("sync/lighter").get(), db.doc("wallet/main").get()]);
+  const px = Object.fromEntries(SYMBOLS.map((s) => [s, data[s].closed[data[s].closed.length - 1]?.[4] ?? 0]));
+  const eff = effectiveConfig(cfg, syncSnap.data() as LighterSyncDoc | undefined, walletSnap.data() as WalletDoc | undefined, px);
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
   const notifyRef = db.doc("meta/notify");
   const notified = ((await notifyRef.get()).data() ?? {}) as Record<string, string>;
@@ -67,7 +77,7 @@ export async function runJob({ force }: { force: boolean }) {
   const results: { symbol: string; label: string; qty: number; day: string; preview: string | null }[] = [];
 
   for (const symbol of SYMBOLS) {
-    const { closed, open } = await fetchDaily(symbol);
+    const { closed, open } = data[symbol];
     const states = runStrategy(closed, params);
     const s = states[states.length - 1];
     const capital = cfg.capitalUsdt * (cfg.weights[symbol] ?? 0);
@@ -122,13 +132,5 @@ export async function runJob({ force }: { force: boolean }) {
     await telegram(`Robo de sinais - sinal EM FORMACAO (o candle ainda nao fechou; pode mudar ate 21:00)\n${forming.join("\n")}`);
   }
   if (official.length || forming.length) await notifyRef.set(notified);
-  let wallet: unknown = null;
-  if (!force) {
-    try {
-      wallet = await refreshWallet({ force: false });
-    } catch (e) {
-      wallet = { error: String(e) };
-    }
-  }
   return { skipped: false, results, wallet, lighter };
 }

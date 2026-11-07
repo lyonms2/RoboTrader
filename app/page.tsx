@@ -6,6 +6,7 @@ import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { applyTrade, rebuild } from "@/lib/ledger";
 import { performance } from "@/lib/performance";
 import { effectiveConfig } from "@/lib/positions";
+import { isEvmAddress, isSolAddress } from "@/lib/addresses";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
 import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type LighterSyncDoc, type TradeDoc, type WalletDoc, type WalletHistoryDoc } from "@/lib/types";
 import Chart from "./Chart";
@@ -126,7 +127,8 @@ export default function Page() {
   }
 
   // Posicao efetiva: lancamentos manuais + conta da Lighter (quando a importacao automatica esta ligada)
-  const eff = effectiveConfig(cfg, sync);
+  const px = Object.fromEntries(SYMBOLS.map((s) => [s, priceOf(s, latest, prices)?.price ?? 0]));
+  const eff = effectiveConfig(cfg, sync, wallet, px);
 
   if (!firebaseConfigured)
     return <main className="wrap center"><h1>Robo de Sinais</h1><p className="error">Firebase nao configurado: cadastre as variaveis NEXT_PUBLIC_FIREBASE_* na Vercel e faca Redeploy.</p></main>;
@@ -415,13 +417,16 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
   useEffect(() => setDraft(cfg), [cfg]);
 
   const [err, setErr] = useState("");
+  const [walletText, setWalletText] = useState((cfg.wallets?.length ? cfg.wallets : cfg.wallet ? [cfg.wallet] : []).join("\n"));
   async function save() {
     const clean = (m: Record<string, number> = {}) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, round8(v)]));
-    const wallet = (draft.wallet ?? "").trim();
-    if (wallet && !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return setErr("Endereco da carteira invalido: deve ser 0x seguido de 40 caracteres.");
-    if (draft.lighter?.enabled && !wallet) return setErr("Para importar da Lighter, informe o endereco da carteira.");
+    const wallets = [...new Set(walletText.split(/[\s,;]+/).map((a) => a.trim()).filter(Boolean))];
+    const bad = wallets.filter((a) => !isEvmAddress(a) && !isSolAddress(a));
+    if (bad.length) return setErr(`Endereco invalido: ${bad.join(", ")} (EVM = 0x + 40 caracteres; Solana = 32 a 44 caracteres).`);
+    if (draft.lighter?.enabled && !wallets.some(isEvmAddress)) return setErr("Para importar da Lighter, informe um endereco EVM (0x...).");
+    const wallet = wallets.find(isEvmAddress) ?? "";
     await setDoc(doc(db(), "config/main"), {
-      ...draft, wallet, weights: clean(draft.weights), positions: clean(draft.positions), avgPrice: clean(draft.avgPrice), realized: clean(draft.realized),
+      ...draft, wallet, wallets, weights: clean(draft.weights), positions: clean(draft.positions), avgPrice: clean(draft.avgPrice), realized: clean(draft.realized),
     });
     onClose();
   }
@@ -454,8 +459,13 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
               onChange={(e) => e.target.value && setDraft({ ...draft, lighter: { enabled: true, since: Date.parse(`${e.target.value}T00:00:00Z`) } })} />
           </label>
         )}
-        <label className="grow">Carteira on-chain (endereco publico 0x..., opcional)
-          <input value={draft.wallet ?? ""} placeholder="0x..." spellCheck={false} onChange={(e) => setDraft({ ...draft, wallet: e.target.value })} />
+        <label className="grow">Carteiras on-chain (enderecos publicos, um por linha: EVM 0x... e/ou Solana)
+          <textarea rows={3} value={walletText} placeholder={"0x... (Rabby)\n7xKX... (Phantom Solana)"} spellCheck={false}
+            onChange={(e) => setWalletText(e.target.value)} />
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={!!draft.walletPositions} onChange={(e) => setDraft({ ...draft, walletPositions: e.target.checked })} />
+          Posicao da estrategia = saldo das carteiras (no lugar das posicoes manuais)
         </label>
       </div>
       <div className="table-scroll">
@@ -495,6 +505,8 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
       <p className="muted small">
         Posicao e preco medio manuais sao atualizados sozinhos ao registrar operacoes; edite aqui so para corrigir.
         Com a Lighter ligada, a posicao de la e somada automaticamente (o agendador sincroniza a cada 15 min).
+        Com a posicao das carteiras ligada, o saldo a vista de BTC, ETH e SOL nas carteiras (cbBTC, WETH, stETH, JitoSOL...)
+        vira a posicao da estrategia; o preco medio continua o desta tabela (informe-o para ver o lucro).
         A reentrada muda o calculo do servidor: depois de alterar, clique em &quot;Recalcular agora&quot;.
       </p>
     </section>

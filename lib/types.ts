@@ -8,7 +8,9 @@ export type AppConfig = {
   avgPrice: Record<string, number>; // preco medio da posicao aberta (calculado ao registrar operacoes)
   realized: Record<string, number>; // lucro/prejuizo ja realizado em vendas, em USDT (sem taxas)
   reentry: boolean;
-  wallet?: string; // endereco publico 0x... da carteira on-chain (opcional, so leitura)
+  wallet?: string; // (antigo) um endereco so; agora vale "wallets"
+  wallets?: string[]; // enderecos publicos: EVM 0x... (Rabby, Phantom EVM) e Solana (Phantom). So leitura
+  walletPositions?: boolean; // posicao da estrategia vem das carteiras (saldo a vista de BTC/ETH/SOL)
   // Importacao automatica da Lighter: posicoes sincronizadas e operacoes desde "since" (ms)
   lighter?: { enabled: boolean; since: number };
 };
@@ -86,7 +88,8 @@ export type WalletPerp = {
   liq: number | null;
 };
 export type WalletDoc = {
-  address: string;
+  address: string; // chave dos enderecos lidos (walletKey)
+  addresses?: string[];
   at: number;
   total: number;
   items: WalletItem[];

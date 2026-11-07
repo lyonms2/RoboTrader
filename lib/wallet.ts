@@ -1,6 +1,8 @@
 import { adminDb } from "./firebaseAdmin";
 import type { WalletDoc, WalletItem, WalletPerp } from "./types";
 import { walletTotals } from "./walletMath";
+import { isEvmAddress, isSolAddress, walletAddresses, walletKey } from "./addresses";
+import { readSolana } from "./solana";
 
 // Carteira on-chain (so leitura, pelo endereco publico; nunca usa chave privada):
 //   Zerion  = saldos e posicoes DeFi em todas as redes EVM (chave gratuita em ZERION_API_KEY)
@@ -9,8 +11,6 @@ const ZERION = "https://api.zerion.io/v1";
 const LIGHTER = "https://mainnet.zklighter.elliot.ai/api/v1";
 // Atualiza no maximo a cada 30 min pelo agendador (48 chamadas/dia; o plano gratuito da Zerion aguenta folgado)
 const AUTO_INTERVAL_MS = 30 * 60_000;
-
-export const isAddress = (a: unknown): a is string => typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a);
 
 // Classe do ativo para comparar com a estrategia
 export function assetClass(symbol: string): WalletItem["cls"] {
@@ -108,24 +108,37 @@ async function lighter(address: string): Promise<WalletDoc["lighter"]> {
   return { value, available: Number(acc.available_balance), perps };
 }
 
-// Le a carteira nas duas fontes; a falha de uma vira aviso e nao impede a outra
-export async function readWallet(address: string): Promise<WalletDoc> {
-  const [z, l] = await Promise.allSettled([zerion(address), lighter(address)]);
-  const items = z.status === "fulfilled" ? z.value : [];
-  const lt = l.status === "fulfilled" ? l.value : null;
-  const errors = [z, l].filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => String(r.reason?.message ?? r.reason));
-  return { address, at: Date.now(), total: items.reduce((s, i) => s + i.value, 0) + (lt?.value ?? 0), items, lighter: lt, errors };
+// Le todos os enderecos (EVM: Zerion + Lighter; Solana: RPC + Jupiter). A falha de uma fonte vira aviso.
+export async function readWallet(addresses: string[]): Promise<WalletDoc> {
+  const evm = addresses.filter(isEvmAddress);
+  const sol = addresses.filter(isSolAddress);
+  const tag = (a: string) => `${a.slice(0, 6)}...${a.slice(-4)}`;
+  const jobs = [
+    ...evm.map((a) => zerion(a).catch((e) => Promise.reject(new Error(`${tag(a)}: ${e.message}`)))),
+    ...sol.map((a) => readSolana(a).catch((e) => Promise.reject(new Error(`${tag(a)}: ${e.message}`)))),
+  ];
+  const [res, lts] = await Promise.all([Promise.allSettled(jobs), Promise.allSettled(evm.map(lighter))]);
+  const items = res.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  const accounts = lts.flatMap((r) => (r.status === "fulfilled" && r.value ? [r.value] : []));
+  const lt = accounts.length
+    ? { value: accounts.reduce((s, a) => s + a.value, 0), available: accounts.reduce((s, a) => s + a.available, 0), perps: accounts.flatMap((a) => a.perps) }
+    : null;
+  const errors = [...res, ...lts].filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => String(r.reason?.message ?? r.reason));
+  return {
+    address: walletKey(addresses), addresses, at: Date.now(),
+    total: items.reduce((s, i) => s + i.value, 0) + (lt?.value ?? 0), items, lighter: lt, errors,
+  };
 }
 
 // Le a carteira e grava wallet/main. Sem chave da Zerion ainda grava a parte da Lighter (com o aviso).
 export async function refreshWallet({ force }: { force: boolean }) {
   const db = adminDb();
-  const address = (await db.doc("config/main").get()).data()?.wallet;
-  if (!isAddress(address)) return { skipped: true, reason: "sem endereco de carteira na Configuracao" };
+  const addresses = walletAddresses((await db.doc("config/main").get()).data() ?? {});
+  if (!addresses.length) return { skipped: true, reason: "sem endereco de carteira na Configuracao" };
   const ref = db.doc("wallet/main");
   const prev = (await ref.get()).data() as WalletDoc | undefined;
-  if (!force && prev?.address === address && Date.now() - prev.at < AUTO_INTERVAL_MS) return { skipped: true, reason: "atualizada ha menos de 30 min" };
-  const doc = await readWallet(address);
+  if (!force && prev?.address === walletKey(addresses) && Date.now() - prev.at < AUTO_INTERVAL_MS) return { skipped: true, reason: "atualizada ha menos de 30 min" };
+  const doc = await readWallet(addresses);
   await ref.set(doc);
   // Um retrato por dia (o ultimo do dia vale) para o grafico de evolucao; so com a leitura completa
   if (!doc.errors.length) {

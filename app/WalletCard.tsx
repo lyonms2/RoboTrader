@@ -5,6 +5,7 @@ import { useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import type { AppConfig, LatestDoc, WalletDoc, WalletHistoryDoc, WalletItem } from "@/lib/types";
 import { walletTotals } from "@/lib/walletMath";
+import { walletAddresses, walletKey } from "@/lib/addresses";
 import { AllocationBar, HistoryLine, ProtocolBars } from "./WalletCharts";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -39,21 +40,22 @@ export default function WalletCard({ wallet, history, cfg, latest, user }: {
     }
   }
 
-  if (!cfg.wallet)
+  const addrs = walletAddresses(cfg);
+  if (!addrs.length)
     return (
       <section className="card">
         <h2>Carteira on-chain</h2>
-        <p className="muted small">Informe o endereco publico (0x...) da sua carteira na Configuracao (engrenagem) para ver saldos, posicoes DeFi e perpetuos da Lighter aqui. So leitura: nada e movimentado.</p>
+        <p className="muted small">Informe os enderecos publicos das suas carteiras (EVM 0x... da Rabby/Phantom e Solana da Phantom) na Configuracao (engrenagem) para ver saldos, posicoes DeFi e perpetuos aqui. So leitura: nada e movimentado.</p>
       </section>
     );
 
   const head = (
     <div className="row between wrap-row">
-      <h2>Carteira on-chain <span className="muted small">{short(cfg.wallet)}</span></h2>
+      <h2>Carteira on-chain <span className="muted small">{addrs.map(short).join(" + ")}</span></h2>
       <button className="ghost" onClick={refresh} disabled={busy}>{busy ? "Lendo..." : "Atualizar carteira"}</button>
     </div>
   );
-  if (!wallet || wallet.address.toLowerCase() !== cfg.wallet.toLowerCase())
+  if (!wallet || wallet.address !== walletKey(addrs))
     return (
       <section className="card">
         {head}
@@ -180,7 +182,7 @@ export default function WalletCard({ wallet, history, cfg, latest, user }: {
         </div>
         <p className="muted small">Por classe: {(Object.keys(byClass) as WalletItem["cls"][]).filter((k) => Math.abs(byClass[k]) >= 0.01).map((k) => `${CLASS_LABEL[k]} ${pct(byClass[k], total)}`).join(" | ")}</p>
       </details>
-      <p className="muted small">Lida {new Date(wallet.at).toLocaleString("pt-BR")} (Zerion + Lighter, so leitura). O agendador atualiza no maximo 1 vez por hora.</p>
+      <p className="muted small">Lida {new Date(wallet.at).toLocaleString("pt-BR")} (EVM: Zerion + Lighter; Solana: RPC publica + Jupiter; so leitura). O agendador atualiza a cada 30 min. Na Solana entram so os tokens na carteira (posicoes em protocolos DeFi da Solana nao aparecem).</p>
       {msg && <p className="error small">{msg}</p>}
     </section>
   );

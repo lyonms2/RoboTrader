@@ -296,7 +296,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                           <CardPaySelect value={g.payCard} cards={setup.cards} onChange={(id) => saveMonth(m, items.map((x) => (x.id === g.id ? clean({ ...x, payCard: id || undefined }) : x)))} />
                         )}
                       </span></td>
-                      <td data-label="Valor" className={g.tipo === "receita" ? "pos" : g.tipo === "neutro" && !isFaturaOut(g) ? "muted" : ""}>{g.tipo === "receita" || (g.tipo === "neutro" && dirOf(g) > 0) ? "+" : "-"}{brl(g.v)}</td>
+                      <td data-label="Valor" className={g.tipo === "receita" ? "pos" : g.tipo === "neutro" && !isFaturaOut(g) ? "v-move" : "v-out"}>{g.tipo === "receita" || (g.tipo === "neutro" && dirOf(g) > 0) ? "+" : "-"}{brl(g.v)}</td>
                       <td className="actions"><button className="ghost small-btn" onClick={() => removeItem(g)} aria-label="Apagar">apagar</button></td>
                     </tr>
                   );
@@ -866,7 +866,7 @@ export function ImportPanel({ months, setup, invest, onDone, mode = "conta" }: {
                         if (key && target) await saveSetup({ invRules: { ...(setup.invRules ?? {}), [key]: target } });
                       }} />}
                     </span></td>
-                    <td data-label="Valor" className={r.tipo === "receita" ? "pos" : r.tipo === "neutro" ? "muted" : ""}>{r.amount > 0 ? "+" : "-"}{brl(Math.abs(r.amount))}</td>
+                    <td data-label="Valor" className={r.tipo === "receita" ? "pos" : r.tipo === "neutro" ? "v-move" : "v-out"}>{r.amount > 0 ? "+" : "-"}{brl(Math.abs(r.amount))}</td>
                   </tr>
                 ))}
               </tbody>

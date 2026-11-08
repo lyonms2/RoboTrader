@@ -107,8 +107,9 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     const payCard = cat === CARD_PAY_CAT && !g.card ? (g.payCard ?? suggestCard(g.desc, g.v, setup.cards, months)) : undefined;
     const toAcc = cat === TRANSFER_CAT && !g.card ? (g.toAcc ?? suggestToAcc(g.desc, accIdOf(g, accountsOf(setup)), setup)) : undefined;
     // Aplica a todos os lancamentos do mes com a mesma descricao e lembra para os proximos
-    await saveMonth(m, items.map((x) => (x.id === g.id || (key && descKey(x.desc) === key) ? clean({ ...x, cat, tipo, inv, payCard, toAcc }) : x)));
-    if (key) await saveSetup({ rules: { ...setup.rules, [key]: cat } });
+    // guarda a direcao (entrou/saiu) antes de trocar o tipo: neutro sem direcao seria adivinhado pelo texto
+    await saveMonth(m, items.map((x) => (x.id === g.id || (key && descKey(x.desc) === key) ? clean({ ...x, cat, tipo, inv, payCard, toAcc, io: x.io ?? (dirOf(x) > 0 ? "in" : "out") }) : x)));
+    if (key && !GENERIC_CATS.includes(cat)) await saveSetup({ rules: { ...setup.rules, [key]: cat } });
   };
   // Liga a transferencia (e as iguais do mes) a outra conta sua; "__new" cria uma conta sem extrato
   const linkAcc = async (g: Gasto, id: string) => {
@@ -423,8 +424,19 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
   const fixes: { m: string; id: string; patch: Partial<Gasto> }[] = [];
   let invMissing = 0;
   let payMissing = 0;
+  let recat = 0;
   for (const [m, md] of Object.entries(months))
     for (const g of md.items) {
+      // em Outros/Outras entradas mas o texto diz o que e (ex.: "Dinheiro resgatado do cofrinho" = Investimento)
+      if (GENERIC_CATS.includes(g.cat) && !g.card) {
+        const io = g.io ?? (dirOf(g) > 0 ? "in" : "out");
+        const c = categorize(g.desc, io === "in", {}, setup.ownName);
+        if (!GENERIC_CATS.includes(c.cat)) {
+          recat++;
+          const inv = c.cat === INVEST_CAT ? suggestInv(g.desc, invest, setup.invRules) : undefined;
+          fixes.push({ m, id: g.id, patch: { cat: c.cat, tipo: c.tipo, io, ...(inv ? { inv } : {}) } });
+        }
+      }
       if (g.cat === INVEST_CAT && !g.inv) {
         invMissing++;
         const inv = suggestInv(g.desc, invest, setup.invRules);
@@ -467,8 +479,9 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
       <ul>
         {invMissing > 0 && <li>{invMissing} {invMissing > 1 ? "movimentos" : "movimento"} de investimento sem destino: o dinheiro sai da conta e nao entra em nenhum investimento.</li>}
         {payMissing > 0 && <li>{payMissing} {payMissing > 1 ? "pagamentos" : "pagamento"} de fatura sem cartao: a fatura continua aparecendo como divida.</li>}
-        {fixes.length > 0 && <li><button className="primary small-btn" disabled={busy} onClick={applyFixes}>{busy ? "Ligando..." : `Ligar ${fixes.length} automaticamente`}</button>
-          {fixes.length < invMissing + payMissing && <span className="muted"> os outros: escolha na lista de lancamentos</span>}</li>}
+        {recat > 0 && <li>{recat} {recat > 1 ? "lancamentos" : "lancamento"} em Outros/Outras entradas que o texto ja diz o que e (ex.: resgate de cofrinho = Investimento).</li>}
+        {fixes.length > 0 && <li><button className="primary small-btn" disabled={busy} onClick={applyFixes}>{busy ? "Arrumando..." : `Arrumar ${fixes.length} automaticamente`}</button>
+          {fixes.length < invMissing + payMissing + recat && <span className="muted"> os outros: escolha na lista de lancamentos</span>}</li>}
         {oldMarks.length > 0 && (
           <li className="warn">{oldMarks.length} {oldMarks.length > 1 ? "marcacoes" : "marcacao"} do &quot;ja paguei&quot; antigo ({brl(oldMarks.reduce((t, x) => t + x.g.v, 0))}) {oldMarks.length > 1 ? "estao" : "esta"}
             somando como compra na fatura seguinte, em vez de pagar. <button className="ghost small-btn" onClick={removeOldMarks}>apagar e marcar de novo</button></li>
@@ -482,7 +495,7 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
             <button className="ghost small-btn" onClick={() => setPaying(paying === c.id + f.m ? null : c.id + f.m)}>{paying === c.id + f.m ? "fechar" : "ja paguei"}</button>
             {paying === c.id + f.m && <CardPayForm card={c} fm={f.m} rest={f.rest} due={f.due} months={months} setup={setup} onDone={() => setPaying(null)} />}</li>
         ))}
-        {generic > 0 && <li>{generic} {generic > 1 ? "lancamentos" : "lancamento"} em &quot;Outros&quot; sem dizer o que e: na lista, troque a categoria
+        {generic - recat > 0 && <li>{generic - recat} {generic - recat > 1 ? "lancamentos" : "lancamento"} em &quot;Outros&quot; sem dizer o que e: na lista, troque a categoria
           (escolha uma existente, ou &quot;+ nova categoria&quot; para criar a sua). Os iguais do mes mudam juntos e o site lembra para as proximas.</li>}
         {noBalance.map((r) => <li key={r.acc.id}>Conta {r.acc.name} sem saldo conferido: informe o saldo do app do banco em &quot;Contas&quot; para o patrimonio ficar certo.</li>)}
       </ul>

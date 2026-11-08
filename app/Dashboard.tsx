@@ -218,14 +218,16 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const debt = debts(months, gSetup);
 
   if (!firebaseConfigured && !demo)
-    return <main className="wrap center"><h1>Robo de Sinais</h1><p className="error">Firebase nao configurado: cadastre as variaveis NEXT_PUBLIC_FIREBASE_* na Vercel e faca Redeploy.</p></main>;
+    return <main className="wrap center"><h1>SeuBitico</h1><p className="error">Firebase nao configurado: cadastre as variaveis NEXT_PUBLIC_FIREBASE_* na Vercel e faca Redeploy.</p></main>;
   if (user === undefined) return <main className="wrap"><p>Carregando...</p></main>;
   if (!user)
     return (
-      <main className="wrap center">
-        <h1>Robo de Sinais</h1>
-        <p className="muted">Estrategia diaria SMA 150 + HMA 100 + alvo de vol. So sinais: voce opera manualmente.</p>
+      <main className="wrap login">
+        <span className="brand-mark" aria-hidden="true">S</span>
+        <h1 className="brand-name">Seu<span className="bb">Bitico</span></h1>
+        <p className="muted">Financas pessoais e cripto num lugar so: contas, cartoes, investimentos e carteira.</p>
         <button onClick={() => signInWithPopup(auth(), new GoogleAuthProvider())}>Entrar com Google</button>
+        <p className="muted small">Ferramenta educacional, nao e recomendacao de investimento.</p>
       </main>
     );
 
@@ -256,9 +258,12 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     <>
       <header className="topbar">
         <div className="topbar-inner">
-          <div className="brand">
-            <b>Robo de Sinais</b>
-            <span className="muted small">{updatedAt ? `dados ${ago(updatedAt)}` : "sem dados"}</span>
+          <div className="brand-row">
+            <span className="brand-mark" aria-hidden="true">S</span>
+            <div className="brand">
+              <span className="brand-name">Seu<span className="bb">Bitico</span></span>
+              <span className="muted small">financas e cripto{updatedAt ? ` - dados ${ago(updatedAt)}` : ""}</span>
+            </div>
           </div>
           <div className="row">
             <button className="ghost" onClick={() => signOut(auth())}>Sair</button>

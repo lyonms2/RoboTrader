@@ -197,9 +197,12 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
             {(setup.recvs ?? []).map((r) => {
               const st = recvStatus(r, months);
               return (
-                <li key={r.id}><b>{r.name}</b> <span className="tag">{r.kind === "emprestei" ? "emprestimo" : "venda"}</span>
-                  <span className="muted">{st.got} de {r.n} recebidas{st.late ? "" : ""}</span>{st.late > 0 && <span className="warn">{st.late} atrasada{st.late > 1 ? "s" : ""}</span>}
-                  <span>{brl(st.leftV, 0)}</span>
+                <li key={r.id}><b>{r.name}</b> <span className="tag">{r.kind === "emprestei" ? "emprestimo" : r.kind === "venda" ? "venda" : "conta com a pessoa"}</span>
+                  {r.kind === "conta"
+                    ? <span className="muted">{st.saldo >= 0 ? "te deve" : "voce deve a ela"}</span>
+                    : <span className="muted">{st.got} de {r.n} recebidas</span>}
+                  {st.late > 0 && <span className="warn">{st.late} atrasada{st.late > 1 ? "s" : ""}</span>}
+                  <span className={st.saldo < 0 ? "warn" : ""}>{brl(r.kind === "conta" ? Math.abs(st.saldo) : st.leftV, 0)}</span>
                   <button className="link" onClick={() => { setCardsEntry({ type: "recv", id: r.id }); setSub("cards"); }}>abrir</button></li>
               );
             })}
@@ -709,7 +712,7 @@ export function PatrimonioCard({ cfg, fin, wallet, spend, debt, months, setup, o
         </div>
         <div className="kpis">
           <div><span>{s.bens > 0 ? "Patrimonio sem bens" : debt.total > 0 ? "Patrimonio liquido" : "Patrimonio total"}</span><b>{brl(s.totalNoBens + debt.recv - debt.total)}</b>
-            <small className="muted">{debt.total > 0 ? `${brl(s.totalNoBens, 0)} - ${brl(debt.total, 0)} de dividas` : s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluida` : wallet ? "falta o dolar: Atualizar cotacoes em Investimentos" : "sem carteiras cripto"}</small></div>
+            <small className="muted">{debt.total > 0 || debt.recv > 0 ? `${brl(s.totalNoBens, 0)}${debt.recv > 0 ? ` + ${brl(debt.recv, 0)} a receber` : ""}${debt.total > 0 ? ` - ${brl(debt.total, 0)} de dividas` : ""}` : s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluida` : wallet ? "falta o dolar: Atualizar cotacoes em Investimentos" : "sem carteiras cripto"}</small></div>
           {s.bens > 0 && <div><span>Patrimonio com bens</span><b>{brl(s.total + debt.recv - debt.total)}</b>
             <small className="muted">+ {brl(s.bens, 0)} em imoveis, veiculos...</small></div>}
           <div><span>Reserva de emergencia</span><b>{brl(s.reserve)}</b>

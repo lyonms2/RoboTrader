@@ -16,6 +16,7 @@ import PerfChart from "./PerfChart";
 import WalletCard from "./WalletCard";
 import FichasCard from "./FichasCard";
 import CandidatesCard from "./CandidatesCard";
+const SHOW_CANDIDATES = false;
 import FinanceCard, { MonthAndUpcoming, NetWorthBlock, PatrimonioCard, type Sub as FinSub } from "./FinanceCard";
 import { debts, reviewCount, upcoming } from "./GastosCard";
 import { budgetAlerts } from "./CardsLoans";
@@ -316,7 +317,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
                 <AssetCard key={l.symbol} l={l} cfg={eff} prices={prices} />
               ))}
             </div>
-            <CandidatesCard doc={candidates} />
+            {/* Outras moedas para o robo: escondido ate dar para trocar as moedas do robo pela tela */}
+            {SHOW_CANDIDATES && <CandidatesCard doc={candidates} />}
           </>
         )}
         {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup}

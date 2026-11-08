@@ -13,8 +13,8 @@ const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
 export type CardsEntry = { type: "compra" | "import" | "card" | "loan" | "prepay"; id: string | null };
 const TYPES: { id: CardsEntry["type"]; label: string }[] = [
-  { id: "compra", label: "Compra no cartao" }, { id: "import", label: "Importar fatura" }, { id: "card", label: "Cartao" },
-  { id: "loan", label: "Emprestimo" }, { id: "prepay", label: "Adiantar parcelas" },
+  { id: "compra", label: "Compra no cartao" }, { id: "import", label: "Importar fatura" }, { id: "card", label: "Cadastrar cartao" },
+  { id: "loan", label: "Cadastrar emprestimo" }, { id: "prepay", label: "Adiantar parcelas" },
 ];
 const STATUS: Record<string, string> = { aberta: "aberta (ainda recebendo compras)", fechada: "fechada, a pagar", paga: "paga", vencida: "vencida sem pagamento" };
 
@@ -31,9 +31,36 @@ export function budgetAlerts(months: Record<string, MonthDoc>, setup: GastosSetu
   return out;
 }
 
-// Sub-aba Cartoes e emprestimos: todo o controle do credito (compras, faturas, planejamento, parcelas, emprestimos)
+// Sub-aba Cartoes e emprestimos, separada em duas partes: Cartoes | Emprestimos
+const LOAN_TYPES: CardsEntry["type"][] = ["loan", "prepay"];
 export default function CardsLoans({ months, setup, invest, entry, setEntry }: {
   months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; entry: CardsEntry; setEntry: (e: CardsEntry) => void;
+}) {
+  const part: "cards" | "loans" = LOAN_TYPES.includes(entry.type) ? "loans" : "cards";
+  const d = debts(months, setup);
+  const com = commitments(months, setup);
+  const nav = (
+    <nav className="subtabs inner" role="tablist" aria-label="Cartoes e emprestimos">
+      <button role="tab" aria-selected={part === "cards"} className={part === "cards" ? "pill on" : "pill"} onClick={() => setEntry({ type: "compra", id: null })}>
+        Cartoes <span className="muted">{brl(d.cards, 0)}</span></button>
+      <button role="tab" aria-selected={part === "loans"} className={part === "loans" ? "pill on" : "pill"} onClick={() => setEntry({ type: "loan", id: null })}>
+        Emprestimos <span className="muted">{brl(d.loans, 0)}</span></button>
+    </nav>
+  );
+  return (
+    <>
+      {nav}
+      {part === "cards"
+        ? <CardsPart months={months} setup={setup} invest={invest} entry={entry} setEntry={setEntry} owed={d.cards} com={com} />
+        : <LoansPart setup={setup} entry={entry} setEntry={setEntry} owed={d.loans} com={com} />}
+    </>
+  );
+}
+
+type Com = { m: string; cards: number; loans: number }[];
+
+function CardsPart({ months, setup, invest, entry, setEntry, owed, com }: {
+  months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; entry: CardsEntry; setEntry: (e: CardsEntry) => void; owed: number; com: Com;
 }) {
   const cards = setup.cards;
   const [sel, setSel] = useState(cards[0]?.id ?? "");
@@ -41,20 +68,16 @@ export default function CardsLoans({ months, setup, invest, entry, setEntry }: {
   const st = card ? cardStatus(card, months) : null;
   const [fmSel, setFm] = useState<string | null>(null);
   const fm = fmSel ?? (card ? faturaMonth(card, todayBR()) : monthOf(todayBR()));
-  const d = debts(months, setup);
-  const com = commitments(months, setup);
   const next = com[1];
   const planned = cards.reduce((s, c) => s + (c.budget ?? 0), 0);
   const usedNow = cards.reduce((s, c) => s + (cardStatus(c, months).all.find((f) => f.m === faturaMonth(c, todayBR()))?.v ?? 0), 0);
-
   return (
     <>
       <section className="card">
-        <h2>Cartoes e emprestimos</h2>
+        <h2>Cartoes</h2>
         <div className="kpis">
-          <div><span>Devendo nos cartoes</span><b className={d.cards > 0 ? "warn" : ""}>{brl(d.cards)}</b><small className="muted">faturas a pagar + parcelas futuras</small></div>
-          <div><span>Devendo em emprestimos</span><b>{brl(d.loans)}</b><small className="muted">saldo devedor</small></div>
-          <div><span>Compromisso em {monthLabel(next.m)}</span><b>{brl(next.cards + next.loans)}</b><small className="muted">faturas {brl(next.cards, 0)} + parcelas {brl(next.loans, 0)}</small></div>
+          <div><span>Devendo nos cartoes</span><b className={owed > 0 ? "warn" : ""}>{brl(owed)}</b><small className="muted">faturas a pagar + parcelas futuras</small></div>
+          <div><span>Faturas em {monthLabel(next.m)}</span><b>{brl(next.cards)}</b><small className="muted">ja comprometido</small></div>
           <div><span>Planejado nos cartoes</span><b>{planned ? brl(planned, 0) : "-"}</b>
             <small className={planned && usedNow > planned ? "warn" : "muted"}>{planned ? `usado ${brl(usedNow, 0)} nas faturas abertas (${fmt((usedNow / planned) * 100, 0)}%)` : "defina no cadastro do cartao"}</small></div>
         </div>
@@ -81,10 +104,40 @@ export default function CardsLoans({ months, setup, invest, entry, setEntry }: {
         </section>
       )}
 
-      <CommitmentsChart data={com} />
+      <CommitmentsChart data={com} which="cards" />
+    </>
+  );
+}
 
-      <Loans setup={setup} onEdit={(id) => { setEntry({ type: "loan", id }); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-        onPrepay={(id) => { setEntry({ type: "prepay", id }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+function LoansPart({ setup, entry, setEntry, owed, com }: {
+  setup: GastosSetup; entry: CardsEntry; setEntry: (e: CardsEntry) => void; owed: number; com: Com;
+}) {
+  const next = com[1];
+  const sts = setup.loans.map((l) => ({ l, st: loanStatus(l) }));
+  const active = sts.filter((x) => x.st.left > 0);
+  const lastEnd = active.reduce((m, x) => (x.st.end > m ? x.st.end : m), "");
+  const saved = sts.reduce((s, x) => s + x.st.saved, 0);
+  const top = () => window.scrollTo({ top: 0, behavior: "smooth" });
+  return (
+    <>
+      <section className="card">
+        <h2>Emprestimos</h2>
+        <div className="kpis">
+          <div><span>Devendo em emprestimos</span><b>{brl(owed)}</b><small className="muted">saldo devedor de {active.length} {active.length === 1 ? "emprestimo" : "emprestimos"}</small></div>
+          <div><span>Parcelas em {monthLabel(next.m)}</span><b>{brl(next.loans)}</b><small className="muted">sai da conta todo mes</small></div>
+          <div><span>Livre de emprestimos em</span><b>{lastEnd ? monthLabel(lastEnd, true) : "-"}</b><small className="muted">ultima parcela</small></div>
+          {saved > 0.005 && <div><span>Economizou adiantando</span><b className="pos">{brl(saved)}</b></div>}
+        </div>
+        <p className="muted small">As parcelas saem pelo extrato da conta (categoria Emprestimos). Aqui fica o contrato: quanto falta, quando termina e os adiantamentos.</p>
+      </section>
+
+      <section className="card entry-card">
+        <CardsEntryPanel months={{}} setup={setup} invest={[]} entry={entry} setEntry={setEntry} />
+      </section>
+
+      <Loans setup={setup} onEdit={(id) => { setEntry({ type: "loan", id }); top(); }} onPrepay={(id) => { setEntry({ type: "prepay", id }); top(); }} />
+
+      <CommitmentsChart data={com} which="loans" />
     </>
   );
 }
@@ -126,7 +179,7 @@ function FaturaView({ card, st, fm, months, setup }: {
           <small className={total > card.budget ? "warn" : "muted"}>planejado {brl(card.budget, 0)} por fatura: {fmt((total / card.budget) * 100, 0)}% usado
             {total < card.budget ? ` - sobram ${brl(card.budget - total, 0)}` : ` - passou ${brl(total - card.budget, 0)}`}</small>
         </div>
-      ) : <p className="muted small">Sem planejamento: em &quot;Cartao&quot; (acima), informe quanto quer gastar por fatura para acompanhar aqui.</p>}
+      ) : <p className="muted small">Sem planejamento: em &quot;Cadastrar cartao&quot; (acima), informe quanto quer gastar por fatura para acompanhar aqui.</p>}
 
       {cats.length > 0 && (
         <figure className="viz">
@@ -168,34 +221,29 @@ function FaturaView({ card, st, fm, months, setup }: {
   );
 }
 
-// Compromissos dos proximos 12 meses: faturas + parcelas de emprestimo (barras empilhadas, 2 series)
-function CommitmentsChart({ data }: { data: { m: string; cards: number; loans: number }[] }) {
+// Proximos 12 meses de uma parte so: faturas (com parcelas) ou parcelas de emprestimo
+function CommitmentsChart({ data, which }: { data: Com; which: "cards" | "loans" }) {
   const [hover, setHover] = useState<number | null>(null);
-  const max = Math.max(...data.map((x) => x.cards + x.loans), 0);
+  const val = (x: Com[number]) => x[which];
+  const max = Math.max(...data.map(val), 0);
   if (!(max > 0)) return null;
   const h = hover !== null ? data[hover] : null;
+  const what = which === "cards" ? "faturas" : "parcelas";
   return (
     <section className="card">
-      <h2>Compromissos dos proximos 12 meses</h2>
+      <h2>{which === "cards" ? "Faturas" : "Parcelas"} nos proximos 12 meses</h2>
       <figure className="viz">
-        <figcaption className="small muted">
-          <i className="key k-cards" /> faturas (com parcelas) <i className="key k-loans" /> parcelas de emprestimo
-          {h ? ` - ${monthLabel(h.m)}: faturas ${brl(h.cards, 0)} + emprestimos ${brl(h.loans, 0)} = ${brl(h.cards + h.loans, 0)}` : ""}
-        </figcaption>
+        <figcaption className="small muted">{h ? `${monthLabel(h.m)}: ${what} ${brl(val(h))}` : "passe o mouse para ver o valor do mes"}</figcaption>
         <div className="mbars twelve" onMouseLeave={() => setHover(null)}>
           {data.map((x, i) => (
-            <div key={x.m} className={`mbar${hover !== null && hover !== i ? " dim" : ""}`} onMouseEnter={() => setHover(i)}
-              title={`${monthLabel(x.m)}: faturas ${brl(x.cards)} + emprestimos ${brl(x.loans)}`}>
-              <span className="stack-col">
-                <span className="mbar-fill k-loans" style={{ height: `${(x.loans / max) * 100}%` }} />
-                <span className="mbar-fill k-cards" style={{ height: `${(x.cards / max) * 100}%` }} />
-              </span>
+            <div key={x.m} className={`mbar${hover !== null && hover !== i ? " dim" : ""}`} onMouseEnter={() => setHover(i)} title={`${monthLabel(x.m)}: ${brl(val(x))}`}>
+              <span className="stack-col"><span className={`mbar-fill ${which === "cards" ? "k-cards" : "k-loans"}`} style={{ height: `${(val(x) / max) * 100}%` }} /></span>
               <small>{monthLabel(x.m)}</small>
             </div>
           ))}
         </div>
       </figure>
-      <p className="muted small">Faturas futuras somam as parcelas que ainda vem; compras novas aumentam esses valores.</p>
+      <p className="muted small">{which === "cards" ? "Faturas futuras somam as parcelas que ainda vem; compras novas aumentam esses valores." : "Parcelas adiantadas ja saem daqui."}</p>
     </section>
   );
 }
@@ -215,7 +263,7 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry }: {
     <div className="entry">
       <p className="small entry-q">O que voce quer lancar?</p>
       <div className="kind-pick entry-types">
-        {TYPES.map((t) => <button key={t.id} type="button" className={type === t.id ? "pill on" : "pill"} onClick={() => setEntry({ type: t.id, id: null })}>{t.label}</button>)}
+        {TYPES.filter((t) => LOAN_TYPES.includes(t.id) === LOAN_TYPES.includes(type)).map((t) => <button key={t.id} type="button" className={type === t.id ? "pill on" : "pill"} onClick={() => setEntry({ type: t.id, id: null })}>{t.label}</button>)}
       </div>
       {opts && (
         <label className="entry-pick small">Novo ou alterar:
@@ -225,8 +273,8 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry }: {
           </select>
         </label>
       )}
-      {noCards && <p className="muted small">Cadastre um cartao primeiro (opcao &quot;Cartao&quot;).</p>}
-      {noLoans && <p className="muted small">Cadastre o emprestimo primeiro (opcao &quot;Emprestimo&quot;).</p>}
+      {noCards && <p className="muted small">Cadastre um cartao primeiro (opcao &quot;Cadastrar cartao&quot;).</p>}
+      {noLoans && <p className="muted small">Cadastre o emprestimo primeiro (opcao &quot;Cadastrar emprestimo&quot;).</p>}
       {type === "prepay" && !noLoans && <PrepayForm key={id ?? "p"} setup={setup} loanId={id ?? setup.loans[0].id} onPick={(lid) => setEntry({ type, id: lid })} />}
       {type === "compra" && !noCards && <QuickAdd key="compra" mode="cartao" months={months} setup={setup} invest={invest} defaultDate={todayBR()} />}
       {type === "import" && !noCards && <ImportPanel mode="cartao" months={months} setup={setup} invest={invest} onDone={() => setEntry({ type: "compra", id: null })} />}

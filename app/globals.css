@@ -470,3 +470,8 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 .limit.budget { margin-top: 12px; }
 .limit-fill.over { background: var(--sell, #e66767); }
 @media (max-width: 600px) { .mbars.twelve small { font-size: 9px; } }
+
+/* Cartoes | Emprestimos dentro da sub-aba */
+.subtabs.inner { margin-top: -4px; }
+.subtabs.inner .pill { font-size: 13px; padding: 5px 12px; }
+.subtabs.inner .pill .muted { margin-left: 6px; font-size: 12px; }

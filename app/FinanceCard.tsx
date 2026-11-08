@@ -5,17 +5,20 @@ import { db } from "@/lib/firebaseClient";
 import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
 import { accountBalance, investFlows, monthLabel, type GastosSetup, type MonthDoc } from "@/lib/gastos";
-import GastosCard, { DebtsView, monthSnapshot } from "./GastosCard";
+import GastosCard, { AccountsPanel, DebtsBlock, Fixos, Review, monthSnapshot, upcoming } from "./GastosCard";
 import NetWorthChart from "./NetWorthChart";
 import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
 
-type Sub = "resumo" | "invest" | "gastos" | "dividas";
+// Resumo = ver como esta; Lancamentos = unico lugar onde o dinheiro se move; Contas e bens = unico lugar com saldos e cadastros
+type Sub = "resumo" | "lanc" | "bens";
 const SUBS: { id: Sub; label: string }[] = [
-  { id: "resumo", label: "Resumo" }, { id: "invest", label: "Investimentos" }, { id: "gastos", label: "Entradas e saidas" }, { id: "dividas", label: "Cartoes e dividas" },
+  { id: "resumo", label: "Resumo" }, { id: "lanc", label: "Lancamentos" }, { id: "bens", label: "Contas e bens" },
 ];
+const OLD_SUB: Record<string, Sub> = { gastos: "lanc", invest: "bens", dividas: "bens" };
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
+const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const signed = (v: number) => `${v > 0 ? "+" : v < 0 ? "-" : ""}R$ ${fmt(Math.abs(v))}`;
 const pnlClass = (v: number) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
 const short = (n: string) => (n.length > 48 ? `${n.slice(0, 46)}...` : n);
@@ -44,8 +47,9 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
   // Sub-aba aberta, lembrada neste navegador
   const [sub, setSubState] = useState<Sub>(() => {
     try {
-      const v = localStorage.getItem("finSub") as Sub | null;
-      return v && SUBS.some((x) => x.id === v) ? v : "resumo";
+      const raw = localStorage.getItem("finSub") ?? "";
+      const v = (OLD_SUB[raw] ?? raw) as Sub;
+      return SUBS.some((x) => x.id === v) ? v : "resumo";
     } catch {
       return "resumo";
     }
@@ -53,6 +57,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
   const setSub = (v: Sub) => {
     setSubState(v);
     try { localStorage.setItem("finSub", v); } catch { /* sem armazenamento */ }
+    window.scrollTo({ top: 0 });
   };
   const items = cfg.finance ?? [];
   const acct = accountBalance(months, setup);
@@ -88,8 +93,8 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       ))}
     </nav>
   );
-  if (sub === "gastos") return <>{nav}<GastosCard months={months} setup={setup} invest={items} /></>;
-  if (sub === "dividas") return <>{nav}<DebtsView months={months} setup={setup} /></>;
+  if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} /></>;
+  const next = upcoming(months, setup);
 
   return (
     <>
@@ -130,45 +135,49 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       <NetWorthChart hist={nwHist} live={netWorth(cfg, fin, wallet, months, setup)} />
 
       <div className="two-col">
-        <section className="card link-card" role="button" tabIndex={0} onClick={() => setSub("gastos")}>
-          <div className="card-head"><h2>{monthLabel(mon.m, true)}</h2><span className="muted small">ver entradas e saidas &rsaquo;</span></div>
+        <section className="card link-card" role="button" tabIndex={0} onClick={() => setSub("lanc")}>
+          <div className="card-head"><h2>{monthLabel(mon.m, true)}</h2><span className="muted small">ver lancamentos &rsaquo;</span></div>
           {mon.count || mon.pendingN ? (
             <div className="kpis compact">
-              <div><span>Gastos</span><b>{brl(mon.gastos, 0)}</b><small className="muted">{mon.avg ? `media ${brl(mon.avg.value, 0)}` : "-"}</small></div>
-              <div><span>Entradas</span><b>{brl(mon.receitas, 0)}</b></div>
+              <div><span>Entrou</span><b>{brl(mon.receitas, 0)}</b></div>
+              <div><span>Saiu (gastos)</span><b>{brl(mon.gastos, 0)}</b><small className="muted">{mon.avg ? `media ${brl(mon.avg.value, 0)}` : ""}</small></div>
               <div><span>Sobrou</span><b className={mon.receitas - mon.gastos >= 0 ? "pos" : "neg"}>{brl(mon.receitas - mon.gastos, 0)}</b></div>
-              <div><span>Saldo em conta</span><b className={acct && acct.value < 0 ? "neg" : ""}>{acct ? brl(acct.value, 0) : "-"}</b>
-                <small className="muted">{acct ? (acct.informed ? "entra no patrimonio" : "sobra acumulada (informe o saldo)") : "-"}</small></div>
-              <div><span>Ainda a pagar</span><b className={mon.pending > 0 ? "warn" : ""}>{brl(mon.pending, 0)}</b><small className="muted">{mon.pendingN} fixos/parcelas</small></div>
+              <div><span>Em conta</span><b className={acct && acct.value < 0 ? "neg" : ""}>{acct ? brl(acct.value, 0) : "-"}</b>
+                <small className={acct && !acct.informed ? "warn" : "muted"}>{acct ? (acct.informed ? "saldo das contas" : "confira o saldo") : ""}</small></div>
             </div>
-          ) : <p className="muted small">Nenhum gasto lancado neste mes. Importe o extrato do banco ou lance a mao.</p>}
+          ) : <p className="muted small">Nada lancado neste mes. Em Lancamentos, importe o extrato do banco ou lance a mao.</p>}
         </section>
-        <section className="card link-card" role="button" tabIndex={0} onClick={() => setSub("dividas")}>
-          <div className="card-head"><h2>Cartoes e dividas</h2><span className="muted small">ver detalhes &rsaquo;</span></div>
-          {debt.total > 0 || setup.cards.length || setup.loans.length ? (
-            <div className="kpis compact">
-              <div><span>Total devendo</span><b className={debt.total > 0 ? "warn" : ""}>{brl(debt.total, 0)}</b></div>
-              <div><span>Emprestimos</span><b>{brl(debt.loans, 0)}</b></div>
-              <div><span>Cartoes</span><b>{brl(debt.cards, 0)}</b><small className="muted">faturas a vencer</small></div>
-            </div>
-          ) : <p className="muted small">Nenhum cartao ou emprestimo cadastrado.</p>}
+        <section className="card">
+          <div className="card-head"><h2>Proximos pagamentos</h2><span className="muted small">30 dias</span></div>
+          {next.length ? (
+            <ul className="pend small">
+              {next.slice(0, 7).map((p, i) => (
+                <li key={i}><span className={p.late ? "warn" : "muted"}>{dm(p.d)}</span> <b>{p.desc}</b> <span className={p.late ? "warn" : ""}>{brl(p.v)}</span></li>
+              ))}
+              {next.length > 7 && <li className="muted">+ {next.length - 7}</li>}
+            </ul>
+          ) : <p className="muted small">Nada a pagar nos proximos 30 dias (cadastre cartoes, emprestimos e fixos em Contas e bens).</p>}
         </section>
       </div>
-
-      <section className="card link-card" role="button" tabIndex={0} onClick={() => setSub("invest")}>
-        <div className="card-head"><h2>Investimentos</h2><span className="muted small">{rows.length} cadastrados - ver lista &rsaquo;</span></div>
-        {rows.length ? (
-          <ul className="inv-mini small">
-            {rows.slice(0, 6).map((r) => (
-              <li key={r.item.id}><i className={`dot g-${r.group}`} aria-hidden="true" />{r.item.name}<span className="muted">{r.kindLabel}</span><b>{r.value !== null ? brl(r.value, 0) : "-"}</b></li>
-            ))}
-            {rows.length > 6 && <li className="muted">+ {rows.length - 6} outros</li>}
-          </ul>
-        ) : <p className="muted small">Nenhum investimento cadastrado.</p>}
-      </section>
+      <Review months={months} setup={setup} invest={items} />
       </>}
 
-      {sub === "invest" && <>
+      {sub === "bens" && <>
+      <section className="card">
+        <h2>Balanco</h2>
+        <div className="kpis">
+          <div><span>O que voce tem</span><b>{brl(s.total)}</b><small className="muted">contas, investimentos e cripto</small></div>
+          <div><span>O que voce deve</span><b className={debt.total > 0 ? "warn" : ""}>{brl(debt.total)}</b><small className="muted">cartoes {brl(debt.cards, 0)} - emprestimos {brl(debt.loans, 0)}</small></div>
+          <div><span>Patrimonio liquido</span><b>{brl(s.total - debt.total)}</b><small className="muted">tem - deve</small></div>
+        </div>
+        <p className="muted small">Aqui ficam os saldos e os cadastros. O dinheiro que entra, sai ou muda de lugar e lancado so em Lancamentos.</p>
+      </section>
+
+      <h3 className="bal-title">O que voce tem</h3>
+      <section className="card">
+        <div className="card-head"><h2>Contas</h2><span className="muted small">{brl(acct?.value ?? 0)}</span></div>
+        <AccountsPanel months={months} setup={setup} m={mon.m} />
+      </section>
 
       <section className="card">
         <div className="card-head">
@@ -197,7 +206,19 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
         </p>
       </section>
 
+      {(s.byGroup.cripto + s.byGroup.dolar) > 0 && (
+        <section className="card">
+          <div className="card-head"><h2>Cripto</h2><span className="muted small">{brl(s.byGroup.cripto + s.byGroup.dolar)}</span></div>
+          <p className="small">Tokens {brl(s.byGroup.cripto)} + dolar em stablecoins {brl(s.byGroup.dolar)}, lidos das suas carteiras (aba Carteira), convertidos pelo dolar PTAX.</p>
+        </section>
+      )}
       <Dividends rows={s.rows} fin={fin} />
+
+      <h3 className="bal-title">O que voce deve</h3>
+      <DebtsBlock months={months} setup={setup} />
+
+      <h3 className="bal-title">Compromissos todo mes</h3>
+      <Fixos setup={setup} />
       </>}
     </>
   );

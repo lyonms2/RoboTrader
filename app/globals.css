@@ -434,3 +434,12 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 .how table { margin-top: 8px; font-size: 12.5px; }
 .how td, .how th { white-space: normal; vertical-align: top; }
 @media (max-width: 600px) { .how table { display: block; overflow-x: auto; } }
+
+/* Financas unificadas */
+.bal-title { margin: 22px 2px 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.acct-line { margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.acct-line button.link { padding: 0; }
+.pend-title { margin: 12px 0 0; }
+.where-sel { max-width: 220px; }
+.accts { margin-top: 0; }
+.card .accts { border: 0; padding: 0; background: none; }

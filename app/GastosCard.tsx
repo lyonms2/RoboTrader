@@ -43,36 +43,38 @@ export function monthSnapshot(months: Record<string, MonthDoc>, setup: GastosSet
 }
 
 // Cartoes e dividas: resumo + cartoes + emprestimos
-export function DebtsView({ months, setup }: { months: Record<string, MonthDoc>; setup: GastosSetup }) {
+export function DebtsBlock({ months, setup }: { months: Record<string, MonthDoc>; setup: GastosSetup }) {
   const cards = setup.cards.map((c) => ({ c, st: cardStatus(c, months) }));
-  const d = debts(months, setup);
-  const today = todayBR();
-  const monthlyLoans = setup.loans.filter((l) => loanStatus(l, today).left > 0).reduce((s, l) => s + l.parcela, 0);
-  const nextBills = cards.filter((x) => x.st.next).map((x) => ({ name: x.c.name, ...x.st.next! })).sort((a, b) => a.due.localeCompare(b.due));
   return (
-    <>
-      <section className="card">
-        <h2>Dividas</h2>
-        <div className="kpis">
-          <div><span>Total devendo</span><b className={d.total > 0 ? "warn" : ""}>{brl(d.total)}</b><small className="muted">emprestimos + faturas em aberto</small></div>
-          <div><span>Emprestimos</span><b>{brl(d.loans)}</b><small className="muted">{monthlyLoans > 0 ? `${brl(monthlyLoans)} por mes em parcelas` : "nenhum ativo"}</small></div>
-          <div><span>Cartoes</span><b>{brl(d.cards)}</b><small className="muted">faturas a vencer, com parcelas futuras</small></div>
-          <div><span>Proxima fatura</span><b>{nextBills[0] ? brl(nextBills[0].v) : "-"}</b>
-            <small className="muted">{nextBills[0] ? `${nextBills[0].name}, vence ${dm(nextBills[0].due)}` : "nenhuma lancada"}</small></div>
-        </div>
-      </section>
-      <div className="two-col">
-        <Cards cards={cards} setup={setup} />
-        <Loans setup={setup} />
-      </div>
-    </>
+    <div className="two-col">
+      <Cards cards={cards} setup={setup} />
+      <Loans setup={setup} />
+    </div>
   );
 }
 
-export default function GastosCard({ months, setup, invest = [] }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest?: FinItem[] }) {
+// Proximos pagamentos (Resumo): faturas, fixos e parcelas nos proximos 30 dias, mais o que ja venceu sem pagamento
+export function upcoming(months: Record<string, MonthDoc>, setup: GastosSetup) {
+  const today = todayBR();
+  const limit = new Date(Date.parse(`${today}T12:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10);
+  const out: { d: string; desc: string; v: number; late: boolean }[] = [];
+  for (const c of setup.cards) {
+    const st = cardStatus(c, months);
+    for (const f of st.overdue) out.push({ d: f.due, desc: `Fatura ${c.name} (${monthLabel(f.m)})`, v: f.rest, late: true });
+    if (st.next && st.next.due <= limit) out.push({ d: st.next.due, desc: `Fatura ${c.name} (${st.next.status === "fechada" ? "fechada" : "ainda aberta"})`, v: st.next.v, late: false });
+  }
+  const m = monthOf(today);
+  for (const mm of [m, addMonths(m, 1)])
+    for (const p of pendingFor(mm, months[mm]?.items ?? [], setup))
+      if (p.d <= limit && !p.card) out.push({ d: p.d, desc: p.desc, v: p.v, late: p.d < today });
+  return out.sort((a, b) => a.d.localeCompare(b.d));
+}
+
+export default function GastosCard({ months, setup, invest = [], onBens }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest?: FinItem[]; onBens?: () => void }) {
   const [m, setM] = useState(monthOf(todayBR()));
   const [filter, setFilter] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [where, setWhere] = useState(""); // "" = tudo; "acc:id" ou "card:id"
   const items = months[m]?.items ?? [];
   const s = summarize(items);
   const avg = avgMonthly(months);
@@ -111,7 +113,11 @@ export default function GastosCard({ months, setup, invest = [] }: { months: Rec
     await saveMonth(m, [...items, { id: newId(), d: p.d, desc: p.desc, v: p.v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...(p.card ? { card: p.card } : {}), ...(p.parc ? { parc: p.parc } : {}) }]);
   };
 
-  const shown = [...items].filter((g) => !filter || g.cat === filter).sort((a, b) => b.d.localeCompare(a.d));
+  const accs = accountsOf(setup);
+  const shown = [...items].filter((g) => !filter || g.cat === filter)
+    .filter((g) => !where || (where.startsWith("card:") ? g.card === where.slice(5) : accIdOf(g, accs) === where.slice(4)))
+    .sort((a, b) => b.d.localeCompare(a.d));
+  const acSt = accountsStatus(months, setup, m);
   const cats = Object.entries(s.byCat).sort((a, b) => b[1] - a[1]);
   const maxCat = Math.max(...cats.map(([c, v]) => Math.max(v, prevAvg.acc[c] ?? 0)), 0);
   const isNow = m === monthOf(todayBR());
@@ -137,17 +143,26 @@ export default function GastosCard({ months, setup, invest = [] }: { months: Rec
           <div><span>Ainda a pagar</span><b className={pendingTotal > 0 ? "warn" : ""}>{brl(pendingTotal)}</b>
             <small className="muted">{pending.length ? `${pending.length} fixos/parcelas - previsto ${brl(s.gastos + pendingTotal, 0)}` : "fixos e parcelas em dia"}</small></div>
         </div>
-        <AccountsPanel months={months} setup={setup} m={m} />
+        {acSt.rows.some((r) => r.used || r.informed) && (
+          <p className="small acct-line">
+            Contas: inicio do mes <b>{brl(acSt.start)}</b> &rarr; {isNow ? "hoje" : "fim do mes"} <b className={acSt.end < 0 ? "neg" : ""}>{brl(acSt.end)}</b>
+            {!acSt.allInformed && <span className="warn"> (falta conferir o saldo de alguma conta)</span>}
+            {onBens && <button className="link" onClick={onBens}>ver contas</button>}
+          </p>
+        )}
         <Review months={months} setup={setup} invest={invest} />
         {pending.length > 0 && (
-          <ul className="pend small">
-            {pending.map((p) => (
-              <li key={p.ref}>
-                <span className="muted">{dm(p.d)}</span> <b>{p.desc}</b> <span>{brl(p.v)}</span>
-                <button className="ghost small-btn" onClick={() => launch(p)}>marcar pago</button>
-              </li>
-            ))}
-          </ul>
+          <>
+            <p className="small muted pend-title">Previstos para este mes (somem sozinhos quando o pagamento aparece num extrato importado):</p>
+            <ul className="pend small">
+              {pending.map((p) => (
+                <li key={p.ref}>
+                  <span className="muted">{dm(p.d)}</span> <b>{p.desc}</b> <span>{brl(p.v)}</span>
+                  <button className="ghost small-btn" onClick={() => launch(p)} title="Use so se esse pagamento nao vai aparecer em nenhum extrato">paguei fora do extrato</button>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
         {cats.length > 0 && (
           <figure className="viz">
@@ -177,6 +192,13 @@ export default function GastosCard({ months, setup, invest = [] }: { months: Rec
         <div className="card-head">
           <h2>Lancamentos {filter && <span className="tag">{filter} <button className="link" onClick={() => setFilter(null)}>x</button></span>}</h2>
           <div className="row">
+            {(accs.length > 1 || setup.cards.length > 0) && (
+              <select value={where} onChange={(e) => setWhere(e.target.value)} aria-label="Filtrar por conta ou cartao" className="where-sel">
+                <option value="">Todas as contas e cartoes</option>
+                {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>Conta {a.name}</option>)}
+                {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>Cartao {c.name}</option>)}
+              </select>
+            )}
             <button className="ghost" onClick={() => setImporting(!importing)}>{importing ? "Fechar importacao" : "Importar extrato"}</button>
           </div>
         </div>
@@ -215,8 +237,6 @@ export default function GastosCard({ months, setup, invest = [] }: { months: Rec
         <p className="muted small">Mudou a categoria de um lancamento? O site aplica aos iguais do mes e lembra para as proximas importacoes.</p>
         <HowItWorks />
       </section>
-
-      <Fixos setup={setup} />
     </>
   );
 }
@@ -265,7 +285,7 @@ function InvSelect({ value, desc, invest, out, onChange }: { value?: string; des
 }
 
 // Para revisar: tudo que deixaria um numero errado, com o conserto de 1 clique quando da
-function Review({ months, setup, invest }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[] }) {
+export function Review({ months, setup, invest }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[] }) {
   const [busy, setBusy] = useState(false);
   const accounts = accountsOf(setup);
   // 1) investimento sem destino  2) pagamento de fatura sem cartao
@@ -351,7 +371,7 @@ function HowItWorks() {
 }
 
 // Saldo em conta: o que sobra (ou falta) dos lancamentos entra no patrimonio como "Conta corrente"
-function AccountsPanel({ months, setup, m }: { months: Record<string, MonthDoc>; setup: GastosSetup; m: string }) {
+export function AccountsPanel({ months, setup, m }: { months: Record<string, MonthDoc>; setup: GastosSetup; m: string }) {
   const st = accountsStatus(months, setup, m);
   const [edit, setEdit] = useState<string | null>(null); // id da conta em edicao ou "__new"
   const accounts = accountsOf(setup);
@@ -361,7 +381,7 @@ function AccountsPanel({ months, setup, m }: { months: Record<string, MonthDoc>;
   return (
     <div className="accts small">
       <div className="accts-head">
-        <b>Contas</b>
+        <b>Este mes</b>
         {beforeData ? <span className="muted">sem lancamentos neste mes ou antes</span> : (
           <span>
             inicio do mes <b>{brl(st.start)}</b> &rarr; {isNow ? "hoje" : "fim do mes"} <b className={st.end < 0 ? "neg" : ""}>{brl(st.end)}</b>
@@ -809,7 +829,7 @@ function LoanForm({ l, onSave, onCancel }: { l: Loan; onSave: (l: Loan) => void;
   );
 }
 
-function Fixos({ setup }: { setup: GastosSetup }) {
+export function Fixos({ setup }: { setup: GastosSetup }) {
   const [desc, setDesc] = useState("");
   const [v, setV] = useState("");
   const [dia, setDia] = useState("10");

@@ -1,6 +1,6 @@
 "use client";
 import { doc, setDoc } from "firebase/firestore";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { CARD_PAY_CAT, GENERIC_CATS, INVEST_CAT, TRANSFER_CAT, customCats, setCustomCats, accNameFromDesc, looksDuplicate, suggestCard, suggestToAcc, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
@@ -135,6 +135,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     await saveMonth(m, items.map((x) => (x.id === g.id || (key && x.cat === INVEST_CAT && descKey(x.desc) === key) ? { ...x, inv: target } : x)));
     if (key && target) await saveSetup({ invRules: { ...(setup.invRules ?? {}), [key]: target } });
   };
+  const [editing, setEditing] = useState<string | null>(null);
   const removeItem = async (g: Gasto) => {
     if (!await ask(`Apagar "${g.desc}" (${brl(g.v)})?`)) return;
     await saveMonth(m, items.filter((x) => x.id !== g.id));
@@ -413,8 +414,8 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                   const card = setup.cards.find((c) => c.id === g.card);
                   const accs = accountsOf(setup);
                   const accName = !card && accs.length > 1 ? accs.find((a) => a.id === accIdOf(g, accs))?.name : null;
-                  return (
-                    <tr key={g.id} className={g.tipo === "neutro" && !isFaturaOut(g) ? "neutral" : ""}>
+                  return (<Fragment key={g.id}>
+                    <tr className={g.tipo === "neutro" && !isFaturaOut(g) ? "neutral" : ""}>
                       <td><span className="cell">{g.desc}<small className="muted">
                         {[dm(g.d), card ? `cartao ${card.name}` : accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, g.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === g.by)?.name ?? "outra pessoa"} - nao saiu da sua conta` : null, isFaturaOut(g) ? "conta nos gastos do mes (fatura paga)" : g.tipo === "neutro" ? (dirOf(g) > 0 ? "entrou na conta - nao e renda (dinheiro seu voltando)" : "saiu da conta - nao e gasto") : null].filter(Boolean).join(" - ")}
                       </small></span></td>
@@ -430,9 +431,11 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                         )}
                       </span></td>
                       <td data-label="Valor" className={g.tipo === "receita" ? "pos" : g.tipo === "neutro" && !isFaturaOut(g) ? "v-move" : "v-out"}>{g.tipo === "receita" || (g.tipo === "neutro" && dirOf(g) > 0) ? "+" : "-"}{brl(g.v)}</td>
-                      <td className="actions"><button className="ghost small-btn" onClick={() => removeItem(g)} aria-label="Apagar">apagar</button></td>
+                      <td className="actions"><button className="link" onClick={() => setEditing(editing === g.id ? null : g.id)}>alterar</button>
+                        <button className="ghost small-btn" onClick={() => removeItem(g)} aria-label="Apagar">apagar</button></td>
                     </tr>
-                  );
+                    {editing === g.id && <tr className="edit-row"><td colSpan={4}><EditItem g={g} m={m} months={months} setup={setup} onDone={() => setEditing(null)} /></td></tr>}
+                  </Fragment>);
                 })}
               </tbody>
             </table>
@@ -1396,6 +1399,60 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
       </div>
       <p className="muted small">Todo mes ele aparece em &quot;Previstos&quot; ate o pagamento aparecer num extrato. Mudou o valor (reajuste)? Altere aqui e
         diga a partir de quando: os meses anteriores continuam com o valor antigo.</p>
+    </form>
+  );
+}
+
+// Alterar um lancamento da conta: data, descricao, valor, sentido (entrou/saiu, so nos que nao sao gasto/renda) e conta
+function EditItem({ g, m, months, setup, onDone }: { g: Gasto; m: string; months: Record<string, MonthDoc>; setup: GastosSetup; onDone: () => void }) {
+  const accs = accountsOf(setup);
+  const [d, setD] = useState(g.d);
+  const [desc, setDesc] = useState(g.desc);
+  const [v, setV] = useState(fmt(g.v));
+  const [dir, setDir] = useState<"in" | "out">(dirOf(g) > 0 ? "in" : "out");
+  const [acc, setAcc] = useState(accIdOf(g, accs) ?? accs[0]?.id ?? "");
+  const [busy, setBusy] = useState(false);
+  const neutral = g.tipo === "neutro";
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = Math.round(num(v) * 100) / 100;
+    if (!desc.trim() || !(val > 0) || !d) return;
+    setBusy(true);
+    const ng: Gasto = clean({ ...g, d, desc: desc.trim(), v: val, ...(neutral ? { io: dir } : {}), ...(g.by ? {} : { acc }),
+      ...(g.toAcc === acc ? { toAcc: undefined } : {}) }) as Gasto;
+    const nm = monthOf(d);
+    if (nm === m) await saveMonth(m, (months[m]?.items ?? []).map((x) => (x.id === g.id ? ng : x)));
+    else {
+      await saveMonth(m, (months[m]?.items ?? []).filter((x) => x.id !== g.id));
+      await saveMonth(nm, [...(months[nm]?.items ?? []), ng]);
+    }
+    onDone();
+  };
+  return (
+    <form className="fin-form loan-pay" onSubmit={save}>
+      <div className="row wrapline">
+        <label>Data<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
+        <label className="grow">Descricao<input value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
+        <label>Valor (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
+        {neutral && (
+          <label>Sentido
+            <select value={dir} onChange={(e) => setDir(e.target.value as "in" | "out")}>
+              <option value="out">saiu da conta</option><option value="in">entrou na conta</option>
+            </select>
+          </label>
+        )}
+        {!g.by && accs.length > 1 && (
+          <label>Conta
+            <select value={acc} onChange={(e) => setAcc(e.target.value)}>{accs.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+          </label>
+        )}
+      </div>
+      <div className="row">
+        <button className="primary" type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</button>
+        <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
+      </div>
+      {neutral && g.cat === TRANSFER_CAT && <p className="muted small">Transferencia: &quot;saiu&quot; = desta conta para a conta escolhida em &quot;foi para&quot;; &quot;entrou&quot; = veio de la para esta.</p>}
+      {!neutral && <p className="muted small">Gasto sempre sai e renda sempre entra; para mudar isso, troque a categoria.</p>}
     </form>
   );
 }

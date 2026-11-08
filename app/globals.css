@@ -443,3 +443,14 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 .where-sel { max-width: 220px; }
 .accts { margin-top: 0; }
 .card .accts { border: 0; padding: 0; background: none; }
+
+/* Lancamentos: seletor do que lancar */
+.entry { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 0 0 14px; background: var(--bg); }
+.entry .fin-form { border: 0; padding: 10px 0 0; margin: 0; background: none; }
+.entry-q { margin: 0 0 8px; font-weight: 600; }
+.entry-types { margin-bottom: 8px; }
+.entry-pick { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; color: var(--muted); }
+.entry-pick select { max-width: 260px; }
+.entry-card .entry { border: 0; padding: 0; margin: 0; background: none; }
+.entry label.entry-pick { flex-direction: row; justify-content: flex-start; align-items: center; text-align: left; }
+.fin-form label.check { flex: 1 1 100%; flex-direction: row; justify-content: flex-start; align-items: center; text-align: left; }

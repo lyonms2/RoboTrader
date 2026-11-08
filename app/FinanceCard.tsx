@@ -4,8 +4,8 @@ import { useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
-import { accountBalance, investFlows, monthLabel, type GastosSetup, type MonthDoc } from "@/lib/gastos";
-import GastosCard, { AccountsPanel, DebtsBlock, Fixos, monthSnapshot, upcoming } from "./GastosCard";
+import { accountBalance, accountsOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
+import GastosCard, { AccountForm, AccountsPanel, CardForm, DebtsBlock, FixoForm, Fixos, ImportPanel, LoanForm, QuickAdd, monthSnapshot, saveSetup, upcoming } from "./GastosCard";
 import NetWorthChart from "./NetWorthChart";
 import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
 
@@ -58,11 +58,11 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
     try { localStorage.setItem("finSub", v); } catch { /* sem armazenamento */ }
     window.scrollTo({ top: 0 });
   };
+  const [entry, setEntry] = useState<{ type: EntryType; id: string | null }>({ type: "mov", id: null });
+  const goEdit = (type: EntryType, id: string | null) => { setEntry({ type, id }); setSub("lanc"); };
   const items = cfg.finance ?? [];
   const acct = accountBalance(months, setup);
   const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost, acct?.value, investFlows(months));
-  const [editing, setEditing] = useState<FinItem | null>(null);
-  const [adding, setAdding] = useState(false);
 
   async function save(list: FinItem[], fetchQuotes: boolean) {
     await setDoc(doc(db(), "config/main"), { finance: JSON.parse(JSON.stringify(list)) }, { merge: true });
@@ -70,13 +70,13 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
   }
   const upsert = async (it: FinItem) => {
     const list = items.some((x) => x.id === it.id) ? items.map((x) => (x.id === it.id ? it : x)) : [...items, it];
-    setEditing(null);
-    setAdding(false);
+    setEntry({ type: "inv", id: null });
     await save(list, it.kind === "acao" || it.kind === "tesouro");
   };
   const remove = async (it: FinItem) => {
     if (!confirm(`Remover "${it.name}" da lista? (so tira do site, nao mexe no investimento)`)) return;
     await save(items.filter((x) => x.id !== it.id), false);
+    setEntry({ type: "inv", id: null });
   };
 
   const order = GROUPS.map((g) => g.key);
@@ -93,7 +93,11 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       ))}
     </nav>
   );
-  if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} /></>;
+  const entryPanel = (
+    <EntryPanel entry={entry} setEntry={setEntry} months={months} setup={setup} invest={items} fin={fin}
+      onSaveInv={upsert} onRemoveInv={remove} />
+  );
+  if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} entry={entryPanel} /></>;
 
   return (
     <>
@@ -106,35 +110,33 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
           <div><span>O que voce deve</span><b className={debt.total > 0 ? "warn" : ""}>{brl(debt.total)}</b><small className="muted">cartoes {brl(debt.cards, 0)} - emprestimos {brl(debt.loans, 0)}</small></div>
           <div><span>Liquido sem cripto</span><b>{brl(noCrypto - debt.total)}</b><small className="muted">tem - deve</small></div>
         </div>
-        <p className="muted small">Aqui ficam os saldos e os cadastros. O dinheiro que entra, sai ou muda de lugar e lancado so em Lancamentos.
+        <p className="muted small">Aqui so se ve: para lancar ou alterar qualquer coisa (conta, investimento, cartao, emprestimo, fixo), use Lancamentos
+          ou o link &quot;alterar&quot; de cada item.
           A cripto fica na aba Carteira{crypto > 0 ? ` (${brl(crypto, 0)})` : ""}; o patrimonio total da Visao geral soma tudo.</p>
       </section>
 
       <h3 className="bal-title">O que voce tem</h3>
       <section className="card">
         <div className="card-head"><h2>Contas</h2><span className="muted small">{brl(acct?.value ?? 0)}</span></div>
-        <AccountsPanel months={months} setup={setup} m={mon.m} />
+        <AccountsPanel months={months} setup={setup} m={mon.m} onEdit={(id) => goEdit("conta", id)} />
       </section>
 
       <section className="card">
         <div className="card-head">
           <h2>Investimentos</h2>
-          {!adding && !editing && <button onClick={() => setAdding(true)}>+ Adicionar</button>}
+          <button className="link" onClick={() => goEdit("inv", null)}>+ investimento</button>
         </div>
-        {(adding || editing) && (
-          <ItemForm key={editing?.id ?? "novo"} initial={editing} fin={fin} onSave={upsert} onCancel={() => { setAdding(false); setEditing(null); }} />
-        )}
         {rows.length ? (
           <div className="table-scroll">
             <table className="stack fin">
               <thead><tr><th>Investimento</th><th>Quantidade</th><th>Preco</th><th>Valor</th><th>Lucro</th><th>Rende/mes</th><th /></tr></thead>
               <tbody>
-                {rows.map((r) => <ItemRow key={r.item.id} r={r} onEdit={() => { setAdding(false); setEditing(r.item); }} onRemove={() => remove(r.item)} />)}
+                {rows.map((r) => <ItemRow key={r.item.id} r={r} onEdit={() => goEdit("inv", r.item.id)} />)}
               </tbody>
             </table>
           </div>
-        ) : !adding && (
-          <p className="muted">Nenhum investimento cadastrado. Clique em &quot;+ Adicionar&quot; para incluir cofrinho, Tesouro, acoes ou FIIs.</p>
+        ) : (
+          <p className="muted">Nenhum investimento cadastrado. Em Lancamentos, escolha &quot;Investimento&quot; para incluir cofrinho, Tesouro, acoes ou FIIs.</p>
         )}
         <p className="muted small">
           Automatico: cotacao e proventos (Yahoo Finance), preco do Tesouro (Tesouro Transparente, 1 vez por dia), CDI, IPCA e dolar
@@ -146,16 +148,16 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       <Dividends rows={s.rows} fin={fin} />
 
       <h3 className="bal-title">O que voce deve</h3>
-      <DebtsBlock months={months} setup={setup} />
+      <DebtsBlock months={months} setup={setup} onEdit={(t, id) => goEdit(t, id)} />
 
       <h3 className="bal-title">Compromissos todo mes</h3>
-      <Fixos setup={setup} />
+      <Fixos setup={setup} onEdit={(id) => goEdit("fixo", id)} />
       </>}
     </>
   );
 }
 
-function ItemRow({ r, onEdit, onRemove }: { r: FinRow; onEdit: () => void; onRemove: () => void }) {
+function ItemRow({ r, onEdit }: { r: FinRow; onEdit: () => void }) {
   const it = r.item;
   const qty = it.kind === "caixa" ? (it.balance !== undefined ? `saldo ${brl(it.balance)}` : "-")
     : it.kind === "outro" ? "-" : (it.qty ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 6 });
@@ -175,8 +177,7 @@ function ItemRow({ r, onEdit, onRemove }: { r: FinRow; onEdit: () => void; onRem
       </td>
       <td data-label="Rende/mes">{r.monthly !== null ? <span className="cell">{brl(r.monthly)}{r.yieldYear !== null && <small className="muted">{pctS(r.yieldYear)} ao ano</small>}</span> : "-"}</td>
       <td className="actions">
-        <button className="ghost small-btn" onClick={onEdit}>editar</button>
-        <button className="ghost small-btn" onClick={onRemove}>remover</button>
+        <button className="link" onClick={onEdit}>alterar</button>
       </td>
     </tr>
   );
@@ -249,7 +250,7 @@ function ItemForm({ initial, fin, onSave, onCancel }: {
             <label>Saldo hoje (R$)<input value={balance} inputMode="decimal" onChange={(e) => setBalance(e.target.value)} placeholder="5.000,00" /></label>
             <label>Data do saldo<input type="date" value={balanceAt} onChange={(e) => setBalanceAt(e.target.value)} /></label>
             <label>% do CDI<input value={cdiPct} inputMode="decimal" onChange={(e) => setCdiPct(e.target.value)} /></label>
-            <p className="muted small full">Depositos e resgates lancados em Entradas e saidas (categoria Investimento) depois dessa data somam
+            <p className="muted small full">Depositos e resgates lancados em Lancamentos (categoria Investimento) depois dessa data somam
               e descontam sozinhos. Ao atualizar o saldo, use a data de hoje.</p>
           </>
         )}
@@ -489,4 +490,80 @@ export function MonthAndUpcoming({ months, setup, onLanc, onBens }: { months: Re
 
 export function NetWorthBlock({ cfg, fin, wallet, months, setup, nwHist }: Ctx & { nwHist: NetWorthDoc[] }) {
   return <NetWorthChart hist={nwHist} live={netWorth(cfg, fin, wallet, months, setup)} />;
+}
+
+// ---------- "O que voce quer lancar?" (unico lugar de entrada) ----------
+export type EntryType = "mov" | "import" | "inv" | "card" | "loan" | "fixo" | "conta";
+const ENTRY_TYPES: { id: EntryType; label: string }[] = [
+  { id: "mov", label: "Gasto ou entrada" }, { id: "import", label: "Importar extrato" }, { id: "inv", label: "Investimento" },
+  { id: "card", label: "Cartao" }, { id: "loan", label: "Emprestimo" }, { id: "fixo", label: "Gasto fixo" }, { id: "conta", label: "Conta / saldo" },
+];
+
+function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, onRemoveInv }: {
+  entry: { type: EntryType; id: string | null }; setEntry: (e: { type: EntryType; id: string | null }) => void;
+  months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; fin: FinanceDoc | null;
+  onSaveInv: (it: FinItem) => void; onRemoveInv: (it: FinItem) => void;
+}) {
+  const { type, id } = entry;
+  const reset = () => setEntry({ type, id: null });
+  const accounts = accountsOf(setup);
+  // Itens existentes de cada tipo (para alterar ou remover)
+  const existing: Record<string, { id: string; label: string }[]> = {
+    inv: invest.map((i) => ({ id: i.id, label: i.name })),
+    card: setup.cards.map((c) => ({ id: c.id, label: c.name })),
+    loan: setup.loans.map((l) => ({ id: l.id, label: l.name })),
+    fixo: setup.fixos.map((f) => ({ id: f.id, label: f.desc })),
+    conta: accounts.map((a) => ({ id: a.id, label: a.name })),
+  };
+  const opts = existing[type];
+  const saveCards = async (c: Card) => { await saveSetup({ cards: setup.cards.some((x) => x.id === c.id) ? setup.cards.map((x) => (x.id === c.id ? c : x)) : [...setup.cards, c] }); reset(); };
+  const saveLoans = async (l: Loan) => { await saveSetup({ loans: setup.loans.some((x) => x.id === l.id) ? setup.loans.map((x) => (x.id === l.id ? l : x)) : [...setup.loans, l] }); reset(); };
+  const saveAccounts = async (list: Account[]) => { await saveSetup({ accounts: JSON.parse(JSON.stringify(list)), account: null } as Partial<GastosSetup>); reset(); };
+  const usedAcc = new Set(Object.values(months).flatMap((md) => md.items.map((g) => g.acc ?? (g.card ? "" : accounts[0].id))));
+  return (
+    <div className="entry">
+      <p className="small entry-q">O que voce quer lancar?</p>
+      <div className="kind-pick entry-types">
+        {ENTRY_TYPES.map((t) => (
+          <button key={t.id} type="button" className={type === t.id ? "pill on" : "pill"} onClick={() => setEntry({ type: t.id, id: null })}>{t.label}</button>
+        ))}
+      </div>
+      {opts && (
+        <label className="entry-pick small">Novo ou alterar:
+          <select value={id ?? ""} onChange={(e) => setEntry({ type, id: e.target.value || null })}>
+            <option value="">+ novo</option>
+            {opts.map((o) => <option key={o.id} value={o.id}>alterar: {o.label}</option>)}
+          </select>
+        </label>
+      )}
+      {type === "mov" && <QuickAdd months={months} setup={setup} invest={invest} defaultDate={todayBR()} />}
+      {type === "import" && <ImportPanel months={months} setup={setup} invest={invest} onDone={() => setEntry({ type: "mov", id: null })} />}
+      {type === "inv" && (
+        <>
+          <ItemForm key={id ?? "novo"} initial={invest.find((i) => i.id === id) ?? null} fin={fin} onSave={onSaveInv} onCancel={reset} />
+          {id && <button className="ghost small-btn" onClick={() => { const it = invest.find((i) => i.id === id); if (it) onRemoveInv(it); }}>remover este investimento</button>}
+        </>
+      )}
+      {type === "card" && (
+        <>
+          <CardForm key={id ?? "novo"} c={setup.cards.find((c) => c.id === id) ?? { id: newId(), name: "", closeDay: 1, dueDay: 8 }} onSave={saveCards} onCancel={reset} />
+          {id && <button className="ghost small-btn" onClick={async () => { if (confirm("Remover este cartao? (os lancamentos continuam)")) { await saveSetup({ cards: setup.cards.filter((c) => c.id !== id) }); reset(); } }}>remover este cartao</button>}
+        </>
+      )}
+      {type === "loan" && (
+        <>
+          <LoanForm key={id ?? "novo"} l={setup.loans.find((l) => l.id === id) ?? { id: newId(), name: "", parcela: 0, n: 12, first: monthOf(todayBR()), dueDay: 10 }} onSave={saveLoans} onCancel={reset} />
+          {id && <button className="ghost small-btn" onClick={async () => { if (confirm("Remover este emprestimo?")) { await saveSetup({ loans: setup.loans.filter((l) => l.id !== id) }); reset(); } }}>remover este emprestimo</button>}
+        </>
+      )}
+      {type === "fixo" && <FixoForm key={id ?? "novo"} setup={setup} fixo={setup.fixos.find((f) => f.id === id) ?? null} onDone={reset} />}
+      {type === "conta" && (
+        <AccountForm key={id ?? "novo"} acc={accounts.find((a) => a.id === id) ?? null}
+          canRemove={!!id && accounts.length > 1 && !usedAcc.has(id)}
+          onCancel={reset}
+          onRemove={() => saveAccounts(accounts.filter((a) => a.id !== id))}
+          onSave={(a) => saveAccounts(accounts.some((x) => x.id === a.id) ? accounts.map((x) => (x.id === a.id ? a : x)) : [...accounts, a])} />
+      )}
+    </div>
+  );
 }

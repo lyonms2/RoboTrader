@@ -45,7 +45,7 @@ export type Loan = {
   prepay?: { id: string; d: string; n: number; v: number; from?: string }[];
   // Parcelas pagas marcadas por voce (botao "pagar"): indice k (0..n-1), data, valor e o lancamento criado na conta
   pays?: { k: number; d: string; v: number; gid?: string; gm?: string }[];
-  // Parcelas ja pagas quando o emprestimo foi cadastrado (as primeiras). Sem o campo: as vencidas ate LOAN_CUTOFF
+  // Parcelas ja pagas quando o emprestimo foi cadastrado (as primeiras). Sem o campo: nenhuma
   paidBefore?: number;
 };
 export type Fixo = { id: string; desc: string; v: number; cat: string; dia: number; card?: string };
@@ -183,15 +183,9 @@ export function prepaidSlots(l: Loan, today?: string) {
 }
 export const prepaidUntil = (l: Loan, today = todayBR()) => prepaidSlots(l, today).size;
 
-// Emprestimos cadastrados antes do botao "pagar": parcelas vencidas ate esta data contam como pagas
-const LOAN_CUTOFF = "2026-11-08";
 export const loanDue = (l: Loan, k: number) => dayIn(addMonths(l.first, k), l.dueDay);
-export function paidBeforeOf(l: Loan) {
-  if (l.paidBefore !== undefined) return Math.max(0, Math.min(l.n, l.paidBefore));
-  let n = 0;
-  for (let k = 0; k < l.n; k++) if (loanDue(l, k) <= LOAN_CUTOFF) n++;
-  return n;
-}
+// Tudo comeca em aberto: voce decide parcela por parcela (pagar / marcar como paga) ou o extrato mostra o pagamento
+export const paidBeforeOf = (l: Loan) => Math.max(0, Math.min(l.n, l.paidBefore ?? 0));
 export type LoanRow = {
   k: number; m: string; due: string;
   status: "paga" | "adiantada" | "atrasada" | "aberta"; // aberta = ainda nao venceu

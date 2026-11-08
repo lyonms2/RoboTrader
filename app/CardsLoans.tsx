@@ -144,7 +144,7 @@ function LoansPart({ months, setup, entry, owed, com }: {
           {!adding && <button className="ghost small-btn" onClick={() => setAdding(true)}>+ novo emprestimo</button>}</div>
         {adding && (
           <div className="loan-form">
-            <LoanForm l={{ id: newId(), name: "", parcela: 0, n: 12, first: monthOf(todayBR()), dueDay: 10 }} onSave={saveLoan} onCancel={() => setAdding(false)} />
+            <LoanForm l={{ id: newId(), name: "", parcela: 0, n: 12, first: monthOf(todayBR()), dueDay: 10, paidBefore: 0 }} onSave={saveLoan} onCancel={() => setAdding(false)} />
           </div>
         )}
         {sts.map(({ l, st }) => (
@@ -183,6 +183,13 @@ function LoanItem({ l, st, months, setup, single, initial }: {
   const remove = async () => {
     if (confirm(`Remover ${l.name}? (os lancamentos na conta continuam)`)) await saveSetup({ loans: setup.loans.filter((x) => x.id !== l.id) });
   };
+  // marca de uma vez as atrasadas como pagas (sem lancar saida): para quem cadastra um emprestimo antigo
+  const markLate = async () => {
+    const late = st.rows.filter((r) => r.status === "atrasada");
+    if (!confirm(`Marcar as ${late.length} parcelas atrasadas como pagas? Nao lanca saida em nenhuma conta.`)) return;
+    const add = late.map((r) => ({ k: r.k, d: r.due, v: l.parcela }));
+    await saveSetup({ loans: setup.loans.map((x) => (x.id === l.id ? { ...x, pays: [...(x.pays ?? []), ...add] } : x)) });
+  };
   const saveLoan = async (nl: Loan) => { await saveSetup({ loans: setup.loans.map((x) => (x.id === l.id ? nl : x)) }); setMode(null); };
   return (
     <div className={`loan${open ? " open" : ""}`}>
@@ -207,6 +214,7 @@ function LoanItem({ l, st, months, setup, single, initial }: {
             {st.nextK !== null && <button className={mode === `pay:${st.nextK}` ? "primary" : "ghost small-btn"} onClick={() => toggle(`pay:${st.nextK}`)}>
               Pagar parcela {st.nextK + 1}</button>}
             {st.left > 0 && <button className={mode === "prepay" ? "primary" : "ghost small-btn"} onClick={() => toggle("prepay")}>Adiantar parcelas</button>}
+            {st.late > 1 && <button className="ghost small-btn" onClick={markLate}>Marcar {st.late} atrasadas como pagas</button>}
             <button className={mode === "edit" ? "primary" : "ghost small-btn"} onClick={() => toggle("edit")}>Alterar</button>
             <button className="ghost small-btn" onClick={remove}>Remover</button>
           </div>
@@ -428,7 +436,7 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry }: {
       )}
       {type === "loan" && (
         <>
-          <LoanForm key={id ?? "novo"} l={setup.loans.find((l) => l.id === id) ?? { id: newId(), name: "", parcela: 0, n: 12, first: monthOf(todayBR()), dueDay: 10 }} onSave={saveLoans} onCancel={reset} />
+          <LoanForm key={id ?? "novo"} l={setup.loans.find((l) => l.id === id) ?? { id: newId(), name: "", parcela: 0, n: 12, first: monthOf(todayBR()), dueDay: 10, paidBefore: 0 }} onSave={saveLoans} onCancel={reset} />
           {id && <button className="ghost small-btn" onClick={async () => { if (confirm("Remover este emprestimo?")) { await saveSetup({ loans: setup.loans.filter((l) => l.id !== id) }); reset(); } }}>remover este emprestimo</button>}
         </>
       )}

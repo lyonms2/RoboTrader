@@ -919,7 +919,7 @@ export function Loans({ setup, months, onEdit, onPrepay }: { setup: GastosSetup;
   const monthly = list.filter((x) => x.st.left > 0).reduce((s, x) => s + x.l.parcela, 0);
   return (
     <section className="card">
-      <div className="card-head"><h2>Emprestimos e financiamentos</h2>{!form && <button className="ghost small-btn" onClick={() => (onEdit ? onEdit(null) : setForm({ id: newId(), name: "", parcela: 0, n: 12, first: monthOf(today), dueDay: 10 }))}>+ emprestimo</button>}</div>
+      <div className="card-head"><h2>Emprestimos e financiamentos</h2>{!form && <button className="ghost small-btn" onClick={() => (onEdit ? onEdit(null) : setForm({ id: newId(), name: "", parcela: 0, n: 12, first: monthOf(today), dueDay: 10, paidBefore: 0 }))}>+ emprestimo</button>}</div>
       {form && <LoanForm l={form} onSave={save} onCancel={() => setForm(null)} />}
       {list.length > 0 && <p className="small">Devendo <b>{brl(total)}</b> - {brl(monthly)} por mes em parcelas.</p>}
       {list.map(({ l, st }) => (
@@ -956,7 +956,10 @@ export function LoanForm({ l, onSave, onCancel }: { l: Loan; onSave: (l: Loan) =
     <form className="fin-form" onSubmit={(e) => {
       e.preventDefault();
       if (!name.trim() || !(num(parcela) > 0) || !(num(n) >= 1)) return;
-      onSave({ id: l.id, name: name.trim(), parcela: num(parcela), n: Math.round(num(n)), first, dueDay: Math.max(1, Math.min(31, Math.round(num(due)) || 1)), ...(num(rate) > 0 ? { rate: num(rate) } : {}) });
+      // mantem pagamentos, adiantamentos e parcelas ja pagas; so troca os dados do contrato
+      const { rate: _r, ...rest } = l;
+      void _r;
+      onSave({ ...rest, name: name.trim(), parcela: num(parcela), n: Math.round(num(n)), first, dueDay: Math.max(1, Math.min(31, Math.round(num(due)) || 1)), ...(num(rate) > 0 ? { rate: num(rate) } : {}) });
     }}>
       <div className="row wrapline">
         <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Financiamento do carro" /></label>

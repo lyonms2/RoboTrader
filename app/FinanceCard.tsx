@@ -187,7 +187,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       <DebtsBlock months={months} setup={setup} onEdit={(t, id) => goEdit(t, id)} />
 
       <h3 className="bal-title">Compromissos todo mes</h3>
-      <Fixos setup={setup} onEdit={(id) => goEdit("fixo", id)} />
+      <Fixos setup={setup} months={months} onEdit={(id) => goEdit("fixo", id)} />
       </>}
     </>
   );

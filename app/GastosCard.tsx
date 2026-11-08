@@ -6,7 +6,7 @@ import { CARD_PAY_CAT, GENERIC_CATS, INVEST_CAT, TRANSFER_CAT, customCats, setCu
 import type { FinItem } from "@/lib/types";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, monthOf, newId, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  dirOf, fixoExpected, fixoHistory, fixoReajPending, fixoValue, monthOf, newId, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
   type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 
@@ -38,7 +38,7 @@ export function monthSnapshot(months: Record<string, MonthDoc>, setup: GastosSet
   const m = monthOf(todayBR());
   const items = months[m]?.items ?? [];
   const s = summarize(items);
-  const pending = pendingFor(m, items, setup);
+  const pending = pendingFor(m, items, setup, months);
   return { m, ...s, count: items.length, pending: pending.reduce((a, p) => a + p.v, 0), pendingN: pending.length, avg: avgMonthly(months) };
 }
 
@@ -65,7 +65,7 @@ export function upcoming(months: Record<string, MonthDoc>, setup: GastosSetup) {
   }
   const m = monthOf(today);
   for (const mm of [m, addMonths(m, 1)])
-    for (const p of pendingFor(mm, months[mm]?.items ?? [], setup))
+    for (const p of pendingFor(mm, months[mm]?.items ?? [], setup, months))
       if (p.d <= limit && !p.card) out.push({ d: p.d, desc: p.desc, v: p.v, late: p.d < today, loan: !!p.parc });
   // parcelas de emprestimo de meses anteriores que continuam sem pagamento
   for (const l of setup.loans)
@@ -84,7 +84,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
   const items = months[m]?.items ?? [];
   const s = summarize(items);
   const avg = avgMonthly(months);
-  const pending = pendingFor(m, items, setup);
+  const pending = pendingFor(m, items, setup, months);
   const pendingTotal = pending.reduce((a, p) => a + p.v, 0);
   const prevAvg = useMemo(() => {
     // media por categoria nos 3 meses anteriores ao mes aberto
@@ -125,8 +125,25 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
   };
   // Pagou o fixo/parcela por fora do extrato: escolhe com qual conta (ou cartao) foi pago; o saldo dela baixa
   const launch = async (p: (typeof pending)[number], src: string) => {
+    // ja veio no extrato: liga o lancamento ao fixo (e aprende a descricao para os proximos meses)
+    if (src.startsWith("item:")) {
+      const g = items.find((x) => x.id === src.slice(5));
+      if (!g) return;
+      await saveMonth(m, items.map((x) => (x.id === g.id ? { ...x, ref: p.ref } : x)));
+      const f = setup.fixos.find((x) => x.id === p.ref);
+      const key = descKey(g.desc);
+      if (f && key && !(f.keys ?? []).includes(key)) await saveSetup({ fixos: setup.fixos.map((x) => (x.id === f.id ? { ...x, keys: [...(x.keys ?? []), key] } : x)) });
+      return;
+    }
+    let v = p.v;
+    if (p.varia) {
+      const ans = prompt(`Quanto veio ${p.desc} este mes? (R$)`, fmt(p.v));
+      if (ans === null) return;
+      v = num(ans);
+      if (!(v > 0)) return;
+    }
     const where = src.startsWith("card:") ? { card: src.slice(5) } : src.startsWith("acc:") ? { acc: src.slice(4) } : p.card ? { card: p.card } : {};
-    await saveMonth(m, [...items, { id: newId(), d: p.d, desc: p.desc, v: p.v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...where, ...(p.parc ? { parc: p.parc } : {}) }]);
+    await saveMonth(m, [...items, { id: newId(), d: p.d, desc: p.desc, v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...where, ...(p.parc ? { parc: p.parc } : {}) }]);
   };
 
   const accs = accountsOf(setup);
@@ -175,10 +192,17 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
             <ul className="pend small">
               {pending.map((p) => (
                 <li key={p.ref}>
-                  <span className="muted">{dm(p.d)}</span> <b>{p.desc}</b> <span>{brl(p.v)}</span>
+                  <span className="muted">{dm(p.d)}</span> <b>{p.desc}</b> <span>{p.varia ? "~" : ""}{brl(p.v)}</span>
+                  {p.varia && <span className="tag">varia</span>}
+                  {p.reaj && <span className="tag warn">reajuste: confira o valor</span>}
                   <select className="pay-sel" value="" onChange={(e) => e.target.value && launch(p, e.target.value)}
-                    title="Use so se esse pagamento nao vai aparecer em nenhum extrato importado">
+                    title="Ligue ao lancamento do extrato, ou diga com o que pagou se nao vai aparecer em nenhum extrato">
                     <option value="">paguei com...</option>
+                    {!p.parc && <optgroup label="ja veio no extrato">
+                      {items.filter((g) => g.tipo === "gasto" && !g.ref && !g.card)
+                        .sort((a, b) => Number(b.cat === p.cat) - Number(a.cat === p.cat) || Math.abs(a.v - p.v) - Math.abs(b.v - p.v)).slice(0, 8)
+                        .map((g) => <option key={g.id} value={`item:${g.id}`}>{dm(g.d)} {g.desc.slice(0, 28)} {brl(g.v)}</option>)}
+                    </optgroup>}
                     {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>{a.name}{a.noStatement ? " (sem extrato)" : ""}</option>)}
                     {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>cartao {c.name}</option>)}
                   </select>
@@ -983,55 +1007,112 @@ export function LoanForm({ l, onSave, onCancel }: { l: Loan; onSave: (l: Loan) =
 }
 
 // Lista dos gastos fixos (Contas e bens: so mostra)
-export function Fixos({ setup, onEdit }: { setup: GastosSetup; onEdit?: (id: string | null) => void }) {
-  const total = setup.fixos.reduce((s, f) => s + f.v, 0);
+export function Fixos({ setup, months, onEdit }: { setup: GastosSetup; months?: Record<string, MonthDoc>; onEdit?: (id: string | null) => void }) {
+  const m = monthOf(todayBR());
+  const val = (f: Fixo) => fixoExpected(f, m, months);
+  const total = setup.fixos.reduce((s, f) => s + val(f), 0);
   return (
     <section className="card">
       <div className="card-head"><h2>Gastos fixos</h2>
-        <span className="muted small">{setup.fixos.length ? `${brl(total)} por mes` : ""}{onEdit && <button className="link" onClick={() => onEdit(null)}>+ fixo</button>}</span></div>
+        <span className="muted small">{setup.fixos.length ? `~${brl(total)} por mes` : ""}{onEdit && <button className="link" onClick={() => onEdit(null)}>+ fixo</button>}</span></div>
       {setup.fixos.length > 0 ? (
         <ul className="pend small">
-          {setup.fixos.map((f) => (
-            <li key={f.id}><span className="muted">dia {f.dia}</span> <b>{f.desc}</b> <span className="muted">{f.cat}</span> <span>{brl(f.v)}</span>
-              {onEdit && <button className="link" onClick={() => onEdit(f.id)}>alterar</button>}</li>
-          ))}
+          {setup.fixos.map((f) => {
+            const next = (f.steps ?? []).filter((x) => x.from > m).sort((x, y) => x.from.localeCompare(y.from))[0];
+            return (
+              <li key={f.id}><span className="muted">dia {f.dia}</span> <b>{f.desc}</b> <span className="muted">{f.cat}</span>
+                {f.varia && <span className="tag">varia{months && fixoHistory(f, m, months).length ? ": media" : ""}</span>}
+                {f.reaj && <span className={fixoReajPending(f, m) ? "tag warn" : "tag"}>reajuste em {monthLabel(`2000-${String(f.reaj).padStart(2, "0")}`).slice(0, 3)}</span>}
+                {next && <span className="muted">{brl(next.v)} a partir de {monthLabel(next.from)}</span>}
+                <span>{f.varia ? "~" : ""}{brl(val(f))}</span>
+                {onEdit && <button className="link" onClick={() => onEdit(f.id)}>alterar</button>}</li>
+            );
+          })}
         </ul>
       ) : <p className="muted small">Nenhum gasto fixo cadastrado.</p>}
-      <p className="muted small">Fixos aparecem em &quot;Previstos&quot; todo mes ate aparecer no mes um gasto com o mesmo valor (2% de tolerancia), em qualquer categoria.</p>
+      <p className="muted small">Fixos aparecem em &quot;Previstos&quot; todo mes ate o pagamento aparecer: lancamento ligado a ele, mesmo valor (2%) ou,
+        se o valor varia (luz, agua), um gasto da mesma categoria perto da media.</p>
     </section>
   );
 }
 
+const MES_OPTS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 // Formulario do gasto fixo (Lancamentos): novo ou alterar/remover um existente
 export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fixo | null; onDone: () => void }) {
+  const cur = monthOf(todayBR());
+  const curV = fixo ? fixoValue(fixo, cur) : 0;
   const [desc, setDesc] = useState(fixo?.desc ?? "");
-  const [v, setV] = useState(fixo ? fmt(fixo.v) : "");
+  const [v, setV] = useState(fixo ? fmt(curV) : "");
+  const [from, setFrom] = useState(cur); // a partir de quando vale o novo valor ("" = so corrigir)
   const [dia, setDia] = useState(String(fixo?.dia ?? 10));
   const [cat, setCat] = useState<string | null>(fixo?.cat ?? null);
+  const [varia, setVaria] = useState(!!fixo?.varia);
+  const [reaj, setReaj] = useState(fixo?.reaj ?? 0);
+  const [steps, setSteps] = useState(fixo?.steps ?? []);
   const finalCat = cat ?? categorize(desc, false, setup.rules).cat;
+  const changed = !!fixo && Math.abs(num(v) - curV) > 0.005;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!desc.trim() || !(num(v) > 0)) return;
-    const f: Fixo = { id: fixo?.id ?? newId(), desc: desc.trim(), v: num(v), cat: finalCat, dia: Math.max(1, Math.min(31, Math.round(num(dia)) || 1)) };
+    let base = fixo?.v ?? num(v);
+    let st = [...steps];
+    if (changed) {
+      if (from) st = [...st.filter((x) => x.from !== from), { from, v: num(v) }];
+      else {
+        // corrigir: troca o valor do periodo atual
+        const active = st.filter((x) => x.from <= cur).sort((x, y) => y.from.localeCompare(x.from))[0];
+        if (active) st = st.map((x) => (x === active ? { ...x, v: num(v) } : x)); else base = num(v);
+      }
+    }
+    st.sort((x, y) => x.from.localeCompare(y.from));
+    const { steps: _s, varia: _v, reaj: _r, ...rest } = fixo ?? ({} as Partial<Fixo>);
+    void _s; void _v; void _r;
+    const f: Fixo = { ...rest, id: fixo?.id ?? newId(), desc: desc.trim(), v: base, cat: finalCat, dia: Math.max(1, Math.min(31, Math.round(num(dia)) || 1)),
+      ...(st.length ? { steps: st } : {}), ...(varia ? { varia: true } : {}), ...(reaj ? { reaj } : {}) };
     await saveSetup({ fixos: setup.fixos.some((x) => x.id === f.id) ? setup.fixos.map((x) => (x.id === f.id ? f : x)) : [...setup.fixos, f] });
     onDone();
   };
   const remove = async () => {
     if (fixo && confirm(`Remover o fixo "${fixo.desc}"?`)) { await saveSetup({ fixos: setup.fixos.filter((x) => x.id !== fixo.id) }); onDone(); }
   };
+  // historico: valor inicial e cada mudanca
+  const hist = fixo ? [{ from: "", v: fixo.v }, ...steps] : [];
   return (
     <form className="fin-form" onSubmit={submit}>
       <div className="row wrapline">
         <label className="grow">Descricao<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Aluguel, internet, escola..." /></label>
-        <label>Valor (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
+        <label>{varia ? "Valor medio (R$)" : "Valor (R$)"}<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
+        {changed && (
+          <label>Novo valor vale
+            <select value={from} onChange={(e) => setFrom(e.target.value)}>
+              {Array.from({ length: 25 }, (_, i) => addMonths(cur, i - 12)).map((mm) => <option key={mm} value={mm}>a partir de {monthLabel(mm)}</option>)}
+              <option value="">so corrigir (sempre foi esse)</option>
+            </select>
+          </label>
+        )}
         <label>Dia<input value={dia} inputMode="numeric" onChange={(e) => setDia(e.target.value)} style={{ width: 60 }} /></label>
         <label>Categoria<CatSelect value={finalCat} onChange={setCat} /></label>
+        <label>Reajuste anual
+          <select value={reaj} onChange={(e) => setReaj(Number(e.target.value))}>
+            <option value={0}>nao tem</option>
+            {MES_OPTS.map((x, i) => <option key={x} value={i + 1}>todo ano em {x}</option>)}
+          </select>
+        </label>
       </div>
+      <label className="check small"><input type="checkbox" checked={varia} onChange={(e) => setVaria(e.target.checked)} />
+        O valor muda todo mes (luz, agua, gas): a previsao usa a media dos ultimos 3 pagamentos</label>
+      {hist.length > 1 && (
+        <p className="small muted">Valores: {hist.map((x, i) => (
+          <span key={x.from || "base"}>{i ? ", " : ""}{x.from ? `desde ${monthLabel(x.from)}` : "antes"} {brl(x.v)}
+            {x.from && <button type="button" className="link" title="apagar esta mudanca" onClick={() => setSteps(steps.filter((y) => y.from !== x.from))}>x</button>}</span>
+        ))}</p>
+      )}
       <div className="row">
         <button className="primary" type="submit" disabled={!desc.trim() || !(num(v) > 0)}>{fixo ? "Salvar" : "Adicionar"}</button>
         {fixo && <button className="ghost" type="button" onClick={remove}>remover</button>}
       </div>
-      <p className="muted small">Todo mes ele aparece em &quot;Previstos&quot; ate o pagamento aparecer num extrato (mesmo valor, 2%, qualquer categoria).</p>
+      <p className="muted small">Todo mes ele aparece em &quot;Previstos&quot; ate o pagamento aparecer num extrato. Mudou o valor (reajuste)? Altere aqui e
+        diga a partir de quando: os meses anteriores continuam com o valor antigo.</p>
     </form>
   );
 }

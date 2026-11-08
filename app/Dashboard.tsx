@@ -20,7 +20,7 @@ import FinanceCard, { MonthAndUpcoming, NetWorthBlock, PatrimonioCard, type Sub 
 import { debts, reviewCount, upcoming } from "./GastosCard";
 import { budgetAlerts } from "./CardsLoans";
 import type { NetWorthDoc } from "@/lib/patrimonio";
-import { EMPTY_SETUP, accountBalance, avgMonthly, investFlows, setCustomCats, type GastosSetup, type MonthDoc } from "@/lib/gastos";
+import { EMPTY_SETUP, accountBalance, avgMonthly, fixoReajPending, investFlows, setCustomCats, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import { financeSummary } from "@/lib/financeMath";
 import type { CandidatesDoc } from "@/lib/candidates";
 import { usePrices, type Prices } from "./usePrices";
@@ -394,6 +394,11 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
     todo.push({ tone: "warn", who: "Pagar", text: `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : p.card ? "cards" : "lanc" });
   for (const b of budgetAlerts(money.months, money.setup))
     todo.push({ tone: "warn", who: "Cartao", text: `${b.c.name}: R$ ${fmt(b.used, 0)} na fatura aberta, ${fmt(b.pct * 100, 0)}% do planejado (R$ ${fmt(b.c.budget!, 0)})`, tab: "financas", fin: "cards" });
+  {
+    const cm = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 7);
+    for (const f of money.setup.fixos) if (fixoReajPending(f, cm))
+      todo.push({ tone: "info", who: "Fixo", text: `${f.desc} reajusta este mes: atualize o novo valor (Lancamentos > Gasto fixo)`, tab: "financas", fin: "lanc" });
+  }
   const rc = reviewCount(money.months, money.setup);
   if (rc) todo.push({ tone: "info", who: "Financas", text: `${rc} ${rc > 1 ? "pontos" : "ponto"} para revisar nos lancamentos (para os numeros ficarem certos)`, tab: "financas", fin: "lanc" });
 

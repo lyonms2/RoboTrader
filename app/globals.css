@@ -502,3 +502,6 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 @media (max-width: 600px) { .loan-rows td, .loan-rows th { padding: 6px 3px; } .loan-rows .sit + small { display: block; } }
 @media (max-width: 600px) { .loan-body .loan-actions { margin-top: 24px; } }
 .loan-panel { scroll-margin: 80px; }
+
+.small-pay { margin-left: 10px; padding: 4px 10px; font-size: 12px; }
+.sit-fechada { color: var(--text); }

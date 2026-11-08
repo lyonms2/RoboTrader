@@ -57,10 +57,10 @@ export function DebtsBlock({ months, setup, onEdit }: { months: Record<string, M
 export function upcoming(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const today = todayBR();
   const limit = new Date(Date.parse(`${today}T12:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10);
-  const out: { d: string; desc: string; v: number; late: boolean; loan?: boolean }[] = [];
+  const out: { d: string; desc: string; v: number; late: boolean; loan?: boolean; card?: boolean }[] = [];
   for (const c of setup.cards) {
     const st = cardStatus(c, months);
-    for (const f of st.overdue) out.push({ d: f.due, desc: `Fatura ${c.name} (${monthLabel(f.m)})`, v: f.rest, late: true });
+    for (const f of st.overdue) out.push({ d: f.due, desc: `Fatura ${c.name} (${monthLabel(f.m)})`, v: f.rest, late: true, card: true });
     if (st.next && st.next.due <= limit) out.push({ d: st.next.due, desc: `Fatura ${c.name} (${st.next.status === "fechada" ? "fechada" : "ainda aberta"})`, v: st.next.v, late: false });
   }
   const m = monthOf(today);
@@ -891,7 +891,7 @@ export function CardForm({ c, onSave, onCancel }: { c: Card; onSave: (c: Card) =
   const [budget, setBudget] = useState(c.budget ? fmt(c.budget, 0) : "");
   const day = (s: string) => Math.max(1, Math.min(31, Math.round(num(s)) || 1));
   return (
-    <form className="fin-form" onSubmit={(e) => { e.preventDefault(); if (name.trim()) onSave({ id: c.id, name: name.trim(), closeDay: day(close), dueDay: day(due), ...(num(limit) > 0 ? { limit: num(limit) } : {}), ...(num(budget) > 0 ? { budget: num(budget) } : {}) }); }}>
+    <form className="fin-form" onSubmit={(e) => { e.preventDefault(); if (name.trim()) { const { limit: _l, budget: _b, ...rest } = c; void _l; void _b; onSave({ ...rest, name: name.trim(), closeDay: day(close), dueDay: day(due), ...(num(limit) > 0 ? { limit: num(limit) } : {}), ...(num(budget) > 0 ? { budget: num(budget) } : {}) }); } }}>
       <div className="row wrapline">
         <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nubank" /></label>
         <label>Dia que fecha<input value={close} inputMode="numeric" onChange={(e) => setClose(e.target.value)} style={{ width: 70 }} /></label>

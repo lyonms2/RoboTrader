@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import {
-  accountsOf, addMonths, cardStatus, commitments, debts, faturaItems, faturaMonth, loanDue, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
+  CARD_PAY_CAT, accountsOf, addMonths, cardStatus, commitments, debts, faturaItems, faturaMonth, loanDue, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
   type Card, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
@@ -15,7 +15,10 @@ export type CardsEntry = { type: "compra" | "card" | "loan" | "prepay"; id: stri
 const TYPES: { id: CardsEntry["type"]; label: string }[] = [
   { id: "compra", label: "Compra no cartao" }, { id: "card", label: "Cadastrar cartao" },
 ];
-const STATUS: Record<string, string> = { aberta: "aberta (ainda recebendo compras)", fechada: "fechada, a pagar", paga: "paga", vencida: "vencida sem pagamento" };
+const STATUS: Record<string, string> = { aberta: "aberta (ainda recebendo compras)", fechada: "fechada, a pagar", paga: "paga", vencida: "atrasada (venceu sem pagamento)" };
+const FSIT: Record<string, { cls: string; label: string }> = {
+  paga: { cls: "paga", label: "paga" }, vencida: { cls: "atrasada", label: "atrasada" }, fechada: { cls: "fechada", label: "fechada" }, aberta: { cls: "aberta", label: "aberta" },
+};
 
 // Planejamento do cartao: fatura que esta recebendo compras agora x o planejado
 export function budgetAlerts(months: Record<string, MonthDoc>, setup: GastosSetup) {
@@ -102,6 +105,7 @@ function CardsPart({ months, setup, invest, entry, setEntry, owed, com }: {
           <FaturaView card={card} st={st} fm={fm} months={months} setup={setup} />
         </section>
       )}
+      {card && st && <FaturasList key={card.id} card={card} st={st} fm={fm} setFm={setFm} months={months} setup={setup} />}
 
       <CommitmentsChart data={com} which="cards" />
     </>
@@ -303,6 +307,7 @@ function FaturaView({ card, st, fm, months, setup }: {
   card: Card; st: ReturnType<typeof cardStatus>; fm: string; months: Record<string, MonthDoc>; setup: GastosSetup;
 }) {
   const f = st.all.find((x) => x.m === fm);
+  const [paying, setPaying] = useState(false);
   const list = faturaItems(card, months, fm);
   const total = f?.v ?? 0;
   const byCat: Record<string, number> = {};
@@ -324,7 +329,9 @@ function FaturaView({ card, st, fm, months, setup }: {
       <p className="small">
         Fecha em <b>{f ? dm(f.close) : "-"}</b>, vence em <b>{f ? dm(f.due) : "-"}</b> - {f ? STATUS[f.status] : "sem compras"}
         {f && f.paid > 0.005 && <span className="muted"> - pago {brl(f.paid)}</span>}
+        {f && f.status !== "paga" && <button className={paying ? "primary small-pay" : "ghost small-btn small-pay"} onClick={() => setPaying(!paying)}>Pagar fatura</button>}
       </p>
+      {paying && f && <CardPayForm key={fm} card={card} fm={fm} rest={f.rest} due={f.due} months={months} setup={setup} onDone={() => setPaying(false)} />}
       <div className="kpis compact">
         <div><span>Total da fatura</span><b>{brl(total)}</b><small className="muted">{futuro > 0 ? `inclui ${brl(futuro)} de parcelas previstas` : `${list.length} compras`}</small></div>
         {f && f.status !== "paga" && <div><span>Falta pagar</span><b className={f.status === "vencida" ? "warn" : ""}>{brl(f.rest)}</b></div>}
@@ -519,6 +526,109 @@ function PrepayForm({ setup, loanId, onPick }: { setup: GastosSetup; loanId: str
           ))}
         </ul>
       )}
+    </form>
+  );
+}
+
+// Faturas do cartao, uma por linha (como as parcelas do emprestimo): valor, pago, situacao e o botao pagar
+function FaturasList({ card, st, fm, setFm, months, setup }: {
+  card: Card; st: ReturnType<typeof cardStatus>; fm: string; setFm: (m: string) => void; months: Record<string, MonthDoc>; setup: GastosSetup;
+}) {
+  const [all, setAll] = useState(false);
+  const [pay, setPay] = useState<string | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (pay) panel.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }, [pay]);
+  const rows = st.all;
+  if (!rows.length) return null;
+  const today = todayBR();
+  // recolhido: as atrasadas, as 2 ultimas pagas e as 4 proximas
+  const firstOpen = rows.findIndex((r) => r.status !== "paga");
+  const shown = all ? rows : rows.filter((r, i) => r.status === "vencida" || (firstOpen >= 0 ? i >= firstOpen - 2 && i < firstOpen + 4 : i >= rows.length - 3));
+  const late = rows.filter((r) => r.status === "vencida");
+  const pays = card.pays ?? [];
+  const undo = async (fmx: string) => {
+    const mine = pays.filter((p) => p.fm === fmx);
+    if (!mine.length || !confirm(`Desfazer o pagamento da fatura de ${monthLabel(fmx)}?`)) return;
+    for (const p of mine) if (p.gid && p.gm && months[p.gm]) await saveMonth(p.gm, months[p.gm].items.filter((g) => g.id !== p.gid));
+    await saveSetup({ cards: setup.cards.map((c) => (c.id === card.id ? { ...c, pays: (c.pays ?? []).filter((p) => p.fm !== fmx) } : c)) });
+  };
+  const pf = pay ? rows.find((r) => r.m === pay) : null;
+  return (
+    <section className="card">
+      <div className="card-head"><h2>Faturas do {card.name}</h2>
+        {late.length > 0 && <span className="warn small">{late.length} {late.length > 1 ? "atrasadas" : "atrasada"} - {brl(late.reduce((s, r) => s + r.rest, 0))}</span>}</div>
+      <div ref={panel} className="loan-panel">
+        {pf && <CardPayForm key={pf.m} card={card} fm={pf.m} rest={pf.rest} due={pf.due} months={months} setup={setup} onDone={() => setPay(null)} />}
+      </div>
+      <div className="table-scroll">
+        <table className="loan-rows">
+          <thead><tr><th>Fatura</th><th>Valor</th><th>Situacao</th><th /></tr></thead>
+          <tbody>
+            {shown.map((r) => {
+              const mine = pays.filter((p) => p.fm === r.m);
+              return (
+                <tr key={r.m} className={r.status === "vencida" ? "late" : r.m === fm ? "nextrow" : ""}>
+                  <td><span className="cell"><button className="link" onClick={() => setFm(r.m)} title="ver as compras">{monthLabel(r.m)}</button>
+                    <small className="muted">vence {dm(r.due)}{r.futuro > 0 ? " - parcelas" : ""}</small></span></td>
+                  <td data-label="Valor">{brl(r.v)}{r.paid > 0.005 && r.status !== "paga" && <small className="muted"> falta {brl(r.rest)}</small>}</td>
+                  <td data-label="Situacao"><span className={`sit sit-${FSIT[r.status].cls}`}>{FSIT[r.status].label}</span>
+                    {mine.length > 0 && <small className="muted"> em {dm(mine[mine.length - 1].d)}</small>}
+                    {r.status === "paga" && !mine.length && <small className="muted"> pelo extrato</small>}</td>
+                  <td className="actions">
+                    {r.status !== "paga" && r.due.slice(0, 7) <= addMonths(monthOf(today), 1) && <button className="link" onClick={() => setPay(pay === r.m ? null : r.m)}>pagar</button>}
+                    {mine.length > 0 && <button className="link" onClick={() => undo(r.m)}>desfazer</button>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > shown.length || all ? <button className="link small" onClick={() => setAll(!all)}>{all ? "mostrar menos" : `ver todas as ${rows.length} faturas`}</button> : null}
+    </section>
+  );
+}
+
+// Pagar a fatura: quanto, quando e de qual conta (lanca a saida na conta) - ou so marcar como paga
+function CardPayForm({ card, fm, rest, due, months, setup, onDone }: {
+  card: Card; fm: string; rest: number; due: string; months: Record<string, MonthDoc>; setup: GastosSetup; onDone: () => void;
+}) {
+  const accounts = accountsOf(setup);
+  const [v, setV] = useState(fmt(rest));
+  const [d, setD] = useState(todayBR());
+  const [acc, setAcc] = useState(accounts[0]?.id ?? "");
+  const num = (x: string) => Number(x.replace(/\./g, "").replace(",", ".")) || 0;
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = Math.round(num(v) * 100) / 100;
+    if (!(val > 0)) return;
+    const pay: NonNullable<Card["pays"]>[number] = { id: newId(), fm, d, v: val };
+    if (acc) {
+      const gm = monthOf(d), gid = newId();
+      const g: Gasto = { id: gid, d, desc: `Fatura ${card.name} (${monthLabel(fm)})`, v: val, tipo: "neutro", cat: CARD_PAY_CAT, io: "out", payCard: card.id, acc };
+      await saveMonth(gm, [...(months[gm]?.items ?? []), g]);
+      pay.gid = gid; pay.gm = gm;
+    }
+    await saveSetup({ cards: setup.cards.map((c) => (c.id === card.id ? { ...c, pays: [...(c.pays ?? []), pay] } : c)) });
+    onDone();
+  };
+  return (
+    <form className="fin-form loan-pay" onSubmit={save}>
+      <p className="small"><b>Fatura {card.name} - {monthLabel(fm)}</b> <span className="muted">vence {dm(due)}, falta {brl(rest)}</span></p>
+      <div className="row wrapline">
+        <label>Quanto pagou (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
+        <label>Quando<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
+        <label>De qual conta
+          <select value={acc} onChange={(e) => setAcc(e.target.value)}>
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            <option value="">nao lancar saida (ja esta no extrato / paguei por fora)</option>
+          </select>
+        </label>
+        <button className="primary" type="submit">Pagar</button>
+        <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
+      </div>
+      <p className="muted small">{acc ? "Lanca a saida nessa conta (categoria Fatura do cartao) e abate desta fatura." : "So abate desta fatura; o saldo da conta nao muda."}
+        {num(v) > 0 && num(v) < rest - 0.005 ? ` Pagamento parcial: ficam ${brl(rest - num(v))} em aberto.` : ""}</p>
     </form>
   );
 }

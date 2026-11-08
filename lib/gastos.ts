@@ -32,7 +32,11 @@ export type Account = {
   noStatement?: boolean;
 };
 export type MonthDoc = { items: Gasto[] };
-export type Card = { id: string; name: string; closeDay: number; dueDay: number; limit?: number; budget?: number }; // budget = planejado por fatura
+export type Card = {
+  id: string; name: string; closeDay: number; dueDay: number; limit?: number; budget?: number; // budget = planejado por fatura
+  // Pagamentos feitos pelo botao "pagar": fatura (mes de vencimento), data, valor e o lancamento criado na conta
+  pays?: { id: string; fm: string; d: string; v: number; gid?: string; gm?: string }[];
+};
 export type Loan = {
   id: string; name: string;
   parcela: number; // R$ por mes
@@ -506,12 +510,16 @@ export function closeDateOf(c: Card, fm: string) {
 // Pagamentos de um cartao: pela conta (lancamento com payCard) ou pela propria fatura ("Pagamento recebido" com card).
 // O mesmo pagamento visto dos dois lados (mesmo valor, ate 5 dias) conta uma vez so.
 function cardPayments(c: Card, months: Record<string, MonthDoc>) {
+  const mine = new Set((c.pays ?? []).map((p) => p.gid).filter(Boolean));
+  const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
+  // "pagar" sem lancar saida (o pagamento vem pelo extrato): o lancamento do extrato com o mesmo valor e o mesmo pagamento
+  const marked = (c.pays ?? []).filter((p) => !p.gid);
   const list: { d: string; v: number }[] = [];
   for (const md of Object.values(months))
     for (const g of md.items) {
       const isPay = (g.payCard === c.id) || (g.card === c.id && g.tipo === "neutro");
-      if (!isPay) continue;
-      const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
+      if (!isPay || mine.has(g.id)) continue;
+      if (marked.some((p) => Math.abs(p.v - g.v) < 0.01 && days(p.d, g.d) <= 5)) continue;
       if (list.some((x) => Math.abs(x.v - g.v) < 0.01 && days(x.d, g.d) <= 5)) continue;
       list.push({ d: g.d, v: g.v });
     }
@@ -548,7 +556,15 @@ export function cardStatus(c: Card, months: Record<string, MonthDoc>, today = to
   }
   const all = [...new Set([...Object.keys(fat), ...Object.keys(future)])].sort();
   const list = all.map((m) => ({ m, close: closeDateOf(c, m), due: dayIn(m, c.dueDay), v: (fat[m] ?? 0) + (future[m] ?? 0), futuro: future[m] ?? 0, paid: 0 }));
-  for (const p of cardPayments(c, months)) {
+  // primeiro os pagamentos do botao "pagar", na fatura escolhida (o que sobrar abate as outras em aberto)
+  const extra: { d: string; v: number }[] = [];
+  for (const p of c.pays ?? []) {
+    const f = list.find((x) => x.m === p.fm);
+    const take = f ? Math.min(p.v, Math.max(0, f.v - f.paid)) : 0;
+    if (f) f.paid += take;
+    if (p.v - take > 0.005) extra.push({ d: p.d, v: p.v - take });
+  }
+  for (const p of [...cardPayments(c, months), ...extra]) {
     let left = p.v;
     // da fatura fechada mais recente para a mais antiga
     for (const f of [...list].reverse()) {

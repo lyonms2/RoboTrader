@@ -391,7 +391,7 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
   if (sync?.shorts.length) todo.push({ tone: "warn", who: "Lighter", text: `posicao vendida (${sync.shorts.join(", ")}) fica fora da conta`, tab: "carteira" });
   // Financas: pagamentos vencidos e pontos para revisar
   for (const p of upcoming(money.months, money.setup).filter((x) => x.late))
-    todo.push({ tone: "warn", who: "Pagar", text: `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : "lanc" });
+    todo.push({ tone: "warn", who: "Pagar", text: `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : p.card ? "cards" : "lanc" });
   for (const b of budgetAlerts(money.months, money.setup))
     todo.push({ tone: "warn", who: "Cartao", text: `${b.c.name}: R$ ${fmt(b.used, 0)} na fatura aberta, ${fmt(b.pct * 100, 0)}% do planejado (R$ ${fmt(b.c.budget!, 0)})`, tab: "financas", fin: "cards" });
   const rc = reviewCount(money.months, money.setup);

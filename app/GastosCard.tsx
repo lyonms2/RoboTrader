@@ -155,11 +155,17 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     if (src.startsWith("by:")) {
       const r = (setup.recvs ?? []).find((x) => x.id === src.slice(3));
       if (!r) return;
-      const ans = await askText(`Quanto ${r.name} pagou de ${p.desc}? (R$)`, fmt(p.v));
+      const ans = await askText(`Quanto ${r.name} pagou de ${p.desc} com o dinheiro dela? (R$ - abate do que ela te deve)`, fmt(p.v));
       if (ans === null) return;
       const val = num(ans);
       if (!(val > 0)) return;
-      await saveMonth(m, [...items, { id: newId(), d: p.d < todayBR() ? p.d : todayBR(), desc: `${p.desc} (pago por ${r.name})`, v: val, tipo: "gasto", cat: p.cat, src: "manual", ref: p.ref, by: r.id }]);
+      const t0 = todayBR();
+      const dd = monthOf(t0) === m ? t0 : p.d;
+      const aD = await askText(`Quando ${r.name} pagou? (dia/mes)`, `${dd.slice(8, 10)}/${dd.slice(5, 7)}`);
+      if (aD === null) return;
+      const mm = /^(\d{1,2})(?:\/(\d{1,2}))?/.exec(aD.trim());
+      const byD = mm ? `${m.slice(0, 4)}-${String(Number(mm[2] ?? m.slice(5, 7))).padStart(2, "0")}-${String(Number(mm[1])).padStart(2, "0")}` : dd;
+      await saveMonth(m, [...items, { id: newId(), d: byD, desc: `${p.desc} (pago por ${r.name})`, v: val, tipo: "gasto", cat: p.cat, src: "manual", ref: p.ref, by: r.id }]);
       return;
     }
     let v = p.v;
@@ -259,11 +265,11 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                               .sort((a, b) => Number(b.cat === p.cat) - Number(a.cat === p.cat) || Math.abs(a.v - p.v) - Math.abs(b.v - p.v)).slice(0, 8)
                               .map((g) => <option key={g.id} value={`item:${g.id}`}>{dm(g.d)} {g.desc.slice(0, 28)} {brl(g.v)}</option>)}
                           </optgroup>}
-                          {!p.parc && (setup.recvs ?? []).some((r) => r.kind === "conta") && <optgroup label="pago por outra pessoa (abate o que ela te deve)">
-                            {(setup.recvs ?? []).filter((r) => r.kind === "conta").map((r) => <option key={r.id} value={`by:${r.id}`}>pago por {r.name}</option>)}
+                          {!p.parc && (setup.recvs ?? []).some((r) => r.kind === "conta") && <optgroup label="outra pessoa pagou com o dinheiro dela (abate o que ela te deve)">
+                            {(setup.recvs ?? []).filter((r) => r.kind === "conta").map((r) => <option key={r.id} value={`by:${r.id}`}>{r.name} pagou com o dinheiro dela</option>)}
                           </optgroup>}
-                          <optgroup label="paguei com (nao vem em extrato)">
-                            {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>{a.name}{a.noStatement ? " (sem extrato)" : ""}</option>)}
+                          <optgroup label="pago com uma conta sua (sai do saldo dela)">
+                            {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>conta {a.name}{a.noStatement ? " (sem extrato)" : ""}</option>)}
                             {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>cartao {c.name}</option>)}
                           </optgroup>
                         </select>

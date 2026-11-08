@@ -595,7 +595,7 @@ function FaturasList({ card, st, fm, setFm, months, setup }: {
 }
 
 // Pagar a fatura: quanto, quando e de qual conta (lanca a saida na conta) - ou so marcar como paga
-function CardPayForm({ card, fm, rest, due, months, setup, onDone }: {
+export function CardPayForm({ card, fm, rest, due, months, setup, onDone }: {
   card: Card; fm: string; rest: number; due: string; months: Record<string, MonthDoc>; setup: GastosSetup; onDone: () => void;
 }) {
   const accounts = accountsOf(setup);

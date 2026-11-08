@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { CARD_PAY_CAT, GENERIC_CATS, INVEST_CAT, TRANSFER_CAT, customCats, setCustomCats, accNameFromDesc, looksDuplicate, suggestCard, suggestToAcc, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
+import { CardPayForm } from "./CardsLoans";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
   dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, monthOf, newId, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
@@ -415,7 +416,12 @@ export function genericCount(months: Record<string, MonthDoc>) {
 // Para revisar: tudo que deixaria um numero errado, com o conserto de 1 clique quando da
 export function Review({ months, setup, invest }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[] }) {
   const [busy, setBusy] = useState(false);
+  const [paying, setPaying] = useState<string | null>(null); // fatura vencida com o formulario de pagamento aberto
   const accounts = accountsOf(setup);
+  // marcacoes do "ja paguei" antigo: ficavam dentro do cartao sem direcao e eram lidas como compra (somavam na fatura)
+  const oldMarks: { m: string; g: Gasto }[] = [];
+  for (const [m, md] of Object.entries(months))
+    for (const g of md.items) if (g.card && g.cat === CARD_PAY_CAT && !g.io && g.src === "manual" && g.desc.includes("(marcado como pago)")) oldMarks.push({ m, g });
   // 1) investimento sem destino  2) pagamento de fatura sem cartao
   const fixes: { m: string; id: string; patch: Partial<Gasto> }[] = [];
   let invMissing = 0;
@@ -444,18 +450,19 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
   const st = accountsStatus(months, setup);
   const noBalance = st.rows.filter((r) => r.used && !r.informed);
   const generic = genericCount(months);
-  if (!invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length && !generic) return null;
+  if (!invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length && !generic && !oldMarks.length) return null;
+  const removeOldMarks = async () => {
+    if (!confirm(`Apagar ${oldMarks.length} ${oldMarks.length > 1 ? "marcacoes" : "marcacao"} do "ja paguei" antigo? Depois marque o pagamento de novo pelo botao novo.`)) return;
+    const by: Record<string, Set<string>> = {};
+    for (const { m, g } of oldMarks) (by[m] ??= new Set()).add(g.id);
+    await Promise.all(Object.entries(by).map(([m, ids]) => saveMonth(m, months[m].items.filter((x) => !ids.has(x.id)))));
+  };
   const applyFixes = async () => {
     setBusy(true);
     const by: Record<string, Record<string, Partial<Gasto>>> = {};
     for (const f of fixes) (by[f.m] ??= {})[f.id] = { ...(by[f.m]?.[f.id] ?? {}), ...f.patch };
     await Promise.all(Object.entries(by).map(([m, ids]) => saveMonth(m, months[m].items.map((x) => (ids[x.id] ? { ...x, ...ids[x.id] } : x)))));
     setBusy(false);
-  };
-  // "Ja paguei": registra o pagamento do lado do cartao (nao mexe na conta; se o extrato da conta trouxer o mesmo pagamento, conta uma vez so)
-  const markPaid = async (c: Card, f: { m: string; due: string; rest: number }) => {
-    await addItems(months, [{ id: newId(), d: f.due, desc: `Pagamento de fatura ${c.name} ${monthLabel(f.m)} (marcado como pago)`, v: Math.round(f.rest * 100) / 100,
-      tipo: "neutro", cat: CARD_PAY_CAT, card: c.id, src: "manual" }]);
   };
   return (
     <div className="review small">
@@ -465,13 +472,18 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
         {payMissing > 0 && <li>{payMissing} {payMissing > 1 ? "pagamentos" : "pagamento"} de fatura sem cartao: a fatura continua aparecendo como divida.</li>}
         {fixes.length > 0 && <li><button className="primary small-btn" disabled={busy} onClick={applyFixes}>{busy ? "Ligando..." : `Ligar ${fixes.length} automaticamente`}</button>
           {fixes.length < invMissing + payMissing && <span className="muted"> os outros: escolha na lista de lancamentos</span>}</li>}
+        {oldMarks.length > 0 && (
+          <li className="warn">{oldMarks.length} {oldMarks.length > 1 ? "marcacoes" : "marcacao"} do &quot;ja paguei&quot; antigo ({brl(oldMarks.reduce((t, x) => t + x.g.v, 0))}) {oldMarks.length > 1 ? "estao" : "esta"}
+            somando como compra na fatura seguinte, em vez de pagar. <button className="ghost small-btn" onClick={removeOldMarks}>apagar e marcar de novo</button></li>
+        )}
         {lost.map((g) => (
           <li key={g.id}>{dm(g.d)}: {brl(g.v)} transferido sem conta de destino ({g.desc.slice(0, 40)}). Nos lancamentos, escolha &quot;foi para qual conta&quot;
             (ou &quot;+ nova conta sem extrato&quot;, para dinheiro que voce passa para alguem pagar por voce), ou troque a categoria se foi um gasto.</li>
         ))}
         {overdue.map(({ c, f }) => (
           <li key={c.id + f.m}>Fatura {c.name} de {monthLabel(f.m)} venceu em {dm(f.due)} com {brl(f.rest)} sem pagamento lancado.
-            <button className="ghost small-btn" onClick={() => markPaid(c, f)}>ja paguei</button></li>
+            <button className="ghost small-btn" onClick={() => setPaying(paying === c.id + f.m ? null : c.id + f.m)}>{paying === c.id + f.m ? "fechar" : "ja paguei"}</button>
+            {paying === c.id + f.m && <CardPayForm card={c} fm={f.m} rest={f.rest} due={f.due} months={months} setup={setup} onDone={() => setPaying(null)} />}</li>
         ))}
         {generic > 0 && <li>{generic} {generic > 1 ? "lancamentos" : "lancamento"} em &quot;Outros&quot; sem dizer o que e: na lista, troque a categoria
           (escolha uma existente, ou &quot;Outros (discriminar...)&quot; para criar a sua). Os iguais do mes mudam juntos e o site lembra para as proximas.</li>}

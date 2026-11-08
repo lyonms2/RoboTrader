@@ -23,6 +23,7 @@ export type Gasto = {
   acc?: string; // conta (PicPay, Nubank...) por onde passou; sem cartao e sem conta = a primeira conta
   payCard?: string; // pagamento de fatura feito pela conta: qual cartao foi pago
   toAcc?: string; // transferencia entre contas: a outra conta (para onde foi / de onde veio). Um lancamento move as duas
+  by?: string; // pago por outra pessoa (id da conta com ela em "A receber"): e seu gasto, mas nao saiu da sua conta; abate o que ela te deve
 };
 // Conta bancaria: saldo conferido numa data (ancora). O saldo em qualquer outro dia sai dos lancamentos
 export type Account = {
@@ -40,7 +41,9 @@ export type Card = {
 // A receber: alguem te deve e paga em parcelas (voce emprestou, ou vendeu/prestou servico parcelado)
 export type Recv = {
   id: string; name: string; // quem deve (o nome ajuda a achar o Pix no extrato)
-  kind: "emprestei" | "venda"; // emprestei: receber nao e renda (dinheiro seu voltando); venda: cada parcela e renda
+  kind: "emprestei" | "venda" | "conta"; // emprestei: receber nao e renda; venda: cada parcela e renda; conta: saldo que sobe e desce
+  saldo0?: number; since?: string; // conta: quanto ela te devia (negativo = voce devia a ela) no dia "since" (AAAA-MM-DD)
+  adj?: { id: string; d: string; v: number; desc: string }[]; // conta: ajustes a mao (+ ela deve mais, - ela pagou em dinheiro)
   parcela: number; n: number; first: string; dueDay: number; // R$ por parcela, quantas, AAAA-MM da 1a, dia combinado
   gotBefore?: number; // parcelas ja recebidas antes de cadastrar (as primeiras)
   gets?: { k: number; d: string; v: number; gid?: string; gm?: string }[]; // marcadas no botao "recebi"
@@ -274,15 +277,37 @@ export const monthDiff = (a: string, b: string) =>
   (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7));
 
 // ---------- resumo ----------
-export type MonthSummary = { gastos: number; receitas: number; byCat: Record<string, number> };
+export type MonthSummary = {
+  gastos: number; receitas: number; byCat: Record<string, number>;
+  forOthers?: number; // compras no cartao para outras pessoas descontadas da fatura deste mes
+};
 // Mes pelo extrato da conta: compras no cartao ficam de fora (o controle delas e em Cartoes e emprestimos) e o
 // pagamento da fatura conta como uma saida, no dia em que sai da conta
-export function summarize(items: Gasto[]): MonthSummary {
+// Cartoes cadastrados (registro do modulo, atualizado quando o setup carrega): para saber em que fatura cai cada compra
+let CARDS: Card[] = [];
+export const setCardsReg = (c?: Card[]) => { CARDS = c ?? []; };
+// Compras no cartao feitas para outra pessoa (categoria "Emprestei dinheiro") cujas faturas vencem no mes m:
+// a fatura paga conta inteira como gasto, entao essa parte e descontada no mesmo mes
+export function cardForOthers(months: Record<string, MonthDoc>, m: string) {
+  let v = 0;
+  for (const md of Object.values(months))
+    for (const g of md.items) {
+      if (!g.card || g.cat !== RECV_OUT_CAT || dirOf(g) > 0) continue;
+      const c = CARDS.find((x) => x.id === g.card);
+      if (c && faturaMonth(c, g.d) === m) v += g.v;
+    }
+  return v;
+}
+export function summarize(items: Gasto[], ctx?: { m: string; months: Record<string, MonthDoc> }): MonthSummary {
   const s: MonthSummary = { gastos: 0, receitas: 0, byCat: {} };
   for (const i of items) {
     if (i.card) continue;
     if (i.tipo === "gasto" || (i.cat === CARD_PAY_CAT && dirOf(i) < 0)) { s.gastos += i.v; s.byCat[i.cat] = (s.byCat[i.cat] ?? 0) + i.v; }
     else if (i.tipo === "receita") s.receitas += i.v;
+  }
+  if (ctx) {
+    const o = cardForOthers(ctx.months, ctx.m);
+    if (o > 0) { s.gastos = Math.max(0, s.gastos - o); s.byCat[CARD_PAY_CAT] = Math.max(0, (s.byCat[CARD_PAY_CAT] ?? 0) - o); s.forOthers = o; }
   }
   return s;
 }
@@ -309,9 +334,9 @@ export function commitments(months: Record<string, MonthDoc>, setup: GastosSetup
 // Media de gastos dos ultimos 3 meses fechados que tem lancamentos (usada na reserva de emergencia)
 export function avgMonthly(months: Record<string, MonthDoc>, current = monthOf(todayBR())) {
   // so meses com saidas da conta (compras no cartao sozinhas nao contam: elas entram quando a fatura e paga)
-  const keys = Object.keys(months).filter((m) => m < current && summarize(months[m].items).gastos > 0).sort().slice(-3);
+  const keys = Object.keys(months).filter((m) => m < current && summarize(months[m].items, { m, months }).gastos > 0).sort().slice(-3);
   if (!keys.length) return null;
-  return { value: keys.reduce((s, m) => s + summarize(months[m].items).gastos, 0) / keys.length, months: keys.length };
+  return { value: keys.reduce((s, m) => s + summarize(months[m].items, { m, months }).gastos, 0) / keys.length, months: keys.length };
 }
 
 // Valor do fixo num mes (considera os reajustes)
@@ -586,8 +611,11 @@ export function debts(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const loans = setup.loans.reduce((s, l) => s + loanStatus(l, today, { months, setup }).saldo, 0);
   const cards = setup.cards.map((c) => cardStatus(c, months, today));
   // recv = o que te devem (entra no patrimonio como bem; nao abate o que voce deve)
-  const recv = (setup.recvs ?? []).reduce((s, r) => s + recvStatus(r, months, today).leftV, 0);
-  return { loans, cards: cards.reduce((s, c) => s + c.open, 0), total: loans + cards.reduce((s, c) => s + c.open, 0), recv };
+  const rs = (setup.recvs ?? []).map((r) => recvStatus(r, months, today));
+  const recv = rs.reduce((s, x) => s + x.leftV, 0);
+  const people = rs.reduce((s, x) => s + x.owe, 0); // conta com a pessoa negativa: voce deve a ela
+  const cardsOpen = cards.reduce((s, c) => s + c.open, 0);
+  return { loans, cards: cardsOpen, total: loans + cardsOpen + people, recv, people };
 }
 
 // ---------- a receber ----------
@@ -595,6 +623,7 @@ export const recvDue = (r: Recv, k: number) => dayIn(addMonths(r.first, k), r.du
 export type RecvRow = { k: number; due: string; m: string; status: "recebida" | "atrasada" | "aberta"; via?: "antes" | "voce" | "extrato"; d?: string; v?: number; g?: Gasto };
 // Lancamento do extrato que parece pagamento desta divida: ligado a ela, descricao aprendida, ou o nome da pessoa no texto (valor ate 10% longe)
 export function recvMatches(r: Recv, g: Gasto) {
+  if (r.kind === "conta") return false;
   if (g.card || dirOf(g) < 0 || g.tipo === "gasto" || (r.notIds ?? []).includes(g.id)) return false;
   if (g.ref) return g.ref === r.id;
   if ((r.keys ?? []).includes(descKey(g.desc))) return true;
@@ -602,7 +631,37 @@ export function recvMatches(r: Recv, g: Gasto) {
   const d = plain(g.desc);
   return words.length > 0 && words.every((w) => d.includes(w)) && Math.abs(g.v - r.parcela) <= r.parcela * 0.1;
 }
+// Conta com a pessoa: tudo que mexe no saldo, em ordem de data (v > 0 = ela passa a dever mais)
+export type LedgerEntry = { id: string; d: string; desc: string; v: number; kind: "inicio" | "ajuste" | "porela" | "pagou" | "pagouconta"; g?: Gasto; auto?: boolean; bal: number };
+const personWords = (name: string) => plain(name).split(" ").filter((w) => w.length > 2 && !/^(de|da|do|dos|das)$/.test(w));
+export function recvLedger(r: Recv, months: Record<string, MonthDoc>) {
+  const since = r.since ?? "0000-00-00";
+  const words = personWords(r.name);
+  const out: Omit<LedgerEntry, "bal">[] = [{ id: "inicio", d: since, desc: "saldo inicial", v: r.saldo0 ?? 0, kind: "inicio" }];
+  for (const a of r.adj ?? []) out.push({ id: a.id, d: a.d, desc: a.desc, v: a.v, kind: "ajuste" });
+  for (const md of Object.values(months))
+    for (const g of md.items) {
+      if (g.d <= since && !(g.ref === r.id || g.by === r.id)) continue;
+      if ((r.notIds ?? []).includes(g.id)) continue;
+      if (g.by === r.id) { out.push({ id: g.id, d: g.d, desc: g.desc, v: -g.v, kind: "pagouconta", g }); continue; }
+      const dir = dirOf(g);
+      if (g.ref === r.id) { out.push({ id: g.id, d: g.d, desc: g.desc, v: dir < 0 ? g.v : -g.v, kind: dir < 0 ? "porela" : "pagou", g }); continue; }
+      // Pix dela que entrou (nome no extrato, qualquer valor)
+      if (!g.ref && !g.card && dir > 0 && g.tipo !== "gasto" && words.length && (words.every((w) => plain(g.desc).includes(w)) || (r.keys ?? []).includes(descKey(g.desc))))
+        out.push({ id: g.id, d: g.d, desc: g.desc, v: -g.v, kind: "pagou", g, auto: true });
+    }
+  out.sort((a, b) => (a.kind === "inicio" ? -1 : b.kind === "inicio" ? 1 : a.d.localeCompare(b.d)));
+  let bal = 0;
+  return out.map((e) => ({ ...e, bal: (bal = Math.round((bal + e.v) * 100) / 100) }));
+}
+
 export function recvStatus(r: Recv, months: Record<string, MonthDoc>, today = todayBR()) {
+  if (r.kind === "conta") {
+    const led = recvLedger(r, months);
+    const saldo = led.length ? led[led.length - 1].bal : 0;
+    return { rows: [] as RecvRow[], got: 0, gotV: 0, left: 0, leftV: Math.max(0, saldo), late: 0, lateV: 0, next: null as string | null, nextK: null as number | null,
+      end: r.first, saldo, owe: Math.max(0, -saldo) };
+  }
   const rows: RecvRow[] = Array.from({ length: r.n }, (_, k) => ({ k, due: recvDue(r, k), m: addMonths(r.first, k), status: "aberta" as const }));
   const gb = r.gotBefore ?? 0;
   for (const row of rows) if (row.k < gb) Object.assign(row, { status: "recebida", via: "antes" });
@@ -640,7 +699,7 @@ export function recvStatus(r: Recv, months: Record<string, MonthDoc>, today = to
   return {
     rows, got: gotRows.length, gotV: gotRows.reduce((t, x) => t + (x.v ?? r.parcela), 0),
     left: open.length, leftV: open.length * r.parcela, late: late.length, lateV: late.length * r.parcela,
-    next: open[0]?.due ?? null, nextK: open[0]?.k ?? null, end: rows[rows.length - 1]?.m ?? r.first,
+    next: open[0]?.due ?? null, nextK: open[0]?.k ?? null, end: rows[rows.length - 1]?.m ?? r.first, saldo: open.length * r.parcela, owe: 0,
   };
 }
 // Parcelas a receber com vencimento no mes m (para o "Contas do mes")
@@ -653,6 +712,11 @@ export function monthReceipts(m: string, months: Record<string, MonthDoc>, setup
 export function recvFixes(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const out: { m: string; id: string; patch: Partial<Gasto>; who: string }[] = [];
   for (const r of setup.recvs ?? []) {
+    if (r.kind === "conta") {
+      for (const e of recvLedger(r, months))
+        if (e.auto && e.g) out.push({ m: monthOf(e.g.d), id: e.g.id, patch: { cat: RECV_BACK_CAT, tipo: "neutro", io: "in", ref: r.id }, who: r.name });
+      continue;
+    }
     for (const row of recvStatus(r, months).rows) {
       const g = row.g;
       if (!g) continue;
@@ -765,7 +829,7 @@ export function accountsOf(setup: GastosSetup): Account[] {
   return [{ id: "main", name: "Conta principal", ...(setup.account ? { balance: setup.account.balance, at: setup.account.at } : {}) }];
 }
 export const accIdOf = (g: Gasto, accounts: Account[]) =>
-  g.card ? null : g.acc && accounts.some((a) => a.id === g.acc) ? g.acc : accounts[0].id;
+  g.card || g.by ? null : g.acc && accounts.some((a) => a.id === g.acc) ? g.acc : accounts[0].id;
 
 // Saldo da conta no fim do dia "date". Com saldo conferido (B no dia A): para frente B + movimentos depois de A,
 // para tras B - movimentos entre a data e A. Sem saldo conferido: soma dos movimentos desde o primeiro (comeca do zero).

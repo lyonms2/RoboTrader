@@ -5,10 +5,10 @@ import { db } from "@/lib/firebaseClient";
 import { CARD_PAY_CAT, GENERIC_CATS, INVEST_CAT, TRANSFER_CAT, customCats, setCustomCats, accNameFromDesc, looksDuplicate, suggestCard, suggestToAcc, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardPayForm } from "./CardsLoans";
-import { linkRecv, receive } from "./Receivables";
+import { RecvSelect, linkRecv, receive } from "./Receivables";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
   type Bill, type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
@@ -44,7 +44,7 @@ const isFaturaOut = (g: Gasto) =>
 export function monthSnapshot(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const m = monthOf(todayBR());
   const items = months[m]?.items ?? [];
-  const s = summarize(items);
+  const s = summarize(items, { m, months });
   const pending = pendingFor(m, items, setup, months);
   return { m, ...s, count: items.length, pending: pending.reduce((a, p) => a + p.v, 0), pendingN: pending.length, avg: avgMonthly(months) };
 }
@@ -89,7 +89,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
   const [importing, setImporting] = useState(false);
   const [where, setWhere] = useState(""); // "" = tudo; "acc:id" ou "card:id"
   const items = months[m]?.items ?? [];
-  const s = summarize(items);
+  const s = summarize(items, { m, months });
   const avg = avgMonthly(months);
   const bills = monthBills(m, items, setup, months);
   const recs = monthReceipts(m, months, setup);
@@ -105,7 +105,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     // media por categoria nos 3 meses anteriores ao mes aberto
     const keys = [1, 2, 3].map((k) => addMonths(m, -k)).filter((k) => months[k]?.items.length);
     const acc: Record<string, number> = {};
-    for (const k of keys) for (const [c, v] of Object.entries(summarize(months[k].items).byCat)) acc[c] = (acc[c] ?? 0) + v / keys.length;
+    for (const k of keys) for (const [c, v] of Object.entries(summarize(months[k].items, { m: k, months }).byCat)) acc[c] = (acc[c] ?? 0) + v / keys.length;
     return { acc, n: keys.length };
   }, [m, months]);
 
@@ -151,6 +151,17 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
       if (f && key && !(f.keys ?? []).includes(key)) await saveSetup({ fixos: setup.fixos.map((x) => (x.id === f.id ? { ...x, keys: [...(x.keys ?? []), key] } : x)) });
       return;
     }
+    // pago por outra pessoa (conta com ela em A receber): seu gasto, sem sair da sua conta, abate o que ela te deve
+    if (src.startsWith("by:")) {
+      const r = (setup.recvs ?? []).find((x) => x.id === src.slice(3));
+      if (!r) return;
+      const ans = await askText(`Quanto ${r.name} pagou de ${p.desc}? (R$)`, fmt(p.v));
+      if (ans === null) return;
+      const val = num(ans);
+      if (!(val > 0)) return;
+      await saveMonth(m, [...items, { id: newId(), d: p.d < todayBR() ? p.d : todayBR(), desc: `${p.desc} (pago por ${r.name})`, v: val, tipo: "gasto", cat: p.cat, src: "manual", ref: p.ref, by: r.id }]);
+      return;
+    }
     let v = p.v;
     if (p.varia) {
       const ans = await askText(`Quanto veio ${p.desc} este mes? (R$)`, fmt(p.v));
@@ -167,7 +178,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     const f = setup.fixos.find((x) => x.id === b.ref);
     if (!g || !f) return;
     // lancado pelo "paguei com" (nao veio de extrato): apaga; veio do extrato: so desliga
-    if (g.ref === f.id && g.src === "fixo") await saveMonth(m, items.filter((x) => x.id !== g.id));
+    if (g.ref === f.id && (g.src === "fixo" || g.by)) await saveMonth(m, items.filter((x) => x.id !== g.id));
     else if (g.ref === f.id) await saveMonth(m, items.map((x) => (x.id === g.id ? clean({ ...x, ref: undefined }) : x)));
     const key = descKey(g.desc);
     await saveSetup({ fixos: setup.fixos.map((x) => (x.id === f.id ? { ...x, keys: (x.keys ?? []).filter((k) => k !== key), notIds: [...(x.notIds ?? []), g.id] } : x)) });
@@ -223,7 +234,8 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                     <span className="b-desc"><b>{p.desc}</b>
                       {p.varia && <span className="tag">varia</span>}
                       {p.reaj && <span className="tag warn">reajuste: confira o valor</span>}
-                      {p.paid && <small className="muted">pago por: {p.paid.desc.slice(0, 40)} {brl(p.paid.v)} ({dm(p.paid.d)}) - {HOW[p.how ?? ""] ?? ""}
+                      {p.paid && <small className="muted">{p.paid.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === p.paid!.by)?.name ?? "outra pessoa"} (abatido do que te deve) ${brl(p.paid.v)} (${dm(p.paid.d)})`
+                        : `pago por: ${p.paid.desc.slice(0, 40)} ${brl(p.paid.v)} (${dm(p.paid.d)}) - ${HOW[p.how ?? ""] ?? ""}`}
                         {p.fixo && <button className="link" onClick={() => notThis(p)}>nao e este</button>}</small>}
                     </span>
                     <span className="b-v">{p.varia && !p.paid ? "~" : ""}{brl(p.paid ? p.paid.v : p.v)}</span>
@@ -237,6 +249,9 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                             {items.filter((g) => g.tipo === "gasto" && !g.ref && !g.card)
                               .sort((a, b) => Number(b.cat === p.cat) - Number(a.cat === p.cat) || Math.abs(a.v - p.v) - Math.abs(b.v - p.v)).slice(0, 8)
                               .map((g) => <option key={g.id} value={`item:${g.id}`}>{dm(g.d)} {g.desc.slice(0, 28)} {brl(g.v)}</option>)}
+                          </optgroup>}
+                          {!p.parc && (setup.recvs ?? []).some((r) => r.kind === "conta") && <optgroup label="pago por outra pessoa (abate o que ela te deve)">
+                            {(setup.recvs ?? []).filter((r) => r.kind === "conta").map((r) => <option key={r.id} value={`by:${r.id}`}>pago por {r.name}</option>)}
                           </optgroup>}
                           <optgroup label="paguei com (nao vem em extrato)">
                             {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>{a.name}{a.noStatement ? " (sem extrato)" : ""}</option>)}
@@ -366,10 +381,11 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                   return (
                     <tr key={g.id} className={g.tipo === "neutro" && !isFaturaOut(g) ? "neutral" : ""}>
                       <td><span className="cell">{g.desc}<small className="muted">
-                        {[dm(g.d), card ? `cartao ${card.name}` : accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, isFaturaOut(g) ? "conta nos gastos do mes (fatura paga)" : g.tipo === "neutro" ? (dirOf(g) > 0 ? "entrou na conta - nao e renda (dinheiro seu voltando)" : "saiu da conta - nao e gasto") : null].filter(Boolean).join(" - ")}
+                        {[dm(g.d), card ? `cartao ${card.name}` : accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, g.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === g.by)?.name ?? "outra pessoa"} - nao saiu da sua conta` : null, isFaturaOut(g) ? "conta nos gastos do mes (fatura paga)" : g.tipo === "neutro" ? (dirOf(g) > 0 ? "entrou na conta - nao e renda (dinheiro seu voltando)" : "saiu da conta - nao e gasto") : null].filter(Boolean).join(" - ")}
                       </small></span></td>
                       <td data-label="Categoria"><span className="cell">
                         <CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} />
+                        {(g.cat === RECV_OUT_CAT || g.cat === RECV_BACK_CAT) && <RecvSelect g={g} m={m} months={months} setup={setup} />}
                         {g.cat === INVEST_CAT && <InvSelect value={g.inv} desc={g.desc} invest={invest} out={dirOf(g) < 0} onChange={(id) => linkInv(g, id)} />}
                         {g.cat === TRANSFER_CAT && !g.card && (
                           <ToAccSelect value={g.toAcc} from={accIdOf(g, accountsOf(setup))} out={dirOf(g) < 0} setup={setup} onChange={(id) => linkAcc(g, id)} />
@@ -971,7 +987,7 @@ export function ImportPanel({ months, setup, invest, onDone, mode = "conta" }: {
 // Colunas por mes: gastos x entradas (ultimos 6 meses ate o mes aberto)
 function MonthsChart({ months, current, onPick }: { months: Record<string, MonthDoc>; current: string; onPick: (m: string) => void }) {
   const [hover, setHover] = useState<number | null>(null);
-  const list = Array.from({ length: 6 }, (_, i) => addMonths(current, i - 5)).map((m) => ({ m, ...summarize(months[m]?.items ?? []) }));
+  const list = Array.from({ length: 6 }, (_, i) => addMonths(current, i - 5)).map((m) => ({ m, ...summarize(months[m]?.items ?? [], { m, months }) }));
   const max = Math.max(...list.map((x) => Math.max(x.gastos, x.receitas)), 0);
   if (!(max > 0) || list.filter((x) => x.gastos + x.receitas > 0).length < 2) return null;
   const h = hover !== null ? list[hover] : null;

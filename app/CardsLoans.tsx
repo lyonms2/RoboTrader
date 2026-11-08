@@ -1,12 +1,12 @@
 "use client";
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
-  CARD_PAY_CAT, accountsOf, addMonths, cardStatus, dayIn, descKey, commitments, debts, faturaItems, faturaMonth, loanDue, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
+  CARD_PAY_CAT, RECV_OUT_CAT, accountsOf, addMonths, cardStatus, dayIn, descKey, commitments, debts, faturaItems, faturaMonth, loanDue, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
   type Card, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardForm, CatSelect, LoanForm, QuickAdd, saveMonth, saveSetup } from "./GastosCard";
-import ReceivablesPart from "./Receivables";
+import ReceivablesPart, { RecvSelect } from "./Receivables";
 import { ask, askText, tell } from "./Dialog";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -324,7 +324,8 @@ function FaturaView({ card, st, fm, months, setup }: {
   const later = st.all.filter((x) => x.m > fm).slice(0, 6);
   const setCat = async (m: string, id: string, cat: string) => {
     const md = months[m];
-    await saveMonth(m, md.items.map((x) => (x.id === id ? { ...x, cat, tipo: tipoOfCat(cat) ?? x.tipo } : x)));
+    // compra que vira "nao conta" (ex.: Emprestei dinheiro) continua sendo compra: saiu
+    await saveMonth(m, md.items.map((x) => (x.id === id ? { ...x, cat, tipo: tipoOfCat(cat) ?? x.tipo, ...(tipoOfCat(cat) === "neutro" ? { io: x.io ?? "out" } : {}) } : x)));
   };
   const [editId, setEditId] = useState<string | null>(null);
   const remove = async (m: string, id: string, desc: string) => {
@@ -375,7 +376,8 @@ function FaturaView({ card, st, fm, months, setup }: {
               {list.map(({ m, g }) => (<Fragment key={g.id}>
                 <tr>
                   <td><span className="cell">{g.desc}<small className="muted">{[dm(g.d), g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null].filter(Boolean).join(" - ")}</small></span></td>
-                  <td data-label="Categoria"><CatSelect value={g.cat} onChange={(c) => setCat(m, g.id, c)} /></td>
+                  <td data-label="Categoria"><span className="cell"><CatSelect value={g.cat} onChange={(c) => setCat(m, g.id, c)} />
+                    {g.cat === RECV_OUT_CAT && <RecvSelect g={g} m={m} months={months} setup={setup} />}</span></td>
                   <td data-label="Valor" className={g.tipo === "receita" ? "pos" : ""}>{g.tipo === "receita" ? "+" : "-"}{brl(g.v)}</td>
                   <td className="actions"><button className="link" onClick={() => setEditId(editId === g.id ? null : g.id)}>alterar</button>
                     <button className="ghost small-btn" onClick={() => remove(m, g.id, g.desc)}>apagar</button></td>

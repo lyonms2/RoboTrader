@@ -109,7 +109,10 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   }, []);
   const setTab = (t: TabId) => {
     setTabState(t);
-    try { localStorage.setItem("tab", t); } catch { /* sem armazenamento */ }
+    try {
+      localStorage.setItem("tab", t);
+      if (CRYPTO_TABS.includes(t)) localStorage.setItem("criptoSub", t);
+    } catch { /* sem armazenamento */ }
     window.scrollTo({ top: 0 });
   };
   const prices = usePrices(user ? Object.keys(cfg.weights) : []);
@@ -222,14 +225,27 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       </main>
     );
 
+  // Topo: Visao geral, Financas e Cripto; dentro de Cripto: Robo, Carteira, Tokens e Operacoes
   const tabs = [
     { id: "geral", label: "Visao geral" },
     { id: "financas", label: "Financas" },
+    { id: "cripto", label: "Cripto" },
+  ] as const;
+  const cryptoSubs = [
     { id: "sinais", label: "Robo" },
     { id: "carteira", label: "Carteira" },
     { id: "tokens", label: "Tokens" },
     { id: "operacoes", label: "Operacoes" },
   ] as const;
+  const inCrypto = CRYPTO_TABS.includes(tab);
+  const lastCrypto = (): TabId => {
+    try {
+      const v = localStorage.getItem("criptoSub") as TabId | null;
+      return v && CRYPTO_TABS.includes(v) ? v : "sinais";
+    } catch {
+      return "sinais";
+    }
+  };
   const updatedAt = Math.max(0, ...latest.map((l) => l.updatedAt), wallet?.at ?? 0, fichas?.at ?? 0);
 
   return (
@@ -255,7 +271,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         </div>
         <nav className="tabs" role="tablist">
           {tabs.map((t) => (
-            <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "tab active" : "tab"} onClick={() => setTab(t.id)}>
+            <button key={t.id} role="tab" aria-selected={t.id === "cripto" ? inCrypto : tab === t.id}
+              className={(t.id === "cripto" ? inCrypto : tab === t.id) ? "tab active" : "tab"} onClick={() => setTab(t.id === "cripto" ? lastCrypto() : t.id)}>
               {t.label}
             </button>
           ))}
@@ -270,6 +287,13 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
           <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} sync={cfg.lighter?.enabled ? sync : null} onTab={setTab}
             money={{ cfg, fin: finance, wallet: walletOk ? wallet : null, spend, debt, months, setup: gSetup, nwHist }}
             onFin={(s: FinSub) => { try { localStorage.setItem("finSub", s); } catch { /* sem armazenamento */ } setTab("financas"); }} />
+        )}
+        {inCrypto && (
+          <nav className="subtabs" role="tablist" aria-label="Cripto">
+            {cryptoSubs.map((x) => (
+              <button key={x.id} role="tab" aria-selected={tab === x.id} className={tab === x.id ? "pill on" : "pill"} onClick={() => setTab(x.id)}>{x.label}</button>
+            ))}
+          </nav>
         )}
         {tab === "sinais" && (
           <>
@@ -307,6 +331,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
 }
 
 type TabId = "geral" | "financas" | "sinais" | "carteira" | "tokens" | "operacoes";
+// Sub-abas de Cripto (continuam sendo "abas" por dentro, para os links da Visao geral abrirem direto a certa)
+const CRYPTO_TABS: TabId[] = ["sinais", "carteira", "tokens", "operacoes"];
 
 // Visao geral: patrimonio, o que fazer hoje, alocacao e posicoes do robo
 type Money = Parameters<typeof PatrimonioCard>[0] extends infer P ? Omit<P, "onBens"> & { nwHist: NetWorthDoc[] } : never;

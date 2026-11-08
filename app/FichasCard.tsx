@@ -27,7 +27,7 @@ export default function FichasCard({ fichas }: { fichas: FichaDoc | null }) {
         {fichas && <span className="muted small">atualizadas {new Date(fichas.at).toLocaleString("pt-BR")}</span>}
       </div>
       {!fichas ? (
-        <p className="muted">Ainda nao montadas. Clique em &quot;Atualizar tudo&quot;.</p>
+        <p className="muted">Ainda nao montadas. Clique em &quot;Atualizar&quot; (no alto desta pagina).</p>
       ) : (
         <>
           <div className="table-scroll">

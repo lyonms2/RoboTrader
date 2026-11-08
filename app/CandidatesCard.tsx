@@ -14,7 +14,7 @@ export default function CandidatesCard({ doc }: { doc: CandidatesDoc | null }) {
     return (
       <section className="card">
         <h2>Outras moedas para o robo</h2>
-        <p className="muted">Ainda nao avaliadas. Clique em &quot;Atualizar tudo&quot; (a avaliacao roda 1 vez por semana).</p>
+        <p className="muted">Ainda nao avaliadas. Clique em &quot;Atualizar&quot; (no alto desta pagina) (a avaliacao roda 1 vez por semana).</p>
       </section>
     );
   const shown = doc.rows.filter((r) => r.verdict !== "pouco_historico" && r.verdict !== "nao_serve");

@@ -102,7 +102,7 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     const q = f?.quotes?.[tk];
     const qty = item.qty ?? 0;
     const cost = item.avg ? item.avg * qty : null;
-    if (!q) return { ...base, kindLabel: "Acao / FII", group: "acoes", cost, problem: "cotacao ainda nao carregada (clique em Atualizar tudo)" };
+    if (!q) return { ...base, kindLabel: "Acao / FII", group: "acoes", cost, problem: "cotacao ainda nao carregada (clique em Atualizar cotacoes)" };
     const d12 = divs12m(q.divs);
     const value = q.price * qty;
     const lastDiv = q.divs[q.divs.length - 1];

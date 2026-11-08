@@ -30,7 +30,7 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
     return (
       <section className="card empty">
         <h2>Carteira</h2>
-        <p className="muted">Ainda nao lida. Clique em &quot;Atualizar tudo&quot;.</p>
+        <p className="muted">Ainda nao lida. Clique em &quot;Atualizar&quot; (no alto desta pagina).</p>
       </section>
     );
 

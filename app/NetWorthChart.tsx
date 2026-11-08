@@ -46,7 +46,7 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
       <section className="card">
         <h2>Evolucao do patrimonio</h2>
         <p className="muted small">
-          O grafico comeca hoje{all[0] ? ` (${brl(all[0].net)})` : ""}: a cada dia em que voce clica em &quot;Atualizar tudo&quot; (ou o agendador roda)
+          O grafico comeca hoje{all[0] ? ` (${brl(all[0].net)})` : ""}: a cada dia em que o agendador roda (ou voce clica em &quot;Atualizar&quot;, em Cripto)
           fica gravada uma foto do patrimonio liquido. A linha aparece a partir do 2o dia.
         </p>
       </section>
@@ -144,7 +144,7 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
         ))}
       </ul>
       <p className="muted small">
-        Uma foto por dia, gravada quando voce clica em &quot;Atualizar tudo&quot; ou o agendador roda; o ultimo ponto e o valor de agora.
+        Uma foto por dia, gravada pelo agendador (ou quando voce clica em &quot;Atualizar&quot;, em Cripto); o ultimo ponto e o valor de agora.
         {cur.partial?.length ? ` Neste dia ficou de fora: ${cur.partial.join(", ")}.` : ""}
       </p>
     </section>

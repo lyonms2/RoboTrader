@@ -42,8 +42,8 @@ const KINDS: { key: FinKind; label: string; hint: string }[] = [
 ];
 
 // Aba Financas: tudo num lugar so (cripto das carteiras + reserva, Tesouro, acoes/FIIs e outros), em reais
-export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, months, setup }: {
-  cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; onChanged: () => void;
+export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spend, debt, months, setup }: {
+  cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; onChanged: () => void; onQuotes?: () => Promise<void>;
   spend: { value: number; months: number } | null; // media de gastos
   debt: { total: number; loans: number; cards: number; recv: number };
   months: Record<string, MonthDoc>; setup: GastosSetup;
@@ -126,7 +126,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
   if (sub === "cards") return <>{nav}<CardsLoans months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} /></>;
   if (sub === "invest") return (
     <>{nav}<InvestPart items={items} rows={rows} fin={fin} months={months} reserve={s.reserve} reserveMonths={s.reserveMonths}
-      edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} /></>
+      onQuotes={onQuotes} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} /></>
   );
   if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} entry={entryPanel} /></>;
 
@@ -218,9 +218,9 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
 }
 
 // ---------- sub-aba Investimentos: cadastro, carteira, aportes/resgates e proventos ----------
-function InvestPart({ items, rows, fin, months, reserve, reserveMonths, edit, setEdit, bemEdit, setBemEdit, bensTotal, onSave, onRemove, onLanc }: {
+function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes, edit, setEdit, bemEdit, setBemEdit, bensTotal, onSave, onRemove, onLanc }: {
   items: FinItem[]; rows: FinRow[]; fin: FinanceDoc | null; months: Record<string, MonthDoc>;
-  reserve: number; reserveMonths: number | null;
+  reserve: number; reserveMonths: number | null; onQuotes?: () => Promise<void>;
   edit: string | null | undefined; setEdit: (id: string | null | undefined) => void;
   bemEdit: string | null | undefined; setBemEdit: (id: string | null | undefined) => void; bensTotal: number;
   onSave: (it: FinItem) => void; onRemove: (it: FinItem) => void; onLanc: () => void;
@@ -232,6 +232,7 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, edit, se
   const bens = rows.filter((r) => r.item.kind === "bem");
   const curBem = bemEdit ? items.find((i) => i.id === bemEdit) ?? null : null;
   const [allMoves, setAllMoves] = useState(false);
+  const [qBusy, setQBusy] = useState(false);
   const inv = rows.filter((r) => r.item.kind !== "bem");
   const live = inv.filter((r) => !r.item.ignore);
   const total = live.reduce((t, r) => t + (r.value ?? 0), 0);
@@ -254,7 +255,13 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, edit, se
   return (
     <>
       <section className="card">
-        <div className="card-head"><h2>Investimentos</h2><button className="primary small-btn" onClick={() => setEdit(null)}>+ novo investimento</button></div>
+        <div className="card-head"><h2>Investimentos</h2>
+          <span className="head-actions">
+            {onQuotes && <button className="ghost small-btn" disabled={qBusy} title="Acoes, FIIs, Tesouro, CDI, IPCA e dolar"
+              onClick={async () => { setQBusy(true); try { await onQuotes(); } finally { setQBusy(false); } }}>{qBusy ? "Atualizando..." : "Atualizar cotacoes"}</button>}
+            <button className="primary small-btn" onClick={() => setEdit(null)}>+ novo investimento</button>
+          </span></div>
+        {fin && <p className="muted small head-note">Cotacoes de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} (atualizam sozinhas varias vezes ao dia)</p>}
         <div className="kpis">
           <div><span>Investido hoje</span><b>{brl(total)}</b><small className="muted">{live.length} {live.length === 1 ? "investimento" : "investimentos"}, fora cripto</small></div>
           <div><span>Lucro / prejuizo</span><b className={pnlClass(gain)}>{cost > 0 ? signed(gain) : "-"}</b>
@@ -513,7 +520,7 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
           <>
             <label className="grow">Titulo
               <select value={title} onChange={(e) => setTitle(e.target.value)}>
-                <option value="">{opts.length ? "escolha..." : "lista carrega no Atualizar tudo"}</option>
+                <option value="">{opts.length ? "escolha..." : "lista carrega no Atualizar cotacoes"}</option>
                 {missing && <option value={title}>{title.replace("|", " ")}</option>}
                 {groups.map((g) => (
                   <optgroup key={g} label={g}>
@@ -702,7 +709,7 @@ export function PatrimonioCard({ cfg, fin, wallet, spend, debt, months, setup, o
         </div>
         <div className="kpis">
           <div><span>{s.bens > 0 ? "Patrimonio sem bens" : debt.total > 0 ? "Patrimonio liquido" : "Patrimonio total"}</span><b>{brl(s.totalNoBens + debt.recv - debt.total)}</b>
-            <small className="muted">{debt.total > 0 ? `${brl(s.totalNoBens, 0)} - ${brl(debt.total, 0)} de dividas` : s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluida` : wallet ? "falta o dolar: clique em Atualizar tudo" : "sem carteiras cripto"}</small></div>
+            <small className="muted">{debt.total > 0 ? `${brl(s.totalNoBens, 0)} - ${brl(debt.total, 0)} de dividas` : s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluida` : wallet ? "falta o dolar: Atualizar cotacoes em Investimentos" : "sem carteiras cripto"}</small></div>
           {s.bens > 0 && <div><span>Patrimonio com bens</span><b>{brl(s.total + debt.recv - debt.total)}</b>
             <small className="muted">+ {brl(s.bens, 0)} em imoveis, veiculos...</small></div>}
           <div><span>Reserva de emergencia</span><b>{brl(s.reserve)}</b>

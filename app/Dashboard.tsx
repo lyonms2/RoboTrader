@@ -261,15 +261,6 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             <span className="muted small">{updatedAt ? `dados ${ago(updatedAt)}` : "sem dados"}</span>
           </div>
           <div className="row">
-            <button onClick={refresh} disabled={busy} className="primary">
-              {busy ? "Atualizando..." : "Atualizar tudo"}
-            </button>
-            <button className="ghost icon" onClick={() => setShowCfg(true)} aria-label="Configuracao" title="Configuracao">
-              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-            </button>
             <button className="ghost" onClick={() => signOut(auth())}>Sair</button>
           </div>
         </div>
@@ -293,15 +284,28 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             onFin={(s: FinSub | "loans" | "recv") => { try { localStorage.setItem("finSub", s); } catch { /* sem armazenamento */ } setTab("financas"); }} />
         )}
         {inCrypto && (
-          <nav className="subtabs" role="tablist" aria-label="Cripto">
-            {cryptoSubs.map((x) => (
-              <button key={x.id} role="tab" aria-selected={tab === x.id} className={tab === x.id ? "pill on" : "pill"} onClick={() => setTab(x.id)}>{x.label}</button>
-            ))}
-          </nav>
+          <div className="toolbar">
+            <nav className="subtabs" role="tablist" aria-label="Cripto">
+              {cryptoSubs.map((x) => (
+                <button key={x.id} role="tab" aria-selected={tab === x.id} className={tab === x.id ? "pill on" : "pill"} onClick={() => setTab(x.id)}>{x.label}</button>
+              ))}
+            </nav>
+            <div className="toolbar-actions">
+              <button onClick={refresh} disabled={busy} className="primary small-btn" title="Sinais do robo, carteiras, fichas dos tokens e cotacoes">
+                {busy ? "Atualizando..." : "Atualizar"}
+              </button>
+              <button className="ghost icon" onClick={() => setShowCfg(true)} aria-label="Configuracao do cripto" title="Configuracao do cripto">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+              </button>
+            </div>
+          </div>
         )}
         {tab === "sinais" && (
           <>
-            {!latest.length && <p className="muted">Nenhum sinal ainda. Clique em &quot;Atualizar tudo&quot;.</p>}
+            {!latest.length && <p className="muted">Nenhum sinal ainda. Em Cripto, clique em &quot;Atualizar&quot;.</p>}
             <div className="grid">
               {[...latest].sort((a, b) => SYMBOLS.indexOf(a.symbol) - SYMBOLS.indexOf(b.symbol)).map((l) => (
                 <AssetCard key={l.symbol} l={l} cfg={eff} prices={prices} />
@@ -311,7 +315,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
           </>
         )}
         {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup}
-          onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }} />}
+          onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }}
+          onQuotes={async () => { const p = await refreshFinance(); if (p.length) setError(p.join("; ")); else setNotice(`Cotacoes atualizadas as ${new Date().toLocaleTimeString("pt-BR")}.`); }} />}
         {tab === "carteira" && <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} />}
         {tab === "tokens" && <FichasCard fichas={fichas} />}
         {tab === "operacoes" && (
@@ -438,8 +443,8 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
       {hasMoney && <MonthAndUpcoming months={money.months} setup={money.setup} onLanc={() => onFin("lanc")} onBens={() => onFin("bens")} />}
       {hasMoney && <NetWorthBlock {...money} />}
 
-      <h3 className="bal-title">Robo e cripto</h3>
       <section className="card">
+        <div className="card-head"><h2>Cripto</h2><button className="link" onClick={() => onTab("carteira")}>ver cripto &rsaquo;</button></div>
         <div className="kpis">
           <div><span>{hasMoney ? "Carteira cripto" : "Patrimonio"}</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
             <small className="muted">{total === null ? "cadastre as carteiras" : `nucleo $${fmt(cfg.capitalUsdt)}`}</small></div>
@@ -473,9 +478,9 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
               </table>
             </div>
           ) : (
-            <p className="muted">Cadastre as carteiras na Configuracao e clique em &quot;Atualizar tudo&quot;.</p>
+            <p className="muted">Cadastre as carteiras na engrenagem de Cripto e clique em &quot;Atualizar&quot;.</p>
           )}
-          <p className="muted small">Divisao: nucleo {fmt(alloc.core * 100, 0)}% / satelite {fmt(alloc.satellite * 100, 0)}% (Configuracao).</p>
+          <p className="muted small">Divisao: nucleo {fmt(alloc.core * 100, 0)}% / satelite {fmt(alloc.satellite * 100, 0)}% (engrenagem em Cripto).</p>
         </section>
 
         <section className="card">
@@ -513,7 +518,7 @@ function Performance({ cfg, latest, trades, prices }: { cfg: AppConfig; latest: 
     return (
       <section className="card">
         <h2>Real x estrategia</h2>
-        <p className="muted small">Clique em &quot;Atualizar tudo&quot; para carregar a serie da estrategia.</p>
+        <p className="muted small">Em Cripto, clique em &quot;Atualizar&quot; para carregar a serie da estrategia.</p>
       </section>
     );
   const last = perf.points[perf.points.length - 1];
@@ -890,7 +895,7 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
           <button className="primary" onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
           <button className="ghost" onClick={onClose}>Cancelar</button>
         </div>
-        <p className="hint">Depois de salvar, clique em &quot;Atualizar tudo&quot; para recalcular com a nova configuracao.</p>
+        <p className="hint">Depois de salvar, clique em &quot;Atualizar&quot; (Cripto) para recalcular com a nova configuracao.</p>
       </div>
     </section>
   );

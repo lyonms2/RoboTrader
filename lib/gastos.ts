@@ -263,7 +263,7 @@ export function summarize(items: Gasto[]): MonthSummary {
 export function faturaItems(c: Card, months: Record<string, MonthDoc>, fm: string) {
   const out: { m: string; g: Gasto }[] = [];
   for (const [m, md] of Object.entries(months))
-    for (const g of md.items) if (g.card === c.id && g.tipo !== "neutro" && faturaMonth(c, g.d) === fm) out.push({ m, g });
+    for (const g of md.items) if (g.card === c.id && !isCardCredit(g) && faturaMonth(c, g.d) === fm) out.push({ m, g });
   return out.sort((a, b) => b.g.d.localeCompare(a.g.d));
 }
 
@@ -507,6 +507,10 @@ export function closeDateOf(c: Card, fm: string) {
   return dayIn(c.dueDay > c.closeDay ? fm : addMonths(fm, -1), c.closeDay);
 }
 
+// Credito na propria fatura (pagamento recebido / estorno importado da fatura): neutro que ENTROU.
+// Compra no cartao com categoria neutra (cripto, investimento...) continua sendo compra.
+export const isCardCredit = (g: Gasto) => !!g.card && g.tipo === "neutro" && (g.io ? g.io === "in" : dirOf(g) === 1);
+
 // Pagamentos de um cartao: pela conta (lancamento com payCard) ou pela propria fatura ("Pagamento recebido" com card).
 // O mesmo pagamento visto dos dois lados (mesmo valor, ate 5 dias) conta uma vez so.
 function cardPayments(c: Card, months: Record<string, MonthDoc>) {
@@ -517,7 +521,7 @@ function cardPayments(c: Card, months: Record<string, MonthDoc>) {
   const list: { d: string; v: number }[] = [];
   for (const md of Object.values(months))
     for (const g of md.items) {
-      const isPay = (g.payCard === c.id) || (g.card === c.id && g.tipo === "neutro");
+      const isPay = (g.payCard === c.id && !g.card) || (g.card === c.id && isCardCredit(g));
       if (!isPay || mine.has(g.id)) continue;
       if (marked.some((p) => Math.abs(p.v - g.v) < 0.01 && days(p.d, g.d) <= 5)) continue;
       if (list.some((x) => Math.abs(x.v - g.v) < 0.01 && days(x.d, g.d) <= 5)) continue;
@@ -535,7 +539,7 @@ export function cardStatus(c: Card, months: Record<string, MonthDoc>, today = to
   const seenParc = new Set<string>();
   for (const md of Object.values(months))
     for (const g of md.items) {
-      if (g.card !== c.id || g.tipo === "neutro") continue;
+      if (g.card !== c.id || isCardCredit(g)) continue;
       if (g.parc) seenParc.add(`${descKey(g.desc)}|${g.parc[0]}|${g.parc[1]}`);
       const fm = faturaMonth(c, g.d);
       fat[fm] = (fat[fm] ?? 0) + (g.tipo === "receita" ? -g.v : g.v);

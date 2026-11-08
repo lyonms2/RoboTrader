@@ -87,7 +87,8 @@ function CardsPart({ months, setup, invest, entry, setEntry, owed, com }: {
       </section>
 
       <section className="card entry-card">
-        <CardsEntryPanel months={months} setup={setup} invest={invest} entry={entry} setEntry={setEntry} />
+        <CardsEntryPanel months={months} setup={setup} invest={invest} entry={entry} setEntry={setEntry}
+          onAdded={(cid, d) => { const c = cards.find((x) => x.id === cid); if (c) { setSel(cid); setFm(faturaMonth(c, d)); } }} />
       </section>
 
       {card && st && (
@@ -311,7 +312,7 @@ function FaturaView({ card, st, fm, months, setup }: {
   const list = faturaItems(card, months, fm);
   const total = f?.v ?? 0;
   const byCat: Record<string, number> = {};
-  for (const { g } of list) if (g.tipo === "gasto") byCat[g.cat] = (byCat[g.cat] ?? 0) + g.v;
+  for (const { g } of list) if (g.tipo !== "receita") byCat[g.cat] = (byCat[g.cat] ?? 0) + g.v;
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
   const maxCat = Math.max(...cats.map(([, v]) => v), 0);
   const futuro = f?.futuro ?? 0;
@@ -413,8 +414,9 @@ function CommitmentsChart({ data, which }: { data: Com; which: "cards" | "loans"
 }
 
 // Entrada de dados desta sub-aba: compra no cartao, importar fatura, cartao e emprestimo (novo ou alterar)
-function CardsEntryPanel({ months, setup, invest, entry, setEntry }: {
+function CardsEntryPanel({ months, setup, invest, entry, setEntry, onAdded }: {
   months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; entry: CardsEntry; setEntry: (e: CardsEntry) => void;
+  onAdded?: (card: string, d: string) => void;
 }) {
   const { type, id } = entry;
   const reset = () => setEntry({ type, id: null });
@@ -440,7 +442,7 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry }: {
       {noCards && <p className="muted small">Cadastre um cartao primeiro (opcao &quot;Cadastrar cartao&quot;).</p>}
       {noLoans && <p className="muted small">Cadastre o emprestimo primeiro (opcao &quot;Cadastrar emprestimo&quot;).</p>}
       {type === "prepay" && !noLoans && <PrepayForm key={id ?? "p"} setup={setup} loanId={id ?? setup.loans[0].id} onPick={(lid) => setEntry({ type, id: lid })} />}
-      {type === "compra" && !noCards && <QuickAdd key="compra" mode="cartao" months={months} setup={setup} invest={invest} defaultDate={todayBR()} />}
+      {type === "compra" && !noCards && <QuickAdd key="compra" mode="cartao" months={months} setup={setup} invest={invest} defaultDate={todayBR()} onAdded={onAdded} />}
       {type === "card" && (
         <>
           <CardForm key={id ?? "novo"} c={setup.cards.find((c) => c.id === id) ?? { id: newId(), name: "", closeDay: 1, dueDay: 8 }} onSave={saveCards} onCancel={reset} />

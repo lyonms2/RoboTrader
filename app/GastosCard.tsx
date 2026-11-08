@@ -559,9 +559,11 @@ export function AccountForm({ acc, canRemove, onSave, onCancel, onRemove }: {
 }
 
 // Lancamento rapido: categoria sugerida pela descricao; no cartao pode ser parcelado
-export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta" }: {
+export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta", onAdded }: {
   months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; defaultDate: string; mode?: "conta" | "cartao";
+  onAdded?: (card: string, d: string) => void; // compra no cartao lancada: mostra a fatura onde ela caiu
 }) {
+  const [done, setDone] = useState("");
   const [d, setD] = useState(defaultDate);
   const [desc, setDesc] = useState("");
   const [v, setV] = useState("");
@@ -597,6 +599,11 @@ export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta" }:
     await addItems(months, list.map((x) => ({ ...x, ...(target ? { inv: target } : {}), ...(finalPay && !card ? { payCard: finalPay } : {}), ...(dest && dest !== acc ? { toAcc: dest } : {}) })));
     if (cat && descKey(desc)) await saveSetup({ rules: { ...setup.rules, [descKey(desc)]: cat } });
     if (inv && target && descKey(desc)) await saveSetup({ invRules: { ...(setup.invRules ?? {}), [descKey(desc)]: target } });
+    if (card) {
+      const c = setup.cards.find((x) => x.id === card);
+      if (c) setDone(`${desc.trim()} (${brl(total)}${parcels > 1 ? ` em ${parcels}x` : ""}) lancada na fatura de ${monthLabel(faturaMonth(c, d))} do ${c.name}${parcels > 1 ? ` ate ${monthLabel(faturaMonth(c, list[parcels - 1].d))}` : ""}.`);
+      onAdded?.(card, d);
+    }
     setDesc(""); setV(""); setCat(null); setInv(null); setToAcc(null); setN("1"); setBusy(false);
   };
   return (
@@ -623,6 +630,7 @@ export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta" }:
         <button type="submit" className="primary" disabled={busy || !desc.trim() || !(num(v) > 0)}>Lancar</button>
       </div>
       {card && num(n) > 1 && num(v) > 0 && <p className="muted small">{Math.round(num(n))}x de {brl(num(v) / Math.round(num(n)))} - uma parcela em cada mes.</p>}
+      {done && <p className="small pos">{done}</p>}
     </form>
   );
 }

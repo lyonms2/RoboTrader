@@ -22,9 +22,15 @@ export type Gasto = {
   inv?: string; // id do investimento (aba Investimentos) para onde foi / de onde veio o dinheiro
   acc?: string; // conta (PicPay, Nubank...) por onde passou; sem cartao e sem conta = a primeira conta
   payCard?: string; // pagamento de fatura feito pela conta: qual cartao foi pago
+  toAcc?: string; // transferencia entre contas: a outra conta (para onde foi / de onde veio). Um lancamento move as duas
 };
 // Conta bancaria: saldo conferido numa data (ancora). O saldo em qualquer outro dia sai dos lancamentos
-export type Account = { id: string; name: string; balance?: number; at?: string };
+export type Account = {
+  id: string; name: string; balance?: number; at?: string;
+  // Conta sem extrato (ex.: conta da esposa usada para pagar contas): comeca do zero, recebe as transferencias e
+  // os gastos lancados nela saem do saldo. O que sobra e o "a discriminar"
+  noStatement?: boolean;
+};
 export type MonthDoc = { items: Gasto[] };
 export type Card = { id: string; name: string; closeDay: number; dueDay: number; limit?: number };
 export type Loan = {
@@ -42,6 +48,7 @@ export type GastosSetup = {
   account?: { balance: number; at: string } | null; // (antigo) um saldo so; agora vale "accounts"
   accounts?: Account[];
   invRules?: Record<string, string>; // descricao -> investimento escolhido (lembrado para as proximas)
+  accRules?: Record<string, string>; // descricao -> conta de destino de transferencias
 };
 export const EMPTY_SETUP: GastosSetup = { cards: [], loans: [], fixos: [], rules: {} };
 
@@ -486,8 +493,9 @@ export function balanceAt(months: Record<string, MonthDoc>, accounts: Account[],
   let v = anchored ? acc.balance! : 0;
   for (const md of Object.values(months))
     for (const g of md.items) {
-      if (accIdOf(g, accounts) !== accId) continue;
-      const f = dirOf(g) * g.v;
+      // na conta do lancamento: o sentido dele; na conta de destino da transferencia: o contrario
+      const f = accIdOf(g, accounts) === accId ? dirOf(g) * g.v : g.toAcc === accId && !g.card ? -dirOf(g) * g.v : null;
+      if (f === null) continue;
       if (anchored) {
         if (g.d > acc.at! && g.d <= date) v += f;
         else if (g.d > date && g.d <= acc.at!) v -= f;
@@ -510,10 +518,11 @@ export function accountsStatus(months: Record<string, MonthDoc>, setup: GastosSe
       const id = accIdOf(g, accounts);
       if (!id) continue;
       used.add(id);
+      if (g.toAcc) used.add(g.toAcc);
       if (!first || g.d < first) first = g.d;
     }
   const rows = accounts.map((a) => ({
-    acc: a, informed: a.balance !== undefined && !!a.at, used: used.has(a.id),
+    acc: a, informed: (a.balance !== undefined && !!a.at) || !!a.noStatement, used: used.has(a.id),
     start: balanceAt(months, accounts, a.id, startDay), end: balanceAt(months, accounts, a.id, end), now: balanceAt(months, accounts, a.id, today),
   }));
   const sum = (k: "start" | "end" | "now") => rows.reduce((s, r) => s + r[k], 0);
@@ -624,7 +633,8 @@ export function suggestCard(desc: string, v: number, cards: Card[], months: Reco
 // sai de uma conta e nao entra em nenhuma
 export function unmatchedTransfers(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const accounts = accountsOf(setup);
-  const all = Object.values(months).flatMap((md) => md.items).filter((g) => g.cat === TRANSFER_CAT && !g.card);
+  // com conta de destino escolhida, o lancamento ja move as duas contas
+  const all = Object.values(months).flatMap((md) => md.items).filter((g) => g.cat === TRANSFER_CAT && !g.card && !(g.toAcc && accounts.some((a) => a.id === g.toAcc)));
   const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
   const used = new Set<string>();
   const out: Gasto[] = [];
@@ -640,4 +650,19 @@ export function unmatchedTransfers(months: Record<string, MonthDoc>, setup: Gast
 // Ja lancado? mesmo valor, ate 3 dias de diferenca, lancado a mao ou por "marcar pago" (sem id de extrato)
 export function looksDuplicate(d: string, v: number, items: Gasto[]) {
   return items.some((g) => !g.ext && Math.abs(g.v - v) < 0.005 && Math.abs(Date.parse(g.d) - Date.parse(d)) <= 3 * 86_400_000);
+}
+
+// Conta de destino de uma transferencia: a ja escolhida para essa descricao, ou a conta cujo nome aparece no texto
+export function suggestToAcc(desc: string, fromAcc: string | null, setup: GastosSetup) {
+  const accounts = accountsOf(setup).filter((a) => a.id !== fromAcc);
+  const learned = setup.accRules?.[descKey(desc)];
+  if (learned && accounts.some((a) => a.id === learned)) return learned;
+  const d = plain(desc);
+  return accounts.find((a) => plain(a.name).split(" ").some((w) => w.length > 2 && d.includes(w)))?.id;
+}
+// Nome para a conta nova: a pessoa depois do " - " ("Pix enviado - Daiane Franco de Oliveira" -> "Daiane")
+export function accNameFromDesc(desc: string) {
+  const who = desc.split(" - ").slice(1).join(" - ").trim() || desc;
+  const first = who.split(/\s+/)[0] ?? "Conta";
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 }

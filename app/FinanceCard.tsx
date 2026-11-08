@@ -82,6 +82,9 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
   const order = GROUPS.map((g) => g.key);
   const rows = [...s.rows].sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group) || (b.value ?? 0) - (a.value ?? 0));
   const mon = monthSnapshot(months, setup);
+  // Contas e bens nao inclui a cripto (ela tem a aba Carteira); a Visao geral soma tudo
+  const crypto = s.byGroup.cripto + s.byGroup.dolar;
+  const noCrypto = s.total - crypto;
 
   const nav = (
     <nav className="subtabs" role="tablist" aria-label="Financas">
@@ -99,11 +102,12 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       <section className="card">
         <h2>Balanco</h2>
         <div className="kpis">
-          <div><span>O que voce tem</span><b>{brl(s.total)}</b><small className="muted">contas, investimentos e cripto</small></div>
+          <div><span>O que voce tem</span><b>{brl(noCrypto)}</b><small className="muted">contas e investimentos (sem cripto)</small></div>
           <div><span>O que voce deve</span><b className={debt.total > 0 ? "warn" : ""}>{brl(debt.total)}</b><small className="muted">cartoes {brl(debt.cards, 0)} - emprestimos {brl(debt.loans, 0)}</small></div>
-          <div><span>Patrimonio liquido</span><b>{brl(s.total - debt.total)}</b><small className="muted">tem - deve</small></div>
+          <div><span>Liquido sem cripto</span><b>{brl(noCrypto - debt.total)}</b><small className="muted">tem - deve</small></div>
         </div>
-        <p className="muted small">Aqui ficam os saldos e os cadastros. O dinheiro que entra, sai ou muda de lugar e lancado so em Lancamentos.</p>
+        <p className="muted small">Aqui ficam os saldos e os cadastros. O dinheiro que entra, sai ou muda de lugar e lancado so em Lancamentos.
+          A cripto fica na aba Carteira{crypto > 0 ? ` (${brl(crypto, 0)})` : ""}; o patrimonio total da Visao geral soma tudo.</p>
       </section>
 
       <h3 className="bal-title">O que voce tem</h3>
@@ -139,12 +143,6 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
         </p>
       </section>
 
-      {(s.byGroup.cripto + s.byGroup.dolar) > 0 && (
-        <section className="card">
-          <div className="card-head"><h2>Cripto</h2><span className="muted small">{brl(s.byGroup.cripto + s.byGroup.dolar)}</span></div>
-          <p className="small">Tokens {brl(s.byGroup.cripto)} + dolar em stablecoins {brl(s.byGroup.dolar)}, lidos das suas carteiras (aba Carteira), convertidos pelo dolar PTAX.</p>
-        </section>
-      )}
       <Dividends rows={s.rows} fin={fin} />
 
       <h3 className="bal-title">O que voce deve</h3>

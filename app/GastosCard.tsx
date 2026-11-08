@@ -2,7 +2,7 @@
 import { doc, setDoc } from "firebase/firestore";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
-import { CARD_PAY_CAT, INVEST_CAT, TRANSFER_CAT, looksDuplicate, suggestCard, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
+import { CARD_PAY_CAT, INVEST_CAT, TRANSFER_CAT, accNameFromDesc, looksDuplicate, suggestCard, suggestToAcc, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
@@ -94,9 +94,17 @@ export default function GastosCard({ months, setup, invest = [], onBens }: { mon
     // Virou Investimento: ja sugere o destino; deixou de ser: desliga
     const inv = cat === INVEST_CAT ? (g.inv ?? suggestInv(g.desc, invest, setup.invRules)) : undefined;
     const payCard = cat === CARD_PAY_CAT && !g.card ? (g.payCard ?? suggestCard(g.desc, g.v, setup.cards, months)) : undefined;
+    const toAcc = cat === TRANSFER_CAT && !g.card ? (g.toAcc ?? suggestToAcc(g.desc, accIdOf(g, accountsOf(setup)), setup)) : undefined;
     // Aplica a todos os lancamentos do mes com a mesma descricao e lembra para os proximos
-    await saveMonth(m, items.map((x) => (x.id === g.id || (key && descKey(x.desc) === key) ? clean({ ...x, cat, tipo, inv, payCard }) : x)));
+    await saveMonth(m, items.map((x) => (x.id === g.id || (key && descKey(x.desc) === key) ? clean({ ...x, cat, tipo, inv, payCard, toAcc }) : x)));
     if (key) await saveSetup({ rules: { ...setup.rules, [key]: cat } });
+  };
+  // Liga a transferencia (e as iguais do mes) a outra conta sua; "__new" cria uma conta sem extrato
+  const linkAcc = async (g: Gasto, id: string) => {
+    const target = id === "__new" ? await createEnvelope(setup, g.desc) : id || undefined;
+    const key = descKey(g.desc);
+    await saveMonth(m, items.map((x) => (x.id === g.id || (key && x.cat === TRANSFER_CAT && descKey(x.desc) === key) ? clean({ ...x, toAcc: target }) : x)));
+    if (key && target) await saveSetup({ accRules: { ...(setup.accRules ?? {}), [key]: target } });
   };
   // Liga o lancamento (e os iguais do mes) a um investimento; "__new" cria um cofrinho com o nome do extrato
   const linkInv = async (g: Gasto, id: string) => {
@@ -221,6 +229,9 @@ export default function GastosCard({ months, setup, invest = [], onBens }: { mon
                       <td data-label="Categoria"><span className="cell">
                         <CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} />
                         {g.cat === INVEST_CAT && <InvSelect value={g.inv} desc={g.desc} invest={invest} out={dirOf(g) < 0} onChange={(id) => linkInv(g, id)} />}
+                        {g.cat === TRANSFER_CAT && !g.card && (
+                          <ToAccSelect value={g.toAcc} from={accIdOf(g, accountsOf(setup))} out={dirOf(g) < 0} setup={setup} onChange={(id) => linkAcc(g, id)} />
+                        )}
                         {g.cat === CARD_PAY_CAT && !g.card && setup.cards.length > 0 && (
                           <CardPaySelect value={g.payCard} cards={setup.cards} onChange={(id) => saveMonth(m, items.map((x) => (x.id === g.id ? clean({ ...x, payCard: id || undefined }) : x)))} />
                         )}
@@ -259,6 +270,27 @@ async function createBox(invest: FinItem[], desc: string, d: string) {
   const it: FinItem = { id: newId(), kind: "caixa", name: name.trim(), balance: 0, balanceAt: Date.parse(`${prevDay(d)}T12:00:00-03:00`), cdiPct: 100, reserva: true };
   await setDoc(doc(db(), "config/main"), { finance: clean([...invest, it]) }, { merge: true });
   return it.id;
+}
+
+// Cria uma conta sem extrato (ex.: conta da esposa) a partir do texto do lancamento
+async function createEnvelope(setup: GastosSetup, desc: string) {
+  const name = window.prompt("Nome da conta (sem extrato: comeca do zero, recebe as transferencias e voce lanca nela o que foi pago):", accNameFromDesc(desc));
+  if (!name?.trim()) return undefined;
+  const id = newId();
+  await saveSetup({ accounts: clean([...accountsOf(setup), { id, name: name.trim(), noStatement: true }]), account: null } as Partial<GastosSetup>);
+  return id;
+}
+
+// Para qual conta sua foi (ou de qual veio) a transferencia
+function ToAccSelect({ value, from, out, setup, onChange }: { value?: string; from: string | null; out: boolean; setup: GastosSetup; onChange: (id: string) => void }) {
+  const list = accountsOf(setup).filter((a) => a.id !== from);
+  return (
+    <select className={`cat-sel inv-sel${value ? "" : " unlinked"}`} value={value ?? ""} onChange={(e) => onChange(e.target.value)} title={out ? "Para qual conta foi" : "De qual conta veio"}>
+      <option value="">{out ? "foi para qual conta? (escolher)" : "veio de qual conta? (escolher)"}</option>
+      {list.map((a) => <option key={a.id} value={a.id}>{out ? "-> " : "<- "}{a.name}{a.noStatement ? " (sem extrato)" : ""}</option>)}
+      <option value="__new">+ nova conta sem extrato</option>
+    </select>
+  );
 }
 
 // Qual cartao este pagamento de fatura pagou
@@ -317,6 +349,11 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
         const pc = suggestCard(g.desc, g.v, setup.cards, months);
         if (pc) fixes.push({ m, id: g.id, patch: { payCard: pc } });
       }
+      // transferencia sem conta de destino, mas com sugestao (escolha anterior ou nome da conta no texto)
+      if (g.cat === TRANSFER_CAT && !g.card && !g.toAcc) {
+        const to = suggestToAcc(g.desc, accIdOf(g, accounts), setup);
+        if (to) fixes.push({ m, id: g.id, patch: { toAcc: to } });
+      }
     }
   // 3) Pix para conta sua que nao esta no site  4) fatura vencida sem pagamento  5) conta sem saldo conferido
   const lost = unmatchedTransfers(months, setup).filter((g) => dirOf(g) < 0);
@@ -345,8 +382,8 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
         {fixes.length > 0 && <li><button className="primary small-btn" disabled={busy} onClick={applyFixes}>{busy ? "Ligando..." : `Ligar ${fixes.length} automaticamente`}</button>
           {fixes.length < invMissing + payMissing && <span className="muted"> os outros: escolha na lista de lancamentos</span>}</li>}
         {lost.map((g) => (
-          <li key={g.id}>{dm(g.d)}: {brl(g.v)} enviado para uma conta sua que nao esta no site ({g.desc.slice(0, 40)}). Ele some do patrimonio:
-            cadastre essa conta em &quot;Contas&quot; e importe o extrato dela, ou troque a categoria se foi pagamento a outra pessoa.</li>
+          <li key={g.id}>{dm(g.d)}: {brl(g.v)} transferido sem conta de destino ({g.desc.slice(0, 40)}). Nos lancamentos, escolha &quot;foi para qual conta&quot;
+            (ou &quot;+ nova conta sem extrato&quot;, para dinheiro que voce passa para alguem pagar por voce), ou troque a categoria se foi um gasto.</li>
         ))}
         {overdue.map(({ c, f }) => (
           <li key={c.id + f.m}>Fatura {c.name} de {monthLabel(f.m)} venceu em {dm(f.due)} com {brl(f.rest)} sem pagamento lancado.
@@ -372,7 +409,8 @@ function HowItWorks() {
           <tr><td><b>Dinheiro do emprestimo caindo</b></td><td>nao e renda (&quot;Emprestimo recebido&quot;)</td><td>entra na conta</td><td>nao muda (cadastre a divida)</td></tr>
           <tr><td><b>Guardar no cofrinho / resgatar</b></td><td>nao conta</td><td>sai / entra</td><td>nao muda (vai para o cofrinho)</td></tr>
           <tr><td><b>Comprar cripto</b> (Pix para corretora/ramp)</td><td>nao conta (&quot;Compra de cripto&quot;)</td><td>sai da conta</td><td>nao muda (aparece na carteira)</td></tr>
-          <tr><td><b>Pix entre suas contas</b></td><td>nao conta</td><td>sai de uma, entra na outra</td><td>nao muda (se as duas estao no site)</td></tr>
+          <tr><td><b>Pix entre suas contas</b></td><td>nao conta</td><td>sai de uma, entra na outra</td><td>nao muda (escolha a conta de destino)</td></tr>
+          <tr><td><b>Dinheiro que voce passa para alguem pagar por voce</b> (conta sem extrato)</td><td>so quando voce lanca o que foi pago (&quot;Pago com&quot; essa conta)</td><td>sai da sua, fica &quot;a discriminar&quot; na outra</td><td>nao muda ate virar gasto</td></tr>
           <tr><td><b>Gasto fixo</b> (aluguel, internet...)</td><td>conta quando aparece no extrato</td><td>sai da conta</td><td>diminui</td></tr>
         </tbody>
       </table>
@@ -409,9 +447,10 @@ export function AccountsPanel({ months, setup, m }: { months: Record<string, Mon
             <span className="acc-name">{r.acc.name}</span>
             <span><b className={r.now < 0 ? "neg" : ""}>{brl(r.now)}</b> <span className="muted">hoje</span></span>
             <span className={r.informed ? "muted" : "warn"}>
-              {r.informed ? `saldo conferido em ${dm(r.acc.at!)}; o resto vem dos lancamentos` : r.used ? "sem saldo conferido: so o movimento desde o 1o lancamento" : "sem lancamentos"}
+              {r.acc.noStatement ? `sem extrato: ${r.now > 0.005 ? `${brl(r.now)} recebidos ainda a discriminar (lance o que foi pago com "Pago com: ${r.acc.name}")` : "tudo discriminado"}`
+                : r.acc.at ? `saldo conferido em ${dm(r.acc.at)}; o resto vem dos lancamentos` : r.used ? "sem saldo conferido: so o movimento desde o 1o lancamento" : "sem lancamentos"}
             </span>
-            <button className="link" onClick={() => setEdit(r.acc.id)}>{r.informed ? "conferir saldo" : "informar saldo"}</button>
+            <button className="link" onClick={() => setEdit(r.acc.id)}>{r.acc.noStatement ? "editar" : r.informed ? "conferir saldo" : "informar saldo"}</button>
           </li>
         ))}
       </ul>
@@ -437,18 +476,22 @@ function AccountForm({ acc, canRemove, onSave, onCancel, onRemove }: {
   const [name, setName] = useState(acc?.name ?? "");
   const [bal, setBal] = useState(acc?.balance !== undefined ? fmt(acc.balance) : "");
   const [at, setAt] = useState(todayBR());
+  const [noSt, setNoSt] = useState(!!acc?.noStatement);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     const t = bal.trim();
-    const { balance: _b, at: _a, ...rest } = acc ?? { id: newId(), name: "" };
-    onSave({ ...rest, id: acc?.id ?? newId(), name: name.trim(), ...(t ? { balance: num(t.replace(/\u2212/g, "-")), at } : {}) });
+    const { balance: _b, at: _a, noStatement: _n, ...rest } = acc ?? { id: newId(), name: "" };
+    onSave({ ...rest, id: acc?.id ?? newId(), name: name.trim(), ...(noSt ? { noStatement: true } : t ? { balance: num(t.replace(/\u2212/g, "-")), at } : {}) });
   };
   return (
     <form className="row wrapline acct-form" onSubmit={submit}>
       <label>Conta<input value={name} onChange={(e) => setName(e.target.value)} placeholder="PicPay, Nubank..." /></label>
+      <label className="check"><input type="checkbox" checked={noSt} onChange={(e) => setNoSt(e.target.checked)} /> Conta sem extrato (comeca do zero)</label>
+      {!noSt && <>
       <label>Saldo no app do banco (R$)<input value={bal} inputMode="decimal" onChange={(e) => setBal(e.target.value)} placeholder="ex.: 1.250,00" /></label>
       <label>No fim do dia<input type="date" value={at} onChange={(e) => setAt(e.target.value)} /></label>
+      </>}
       <button className="primary" type="submit">Salvar</button>
       <button className="ghost" type="button" onClick={onCancel}>Cancelar</button>
       {canRemove && <button className="ghost" type="button" onClick={onRemove}>remover conta</button>}
@@ -476,6 +519,7 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
   const [inv, setInv] = useState<string | null>(null);
   const finalInv = finalCat === INVEST_CAT ? (inv ?? suggestInv(desc, invest, setup.invRules) ?? "") : "";
   const [payCard, setPayCard] = useState<string | null>(null);
+  const [toAcc, setToAcc] = useState<string | null>(null);
   const finalPay = finalCat === CARD_PAY_CAT ? (payCard ?? suggestCard(desc, num(v), setup.cards, months) ?? "") : "";
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -490,10 +534,11 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
       ...(card ? { card } : acc ? { acc } : {}), ...(parcels > 1 ? { parc: [k + 1, parcels] as [number, number] } : {}),
     }));
     const target = finalInv === "__new" ? await createBox(invest, desc, d) : finalInv || undefined;
-    await addItems(months, list.map((x) => ({ ...x, ...(target ? { inv: target } : {}), ...(finalPay && !card ? { payCard: finalPay } : {}) })));
+    const dest = finalCat === TRANSFER_CAT && !card ? (toAcc === "__new" ? await createEnvelope(setup, desc) : toAcc || undefined) : undefined;
+    await addItems(months, list.map((x) => ({ ...x, ...(target ? { inv: target } : {}), ...(finalPay && !card ? { payCard: finalPay } : {}), ...(dest && dest !== acc ? { toAcc: dest } : {}) })));
     if (cat && descKey(desc)) await saveSetup({ rules: { ...setup.rules, [descKey(desc)]: cat } });
     if (inv && target && descKey(desc)) await saveSetup({ invRules: { ...(setup.invRules ?? {}), [descKey(desc)]: target } });
-    setDesc(""); setV(""); setCat(null); setInv(null); setN("1"); setBusy(false);
+    setDesc(""); setV(""); setCat(null); setInv(null); setToAcc(null); setN("1"); setBusy(false);
   };
   return (
     <form className="fin-form quick" onSubmit={submit}>
@@ -506,6 +551,7 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
         <label className="grow">Descricao<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={entrada ? "Salario" : "Mercado, ifood, aluguel..."} /></label>
         <label>Valor (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="0,00" /></label>
         <label>Categoria<CatSelect value={finalCat} onChange={setCat} /></label>
+        {finalCat === TRANSFER_CAT && <label>{entrada ? "Veio de" : "Foi para"}<ToAccSelect value={toAcc ?? suggestToAcc(desc, acc || null, setup) ?? ""} from={acc || null} out={!entrada} setup={setup} onChange={setToAcc} /></label>}
         {finalCat === CARD_PAY_CAT && setup.cards.length > 0 && <label>Cartao pago<CardPaySelect value={finalPay} cards={setup.cards} onChange={setPayCard} /></label>}
         {finalCat === INVEST_CAT && <label>{entrada ? "Veio de" : "Foi para"}<InvSelect value={finalInv} desc={desc} invest={invest} out={!entrada} onChange={setInv} /></label>}
         <label>{entrada ? "Entrou em" : "Pago com"}
@@ -524,7 +570,7 @@ function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<strin
 
 // Importar extrato OFX ou CSV: tudo e lido no seu navegador; so os lancamentos escolhidos sao gravados
 function ImportPanel({ months, setup, invest, onDone }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; onDone: () => void }) {
-  type Row = Raw & { on: boolean; cat: string; tipo: Tipo; inv?: string; payCard?: string; dup: "" | "ja importado" | "parece repetido" };
+  type Row = Raw & { on: boolean; cat: string; tipo: Tipo; inv?: string; payCard?: string; toAcc?: string; dup: "" | "ja importado" | "parece repetido" };
   const [rows, setRows] = useState<Row[]>([]);
   const [file, setFile] = useState("");
   const [err, setErr] = useState("");
@@ -547,7 +593,8 @@ function ImportPanel({ months, setup, invest, onDone }: { months: Record<string,
       : looksDuplicate(r.d, Math.abs(r.amount), all) ? "parece repetido" as const : "" as const;
     const inv = cat === INVEST_CAT ? suggestInv(r.desc, invest, setup.invRules) : undefined;
     const payCard = cat === CARD_PAY_CAT ? suggestCard(r.desc, Math.abs(r.amount), setup.cards, months) : undefined;
-    return { ...r, cat, tipo, inv, payCard, dup, on: !dup };
+    const toAcc = cat === TRANSFER_CAT ? suggestToAcc(r.desc, null, setup) : undefined;
+    return { ...r, cat, tipo, inv, payCard, toAcc, dup, on: !dup };
   });
   const onFile = async (f: File) => {
     setErr("");
@@ -606,6 +653,7 @@ function ImportPanel({ months, setup, invest, onDone }: { months: Record<string,
     await addItems(months, chosen.map((r) => ({
       ...(r.inv && r.cat === INVEST_CAT ? { inv: r.inv } : {}),
       ...(r.payCard && r.cat === CARD_PAY_CAT && !card ? { payCard: r.payCard } : {}),
+      ...(r.toAcc && r.cat === TRANSFER_CAT && !card && r.toAcc !== accId ? { toAcc: r.toAcc } : {}),
       id: newId(), d: r.d, desc: r.desc, v: Math.abs(r.amount), tipo: r.tipo, io: r.amount > 0 ? "in" as const : "out" as const, cat: r.cat, src: "import" as const, ext: r.ext,
       ...(card ? { card } : accId ? { acc: accId } : {}), ...(parcOf(r.desc) ? { parc: parcOf(r.desc) } : {}),
     })));
@@ -659,7 +707,14 @@ function ImportPanel({ months, setup, invest, onDone }: { months: Record<string,
                     <td data-label="Descricao"><span className="cell">{r.desc}{r.dup && <small className="warn">{r.dup}</small>}</span></td>
                     <td data-label="Categoria"><span className="cell">
                       <CatSelect value={r.cat} onChange={(c) => setRow(i, { cat: c, tipo: tipoOfCat(c) ?? r.tipo, inv: c === INVEST_CAT ? suggestInv(r.desc, invest, setup.invRules) : undefined,
-                        payCard: c === CARD_PAY_CAT ? suggestCard(r.desc, Math.abs(r.amount), setup.cards, months) : undefined })} />
+                        payCard: c === CARD_PAY_CAT ? suggestCard(r.desc, Math.abs(r.amount), setup.cards, months) : undefined,
+                        toAcc: c === TRANSFER_CAT ? suggestToAcc(r.desc, null, setup) : undefined })} />
+                      {r.cat === TRANSFER_CAT && !card && <ToAccSelect value={r.toAcc} from={targetId && targetId !== "__new" ? targetId : null} out={r.amount < 0} setup={setup} onChange={async (id) => {
+                        const target = id === "__new" ? await createEnvelope(setup, r.desc) : id || undefined;
+                        const key = descKey(r.desc);
+                        setRows((rs) => rs.map((x, k) => (k === i || (key && x.cat === TRANSFER_CAT && descKey(x.desc) === key) ? { ...x, toAcc: target } : x)));
+                        if (key && target) await saveSetup({ accRules: { ...(setup.accRules ?? {}), [key]: target } });
+                      }} />}
                       {r.cat === CARD_PAY_CAT && !card && setup.cards.length > 0 && <CardPaySelect value={r.payCard} cards={setup.cards} onChange={(id) => setRow(i, { payCard: id || undefined })} />}
                       {r.cat === INVEST_CAT && <InvSelect value={r.inv} desc={r.desc} invest={invest} out={r.amount < 0} onChange={async (id) => {
                         const target = id === "__new" ? await createBox(invest, r.desc, r.d) : id || undefined;

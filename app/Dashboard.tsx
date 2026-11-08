@@ -16,8 +16,8 @@ import PerfChart from "./PerfChart";
 import WalletCard from "./WalletCard";
 import FichasCard from "./FichasCard";
 import CandidatesCard from "./CandidatesCard";
-import FinanceCard from "./FinanceCard";
-import { debts } from "./GastosCard";
+import FinanceCard, { MonthAndUpcoming, NetWorthBlock, PatrimonioCard, type Sub as FinSub } from "./FinanceCard";
+import { debts, reviewCount, upcoming } from "./GastosCard";
 import type { NetWorthDoc } from "@/lib/patrimonio";
 import { EMPTY_SETUP, accountBalance, avgMonthly, investFlows, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import { financeSummary } from "@/lib/financeMath";
@@ -267,8 +267,9 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         {notice && <p className="banner">{notice}</p>}
 
         {tab === "geral" && (
-          <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} finance={finance} spend={spend} debt={debt.total} cash={accountBalance(months, gSetup)?.value ?? null} flows={investFlows(months)}
-            sync={cfg.lighter?.enabled ? sync : null} onTab={setTab} />
+          <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} sync={cfg.lighter?.enabled ? sync : null} onTab={setTab}
+            money={{ cfg, fin: finance, wallet: walletOk ? wallet : null, spend, debt, months, setup: gSetup, nwHist }}
+            onFin={(s: FinSub) => { try { localStorage.setItem("finSub", s); } catch { /* sem armazenamento */ } setTab("financas"); }} />
         )}
         {tab === "sinais" && (
           <>
@@ -281,7 +282,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             <CandidatesCard doc={candidates} />
           </>
         )}
-        {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup} nwHist={nwHist}
+        {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup}
           onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }} />}
         {tab === "carteira" && <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} />}
         {tab === "tokens" && <FichasCard fichas={fichas} />}
@@ -308,10 +309,11 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
 type TabId = "geral" | "financas" | "sinais" | "carteira" | "tokens" | "operacoes";
 
 // Visao geral: patrimonio, o que fazer hoje, alocacao e posicoes do robo
-function Overview({ cfg, latest, prices, wallet, fichas, finance, spend, debt, cash, flows, sync, onTab }: {
-  cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null; finance: FinanceDoc | null;
-  spend: { value: number } | null; debt: number; cash: number | null; flows: ReturnType<typeof investFlows>;
-  sync: LighterSyncDoc | null; onTab: (t: TabId) => void;
+type Money = Parameters<typeof PatrimonioCard>[0] extends infer P ? Omit<P, "onBens"> & { nwHist: NetWorthDoc[] } : never;
+// Visao geral: patrimonio, o que fazer hoje, o mes e os proximos pagamentos, evolucao e, depois, o robo e a cripto
+function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onFin }: {
+  cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null;
+  sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub) => void;
 }) {
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
   // Posicoes do robo e lucro aberto
@@ -333,7 +335,7 @@ function Overview({ cfg, latest, prices, wallet, fichas, finance, spend, debt, c
   const realized = Object.values(cfg.realized ?? {}).reduce((a, b) => a + b, 0);
 
   // O que fazer hoje: sinais do robo, acoes das fichas e avisos da carteira
-  type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId };
+  type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId; fin?: FinSub };
   const todo: Todo[] = [];
   for (const l of [...latest].sort((a, b) => SYMBOLS.indexOf(a.symbol) - SYMBOLS.indexOf(b.symbol))) {
     const coin = l.symbol.replace("USDT", "");
@@ -359,20 +361,46 @@ function Overview({ cfg, latest, prices, wallet, fichas, finance, spend, debt, c
   if (wallet) for (const n of walletNotices(wallet)) if (n.level !== "info") todo.push({ tone: "warn", who: "Carteira", text: n.text, tab: "carteira" });
   if (unknown) todo.push({ tone: "info", who: "Robo", text: "ha posicao sem preco medio: informe-o em Carteira > Meus tokens para ver o lucro", tab: "sinais" });
   if (sync?.shorts.length) todo.push({ tone: "warn", who: "Lighter", text: `posicao vendida (${sync.shorts.join(", ")}) fica fora da conta`, tab: "carteira" });
+  // Financas: pagamentos vencidos e pontos para revisar
+  for (const p of upcoming(money.months, money.setup).filter((x) => x.late))
+    todo.push({ tone: "warn", who: "Pagar", text: `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: "lanc" });
+  const rc = reviewCount(money.months, money.setup);
+  if (rc) todo.push({ tone: "info", who: "Financas", text: `${rc} ${rc > 1 ? "pontos" : "ponto"} para revisar nos lancamentos (para os numeros ficarem certos)`, tab: "financas", fin: "lanc" });
 
   const total = wallet && wallet.address === walletKey(walletAddresses(cfg)) ? wallet.total : null;
   const blocks = total !== null && wallet ? allocationBlocks(wallet, cfg, latest, fichas) : [];
   const alloc = allocOf(cfg);
   const pctOf = (v: number) => (total ? `${fmt((v / total) * 100, 1)}%` : "");
-  const fin = cfg.finance?.length || cash ? financeSummary(cfg.finance ?? [], finance, total !== null ? wallet : null, spend?.value ?? cfg.monthlyCost, cash, flows) : null;
+  const hasMoney = !!(cfg.finance?.length || Object.keys(money.months).length || money.setup.cards.length || money.setup.loans.length);
+  const go = (t: Todo) => (t.fin ? onFin(t.fin) : onTab(t.tab));
 
   return (
     <>
+      {hasMoney && <PatrimonioCard {...money} onBens={() => onFin("bens")} />}
+
+      <section className="card">
+        <h2>O que fazer hoje</h2>
+        {todo.length ? (
+          <ul className="todo">
+            {todo.map((t, i) => (
+              <li key={i} className={`todo-${t.tone}`} onClick={() => go(t)}>
+                <b>{t.who}</b><span>{t.text}</span><i aria-hidden="true">&rsaquo;</i>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">Nada a fazer: nenhum sinal novo, nenhum pagamento vencido e nenhum aviso.</p>
+        )}
+        <p className="muted small">Sinais oficiais so no fechamento diario (21:00 de Brasilia). Clique num item para ver os detalhes.</p>
+      </section>
+
+      {hasMoney && <MonthAndUpcoming months={money.months} setup={money.setup} onLanc={() => onFin("lanc")} onBens={() => onFin("bens")} />}
+      {hasMoney && <NetWorthBlock {...money} />}
+
+      <h3 className="bal-title">Robo e cripto</h3>
       <section className="card">
         <div className="kpis">
-          {fin && <div className="kpi-link" role="button" tabIndex={0} onClick={() => onTab("financas")}><span>{debt > 0 ? "Patrimonio liquido" : "Patrimonio total"}</span><b>R$ {fmt(fin.total - debt)}</b>
-            <small className="muted">{debt > 0 ? `descontadas dividas de R$ ${fmt(debt, 0)}` : `cripto + conta + investimentos`} &rsaquo;</small></div>}
-          <div><span>{fin ? "Cripto" : "Patrimonio"}</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
+          <div><span>{hasMoney ? "Carteira cripto" : "Patrimonio"}</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
             <small className="muted">{total === null ? "cadastre as carteiras" : `nucleo $${fmt(cfg.capitalUsdt)}`}</small></div>
           <div><span>Lucro aberto (robo)</span><b className={pnlClass(open)}>{signed(open)}</b>
             <small className="muted">{invested > 0 ? `${signed((open / invested) * 100, 1)}% sobre $${fmt(invested)}` : "sem posicao"}</small></div>
@@ -381,21 +409,6 @@ function Overview({ cfg, latest, prices, wallet, fichas, finance, spend, debt, c
         </div>
       </section>
 
-      <section className="card">
-        <h2>O que fazer hoje</h2>
-        {todo.length ? (
-          <ul className="todo">
-            {todo.map((t, i) => (
-              <li key={i} className={`todo-${t.tone}`} onClick={() => onTab(t.tab)}>
-                <b>{t.who}</b><span>{t.text}</span><i aria-hidden="true">&rsaquo;</i>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">Nada a fazer: nenhum sinal novo, nenhuma acao nos tokens e nenhum aviso.</p>
-        )}
-        <p className="muted small">Sinais oficiais so no fechamento diario (21:00 de Brasilia). Clique num item para ver os detalhes.</p>
-      </section>
 
       <div className="two-col">
         <section className="card">

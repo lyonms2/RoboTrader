@@ -284,6 +284,19 @@ function InvSelect({ value, desc, invest, out, onChange }: { value?: string; des
   );
 }
 
+// Quantos pontos ha para revisar (para o "O que fazer hoje" da Visao geral)
+export function reviewCount(months: Record<string, MonthDoc>, setup: GastosSetup) {
+  let n = 0;
+  for (const md of Object.values(months))
+    for (const g of md.items) {
+      if (g.cat === INVEST_CAT && !g.inv) n++;
+      if (g.cat === CARD_PAY_CAT && !g.card && !g.payCard && setup.cards.length) n++;
+    }
+  n += unmatchedTransfers(months, setup).filter((g) => dirOf(g) < 0).length;
+  n += accountsStatus(months, setup).rows.filter((r) => r.used && !r.informed).length;
+  return n;
+}
+
 // Para revisar: tudo que deixaria um numero errado, com o conserto de 1 clique quando da
 export function Review({ months, setup, invest }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[] }) {
   const [busy, setBusy] = useState(false);

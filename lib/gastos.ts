@@ -59,6 +59,7 @@ export type Fixo = {
   reaj?: number; // mes do reajuste anual (1-12): avisa para atualizar o valor
   keys?: string[]; // descricoes do extrato ja ligadas a este fixo (aprende quando voce liga um lancamento)
   start?: string; end?: string; // AAAA-MM: primeiro e ultimo mes do gasto (sem start = desde sempre; sem end = sem fim)
+  notIds?: string[]; // lancamentos que voce disse "nao e este" (nao contam como pagamento deste fixo)
 };
 // O fixo existe neste mes?
 export const fixoActive = (f: Fixo, m: string) => (!f.start || m >= f.start) && (!f.end || m <= f.end);
@@ -325,35 +326,57 @@ export function fixoExpected(f: Fixo, m: string, months?: Record<string, MonthDo
 export const fixoReajPending = (f: Fixo, m: string) =>
   !!f.reaj && Number(m.slice(5, 7)) === f.reaj && !(f.steps ?? []).some((s) => s.from.slice(0, 4) === m.slice(0, 4));
 
-// Previstos do mes que ainda nao foram lancados: gastos fixos e parcelas de emprestimo.
-// Considera pago se ja existe lancamento ligado a ele, ou um gasto com valor parecido (2%) na mesma categoria.
-export function pendingFor(m: string, items: Gasto[], setup: GastosSetup, months?: Record<string, MonthDoc>) {
+// Contas do mes: cada fixo e parcela de emprestimo, com o lancamento que pagou (ou nenhum).
+// Pago quando ha: 1) lancamento ligado a ele; 2) descricao ja aprendida ou com o nome do fixo (ex.: "CELESC" no extrato);
+// 3) valor que varia: mesma categoria + nome parecido; 4) mesmo valor (2%) na mesma categoria; 5) mesmo valor em qualquer
+// categoria (aluguel por Pix cai em "Pix e transferencias"). O "como" aparece na tela, com "nao e este" para desfazer.
+export type BillHow = "ligado" | "nome" | "valor-cat" | "valor";
+export type Bill = {
+  ref: string; desc: string; v: number; cat: string; d: string; card?: string; parc?: [number, number]; varia?: boolean; reaj?: boolean;
+  fixo?: boolean; paid?: Gasto; how?: BillHow;
+};
+const nameWords = (s: string) => plain(s).split(" ").filter((w) => w.length > 3 && !/^(conta|pagamento|parcela|boleto)$/.test(w));
+export function monthBills(m: string, items: Gasto[], setup: GastosSetup, months?: Record<string, MonthDoc>): Bill[] {
   const used = new Set<string>();
-  // Ja pago se ha lancamento ligado a ele; ou um gasto do mes com o mesmo valor (2%), de preferencia na mesma categoria
-  // (o aluguel pago por Pix costuma cair em "Pix e transferencias", por isso nao exige a categoria)
-  const match = (ref: string, v: number, cat: string, k?: number, extra?: (i: Gasto) => boolean) => {
+  const match = (ref: string, v: number, cat: string, k?: number, opt: { name?: (i: Gasto) => boolean; not?: string[] } = {}): [Gasto, BillHow] | null => {
     // lancamento ligado a outra parcela (ex.: parcela atrasada paga neste mes) nao conta para esta
-    const free = items.filter((i) => !used.has(i.id) && i.tipo === "gasto" && !(i.ref && i.ref !== ref) && !(k && i.ref === ref && i.parc && i.parc[0] !== k));
-    const hit = free.find((i) => i.ref === ref) ?? (extra && free.find((i) => !i.ref && extra(i)))
-      ?? free.find((i) => !i.ref && i.cat === cat && Math.abs(i.v - v) <= v * 0.02)
-      ?? (k ? undefined : free.find((i) => !i.ref && Math.abs(i.v - v) <= v * 0.02));
-    if (hit) used.add(hit.id);
-    return !!hit;
+    const free = items.filter((i) => !used.has(i.id) && i.tipo === "gasto" && !(i.ref && i.ref !== ref) && !(k && i.ref === ref && i.parc && i.parc[0] !== k)
+      && !(opt.not ?? []).includes(i.id));
+    const tries: [Gasto | undefined, BillHow][] = [
+      [free.find((i) => i.ref === ref), "ligado"],
+      [opt.name ? free.find((i) => !i.ref && opt.name!(i)) : undefined, "nome"],
+      [free.find((i) => !i.ref && i.cat === cat && Math.abs(i.v - v) <= v * 0.02), "valor-cat"],
+      [k ? undefined : free.find((i) => !i.ref && Math.abs(i.v - v) <= v * 0.02), "valor"],
+    ];
+    const hit = tries.find(([g]) => g);
+    if (!hit) return null;
+    used.add(hit[0]!.id);
+    return [hit[0]!, hit[1]];
   };
-  const out: { ref: string; desc: string; v: number; cat: string; d: string; card?: string; parc?: [number, number]; varia?: boolean; reaj?: boolean }[] = [];
+  const out: Bill[] = [];
   for (const f of setup.fixos) {
     if (!fixoActive(f, m)) continue;
     const v = fixoExpected(f, m, months);
-    // valor que varia: tambem vale um gasto da mesma categoria (nao generica) ate 35% longe da media
-    const extra = (i: Gasto) => fixoLinked(f, i) || (!!f.varia && i.cat === f.cat && !GENERIC_CATS.includes(f.cat) && Math.abs(i.v - v) <= v * 0.35);
-    if (!match(f.id, v, f.cat, undefined, extra))
-      out.push({ ref: f.id, desc: f.desc, v, cat: f.cat, d: dayIn(m, f.dia), card: f.card, varia: f.varia, reaj: fixoReajPending(f, m) });
+    const words = nameWords(f.desc);
+    // pelo nome: descricao aprendida, ou o nome do fixo no texto do extrato; valor que varia aceita ate 50% de diferenca
+    const name = (i: Gasto) => fixoLinked(f, i)
+      || (words.length > 0 && words.some((w) => plain(i.desc).includes(w)) && Math.abs(i.v - v) <= v * (f.varia ? 0.5 : 0.1));
+    const r = match(f.id, v, f.cat, undefined, { name, not: f.notIds });
+    out.push({ ref: f.id, desc: f.desc, v, cat: f.cat, d: dayIn(m, f.dia), card: f.card, varia: f.varia, reaj: fixoReajPending(f, m), fixo: true,
+      ...(r ? { paid: r[0], how: r[1] } : {}) });
   }
   for (const l of setup.loans) {
     const k = loanInstallment(l, m);
-    if (k && !match(l.id, l.parcela, "Emprestimos", k)) out.push({ ref: l.id, desc: `${l.name} (parcela ${k}/${l.n})`, v: l.parcela, cat: "Emprestimos", d: dayIn(m, l.dueDay), parc: [k, l.n] });
+    if (!k) continue;
+    const r = match(l.id, l.parcela, "Emprestimos", k);
+    out.push({ ref: l.id, desc: `${l.name} (parcela ${k}/${l.n})`, v: l.parcela, cat: "Emprestimos", d: dayIn(m, l.dueDay), parc: [k, l.n],
+      ...(r ? { paid: r[0], how: r[1] } : {}) });
   }
   return out;
+}
+// Previstos do mes que ainda nao foram pagos
+export function pendingFor(m: string, items: Gasto[], setup: GastosSetup, months?: Record<string, MonthDoc>) {
+  return monthBills(m, items, setup, months).filter((b) => !b.paid);
 }
 
 // ---------- importacao de extrato ----------

@@ -514,3 +514,23 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 /* Lancamentos: saida em vermelho fraco, dinheiro so mudando de lugar (transferencia, cofrinho, cripto) em azul fraco */
 .v-out { color: color-mix(in srgb, var(--sell) 65%, var(--text)); }
 .v-move { color: color-mix(in srgb, var(--accent) 65%, var(--text)); }
+
+/* Contas do mes (fixos e parcelas) em destaque nos Lancamentos */
+.bills { border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 12px; margin: 12px 0; background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.bills-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.bills ul { list-style: none; margin: 0; padding: 0; }
+.bills li { display: grid; grid-template-columns: 48px 1fr auto auto auto; gap: 4px 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+.bills li:first-child { border-top: 0; }
+.bills .b-day { color: var(--muted); font-size: 12.5px; }
+.bills .b-desc { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bills .b-desc b { display: inline; }
+.bills .b-v { font-variant-numeric: tabular-nums; text-align: right; }
+.bills li.paid .b-desc b, .bills li.paid .b-v { opacity: .6; }
+.bills li.late .b-v { color: var(--warn); }
+.bills li .pay-sel { max-width: 170px; }
+.bills li:has(.sit-paga) { grid-template-columns: 48px 1fr auto auto; }
+@media (max-width: 640px) {
+  .bills li, .bills li:has(.sit-paga) { grid-template-columns: 44px 1fr auto; }
+  .bills li .pay-sel { grid-column: 2 / -1; max-width: none; }
+}
+.bills .b-desc .tag { align-self: flex-start; }

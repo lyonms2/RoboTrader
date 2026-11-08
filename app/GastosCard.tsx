@@ -7,8 +7,8 @@ import type { FinItem } from "@/lib/types";
 import { CardPayForm } from "./CardsLoans";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, monthOf, newId, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
-  type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
+  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, monthBills, monthOf, newId, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  type Bill, type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -89,7 +89,8 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
   const items = months[m]?.items ?? [];
   const s = summarize(items);
   const avg = avgMonthly(months);
-  const pending = pendingFor(m, items, setup, months);
+  const bills = monthBills(m, items, setup, months);
+  const pending = bills.filter((b) => !b.paid);
   const pendingTotal = pending.reduce((a, p) => a + p.v, 0);
   const prevAvg = useMemo(() => {
     // media por categoria nos 3 meses anteriores ao mes aberto
@@ -152,6 +153,19 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     await saveMonth(m, [...items, { id: newId(), d: p.d, desc: p.desc, v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...where, ...(p.parc ? { parc: p.parc } : {}) }]);
   };
 
+  const notThis = async (b: Bill) => {
+    const g = b.paid;
+    const f = setup.fixos.find((x) => x.id === b.ref);
+    if (!g || !f) return;
+    // lancado pelo "paguei com" (nao veio de extrato): apaga; veio do extrato: so desliga
+    if (g.ref === f.id && g.src === "fixo") await saveMonth(m, items.filter((x) => x.id !== g.id));
+    else if (g.ref === f.id) await saveMonth(m, items.map((x) => (x.id === g.id ? clean({ ...x, ref: undefined }) : x)));
+    const key = descKey(g.desc);
+    await saveSetup({ fixos: setup.fixos.map((x) => (x.id === f.id ? { ...x, keys: (x.keys ?? []).filter((k) => k !== key), notIds: [...(x.notIds ?? []), g.id] } : x)) });
+  };
+  const HOW: Record<string, string> = { ligado: "ligado", nome: "pelo nome no extrato", "valor-cat": "pelo valor, mesma categoria", valor: "so pelo valor (outra categoria)" };
+  const today = todayBR();
+
   const accs = accountsOf(setup);
   // Lancamentos = extrato da conta: compras no cartao ficam em Cartoes e emprestimos
   const shown = [...items].filter((g) => !g.card).filter((g) => !filter || g.cat === filter)
@@ -184,6 +198,49 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
           <div><span>Ainda a pagar</span><b className={pendingTotal > 0 ? "warn" : ""}>{brl(pendingTotal)}</b>
             <small className="muted">{pending.length ? `${pending.length} fixos/parcelas - previsto ${brl(s.gastos + pendingTotal, 0)}` : "fixos e parcelas em dia"}</small></div>
         </div>
+        {bills.length > 0 && (
+          <div className="bills">
+            <div className="bills-head">
+              <b>Contas do mes</b>
+              <span className="small muted">{bills.length - pending.length} de {bills.length} pagas{pendingTotal > 0 ? ` - falta ${brl(pendingTotal)}` : " - tudo pago"}</span>
+            </div>
+            <ul>
+              {[...bills].sort((x, y) => Number(!!x.paid) - Number(!!y.paid) || x.d.localeCompare(y.d)).map((p) => {
+                const late = !p.paid && p.d < today;
+                return (
+                  <li key={p.ref} className={p.paid ? "paid" : late ? "late" : ""}>
+                    <span className="b-day">{dm(p.d)}</span>
+                    <span className="b-desc"><b>{p.desc}</b>
+                      {p.varia && <span className="tag">varia</span>}
+                      {p.reaj && <span className="tag warn">reajuste: confira o valor</span>}
+                      {p.paid && <small className="muted">pago por: {p.paid.desc.slice(0, 40)} {brl(p.paid.v)} ({dm(p.paid.d)}) - {HOW[p.how ?? ""] ?? ""}
+                        {p.fixo && <button className="link" onClick={() => notThis(p)}>nao e este</button>}</small>}
+                    </span>
+                    <span className="b-v">{p.varia && !p.paid ? "~" : ""}{brl(p.paid ? p.paid.v : p.v)}</span>
+                    {p.paid ? <span className="sit sit-paga">pago</span> : (
+                      <>
+                        <span className={late ? "sit sit-atrasada" : "sit sit-aberta"}>{late ? "atrasado" : "a pagar"}</span>
+                        <select className="pay-sel" value="" onChange={(e) => e.target.value && launch(p, e.target.value)}
+                          title="Ligue ao lancamento do extrato, ou diga com o que pagou se nao vai aparecer em nenhum extrato">
+                          <option value="">pagar / ligar...</option>
+                          {!p.parc && <optgroup label="ja veio no extrato">
+                            {items.filter((g) => g.tipo === "gasto" && !g.ref && !g.card)
+                              .sort((a, b) => Number(b.cat === p.cat) - Number(a.cat === p.cat) || Math.abs(a.v - p.v) - Math.abs(b.v - p.v)).slice(0, 8)
+                              .map((g) => <option key={g.id} value={`item:${g.id}`}>{dm(g.d)} {g.desc.slice(0, 28)} {brl(g.v)}</option>)}
+                          </optgroup>}
+                          <optgroup label="paguei com (nao vem em extrato)">
+                            {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>{a.name}{a.noStatement ? " (sem extrato)" : ""}</option>)}
+                            {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>cartao {c.name}</option>)}
+                          </optgroup>
+                        </select>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
         {acSt.rows.some((r) => r.used || r.informed) && (
           <p className="small acct-line">
             Contas: inicio do mes <b>{brl(acSt.start)}</b> &rarr; {isNow ? "hoje" : "fim do mes"} <b className={acSt.end < 0 ? "neg" : ""}>{brl(acSt.end)}</b>
@@ -208,31 +265,6 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
           );
         })()}
         <Review months={months} setup={setup} invest={invest} />
-        {pending.length > 0 && (
-          <>
-            <p className="small muted pend-title">Previstos para este mes (somem sozinhos quando o pagamento aparece num extrato importado):</p>
-            <ul className="pend small">
-              {pending.map((p) => (
-                <li key={p.ref}>
-                  <span className="muted">{dm(p.d)}</span> <b>{p.desc}</b> <span>{p.varia ? "~" : ""}{brl(p.v)}</span>
-                  {p.varia && <span className="tag">varia</span>}
-                  {p.reaj && <span className="tag warn">reajuste: confira o valor</span>}
-                  <select className="pay-sel" value="" onChange={(e) => e.target.value && launch(p, e.target.value)}
-                    title="Ligue ao lancamento do extrato, ou diga com o que pagou se nao vai aparecer em nenhum extrato">
-                    <option value="">paguei com...</option>
-                    {!p.parc && <optgroup label="ja veio no extrato">
-                      {items.filter((g) => g.tipo === "gasto" && !g.ref && !g.card)
-                        .sort((a, b) => Number(b.cat === p.cat) - Number(a.cat === p.cat) || Math.abs(a.v - p.v) - Math.abs(b.v - p.v)).slice(0, 8)
-                        .map((g) => <option key={g.id} value={`item:${g.id}`}>{dm(g.d)} {g.desc.slice(0, 28)} {brl(g.v)}</option>)}
-                    </optgroup>}
-                    {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>{a.name}{a.noStatement ? " (sem extrato)" : ""}</option>)}
-                    {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>cartao {c.name}</option>)}
-                  </select>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
         {cats.length > 0 && (
           <figure className="viz">
             <figcaption className="small muted">Gastos por categoria {prevAvg.n ? <>- <i className="tick-key" /> media dos {prevAvg.n} meses anteriores</> : ""} (clique para filtrar)</figcaption>

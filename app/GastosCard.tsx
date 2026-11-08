@@ -1040,7 +1040,9 @@ export function Fixos({ setup, months, onEdit }: { setup: GastosSetup; months?: 
 
 const MES_OPTS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 // Formulario do gasto fixo (Lancamentos): novo ou alterar/remover um existente
-export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fixo | null; onDone: () => void }) {
+export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fixo | null; onDone: (msg?: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
   const cur = monthOf(todayBR());
   const curV = fixo ? fixoValue(fixo, cur) : 0;
   const [desc, setDesc] = useState(fixo?.desc ?? "");
@@ -1070,17 +1072,23 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
       }
     }
     st.sort((x, y) => x.from.localeCompare(y.from));
-    if (start && end && end < start) return;
+    if (start && end && end < start) { setErr("O mes de fim e antes do inicio."); return; }
     const { steps: _s, varia: _v, reaj: _r, start: _a, end: _b, ...rest } = fixo ?? ({} as Partial<Fixo>);
     void _s; void _v; void _r; void _a; void _b;
     const f: Fixo = { ...rest, id: fixo?.id ?? newId(), desc: desc.trim(), v: base, cat: finalCat, dia: Math.max(1, Math.min(31, Math.round(num(dia)) || 1)),
       ...(st.length ? { steps: st } : {}), ...(varia ? { varia: true } : {}), ...(reaj ? { reaj } : {}),
       ...(start ? { start } : {}), ...(end ? { end } : {}) };
-    await saveSetup({ fixos: setup.fixos.some((x) => x.id === f.id) ? setup.fixos.map((x) => (x.id === f.id ? f : x)) : [...setup.fixos, f] });
-    onDone();
+    setBusy(true); setErr("");
+    try {
+      await saveSetup({ fixos: setup.fixos.some((x) => x.id === f.id) ? setup.fixos.map((x) => (x.id === f.id ? f : x)) : [...setup.fixos, f] });
+    } catch {
+      setBusy(false); setErr("Nao salvou (sem conexao?). Tente de novo.");
+      return;
+    }
+    onDone(`${fixo ? "Salvo" : "Adicionado"}: ${f.desc}, ${f.varia ? "~" : ""}${brl(fixoValue(f, cur))} todo dia ${f.dia}${f.start ? `, a partir de ${monthLabel(f.start)}` : ""}${f.end ? ` ate ${monthLabel(f.end)}` : ""}. Ele aparece em Contas e bens > Gastos fixos e nos previstos do mes.`);
   };
   const remove = async () => {
-    if (fixo && confirm(`Remover o fixo "${fixo.desc}"?`)) { await saveSetup({ fixos: setup.fixos.filter((x) => x.id !== fixo.id) }); onDone(); }
+    if (fixo && confirm(`Remover o fixo "${fixo.desc}"?`)) { await saveSetup({ fixos: setup.fixos.filter((x) => x.id !== fixo.id) }); onDone(`Removido: ${fixo.desc}.`); }
   };
   // historico: valor inicial e cada mudanca
   const hist = fixo ? [{ from: "", v: fixo.v }, ...steps] : [];
@@ -1128,8 +1136,9 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
             {x.from && <button type="button" className="link" title="apagar esta mudanca" onClick={() => setSteps(steps.filter((y) => y.from !== x.from))}>x</button>}</span>
         ))}</p>
       )}
+      {err && <p className="error small">{err}</p>}
       <div className="row">
-        <button className="primary" type="submit" disabled={!desc.trim() || !(num(v) > 0)}>{fixo ? "Salvar" : "Adicionar"}</button>
+        <button className="primary" type="submit" disabled={busy || !desc.trim() || !(num(v) > 0)}>{busy ? "Salvando..." : fixo ? "Salvar" : "Adicionar"}</button>
         {fixo && <button className="ghost" type="button" onClick={remove}>remover</button>}
       </div>
       <p className="muted small">Todo mes ele aparece em &quot;Previstos&quot; ate o pagamento aparecer num extrato. Mudou o valor (reajuste)? Altere aqui e

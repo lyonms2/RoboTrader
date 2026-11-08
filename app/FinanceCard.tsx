@@ -716,7 +716,11 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   onSaveInv: (it: FinItem) => void; onRemoveInv: (it: FinItem) => void;
 }) {
   const { type, id } = entry;
+  // depois de salvar: mostra o que aconteceu e limpa o formulario (n muda a key)
+  const [msg, setMsg] = useState("");
+  const [n, setN] = useState(0);
   const reset = () => setEntry({ type, id: null });
+  const done = (m?: string) => { if (m) setMsg(m); setN((x) => x + 1); reset(); };
   const accounts = accountsOf(setup);
   // Itens existentes de cada tipo (para alterar ou remover)
   const existing: Record<string, { id: string; label: string }[]> = {
@@ -724,19 +728,22 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
     conta: accounts.map((a) => ({ id: a.id, label: a.name })),
   };
   const opts = existing[type];
-  const saveAccounts = async (list: Account[]) => { await saveSetup({ accounts: JSON.parse(JSON.stringify(list)), account: null } as Partial<GastosSetup>); reset(); };
+  const saveAccounts = async (list: Account[], m: string) => {
+    try { await saveSetup({ accounts: JSON.parse(JSON.stringify(list)), account: null } as Partial<GastosSetup>); done(m); }
+    catch { setMsg(""); alert("Nao salvou (sem conexao?). Tente de novo."); }
+  };
   const usedAcc = new Set(Object.values(months).flatMap((md) => md.items.map((g) => g.acc ?? (g.card ? "" : accounts[0].id))));
   return (
     <div className="entry">
       <p className="small entry-q">O que voce quer lancar? <span className="muted">(investimentos e bens: em Investimentos; compras no cartao e emprestimos: em Cartoes e emprestimos)</span></p>
       <div className="kind-pick entry-types">
         {ENTRY_TYPES.map((t) => (
-          <button key={t.id} type="button" className={type === t.id ? "pill on" : "pill"} onClick={() => setEntry({ type: t.id, id: null })}>{t.label}</button>
+          <button key={t.id} type="button" className={type === t.id ? "pill on" : "pill"} onClick={() => { setMsg(""); setEntry({ type: t.id, id: null }); }}>{t.label}</button>
         ))}
       </div>
       {opts && (
         <label className="entry-pick small">Novo ou alterar:
-          <select value={id ?? ""} onChange={(e) => setEntry({ type, id: e.target.value || null })}>
+          <select value={id ?? ""} onChange={(e) => { setMsg(""); setEntry({ type, id: e.target.value || null }); }}>
             <option value="">+ novo</option>
             {opts.map((o) => <option key={o.id} value={o.id}>alterar: {o.label}</option>)}
           </select>
@@ -744,13 +751,15 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
       )}
       {type === "mov" && <QuickAdd months={months} setup={setup} invest={invest} defaultDate={todayBR()} />}
       {type === "import" && <ImportPanel months={months} setup={setup} invest={invest} onDone={() => setEntry({ type: "mov", id: null })} />}
-      {type === "fixo" && <FixoForm key={id ?? "novo"} setup={setup} fixo={setup.fixos.find((f) => f.id === id) ?? null} onDone={reset} />}
+      {msg && <p className="small pos entry-msg">&#10003; {msg}</p>}
+      {type === "fixo" && <FixoForm key={`${id ?? "novo"}-${n}`} setup={setup} fixo={setup.fixos.find((f) => f.id === id) ?? null} onDone={done} />}
       {type === "conta" && (
-        <AccountForm key={id ?? "novo"} acc={accounts.find((a) => a.id === id) ?? null}
+        <AccountForm key={`${id ?? "novo"}-${n}`} acc={accounts.find((a) => a.id === id) ?? null}
           canRemove={!!id && accounts.length > 1 && !usedAcc.has(id)}
           onCancel={reset}
-          onRemove={() => saveAccounts(accounts.filter((a) => a.id !== id))}
-          onSave={(a) => saveAccounts(accounts.some((x) => x.id === a.id) ? accounts.map((x) => (x.id === a.id ? a : x)) : [...accounts, a])} />
+          onRemove={() => saveAccounts(accounts.filter((a) => a.id !== id), "Conta removida.")}
+          onSave={(a) => saveAccounts(accounts.some((x) => x.id === a.id) ? accounts.map((x) => (x.id === a.id ? a : x)) : [...accounts, a],
+            `${accounts.some((x) => x.id === a.id) ? "Salva" : "Adicionada"}: conta ${a.name}${a.balance !== undefined ? `, saldo ${a.balance.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}.`)} />
       )}
     </div>
   );

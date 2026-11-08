@@ -170,7 +170,16 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
       if (!(v > 0)) return;
     }
     const where = src.startsWith("card:") ? { card: src.slice(5) } : src.startsWith("acc:") ? { acc: src.slice(4) } : p.card ? { card: p.card } : {};
-    await saveMonth(m, [...items, { id: newId(), d: p.d, desc: p.desc, v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...where, ...(p.parc ? { parc: p.parc } : {}) }]);
+    // quando pagou (muita conta e paga antes do vencimento): hoje, se o mes aberto e o atual; senao o vencimento
+    const today = todayBR();
+    const def = monthOf(today) === m ? today : p.d;
+    const ansD = await askText(`Quando pagou ${p.desc}? (dia/mes)`, `${def.slice(8, 10)}/${def.slice(5, 7)}`);
+    if (ansD === null) return;
+    const md = /^(\d{1,2})(?:\/(\d{1,2}))?/.exec(ansD.trim());
+    const payD = md ? `${m.slice(0, 4)}-${String(Number(md[2] ?? m.slice(5, 7))).padStart(2, "0")}-${String(Number(md[1])).padStart(2, "0")}` : def;
+    const gm = monthOf(payD);
+    const base = gm === m ? items : months[gm]?.items ?? [];
+    await saveMonth(gm, [...base, { id: newId(), d: payD, desc: p.desc, v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...where, ...(p.parc ? { parc: p.parc } : {}) }]);
   };
 
   const notThis = async (b: Bill) => {

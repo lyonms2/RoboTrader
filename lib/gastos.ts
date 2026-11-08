@@ -138,8 +138,17 @@ const KEYWORDS: [RegExp, string][] = [
 
 // Chave da descricao para lembrar a categoria escolhida (sem numeros, datas e codigos)
 export function descKey(desc: string) {
-  return desc.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/parcela \d+\/\d+/g, "")
-    .replace(/[^a-z ]+/g, " ").split(" ").filter((w) => w.length > 1).slice(0, 3).join(" ");
+  const words = (t: string) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/parcela \d+\/\d+/g, "")
+    .replace(/[^a-z ]+/g, " ").split(" ").filter((w) => w.length > 1);
+  // "Transferencia enviada pelo Pix - Fulano - ..." (Nubank e outros): o comeco e igual em todos; o que diferencia e quem
+  // recebeu/pagou, depois do " - ". So quando o comeco tem 3+ palavras (ex.: "Pix enviado - Fulano" continua como antes)
+  const parts = desc.split(/\s+-\s+/);
+  const head = words(parts[0]);
+  if (parts.length > 1 && head.length >= 3) {
+    const tail = words(parts[1]);
+    if (tail.length) return [...head.slice(0, 2), ...tail.slice(0, 3)].join(" ");
+  }
+  return words(desc).slice(0, 3).join(" ");
 }
 
 // Categoria automatica: 1) o que voce ja escolheu para essa descricao, 2) palavras-chave, 3) padrao pelo sinal

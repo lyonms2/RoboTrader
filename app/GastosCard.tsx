@@ -295,7 +295,8 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
   );
 }
 
-// Escolha da categoria. "Outros"/"Outras entradas" pedem para discriminar: o que voce digitar vira uma categoria sua
+// Escolha da categoria. "Outros"/"Outras entradas" so aparecem quando o lancamento ainda esta nelas (importacao sem categoria);
+// para algo novo, "+ nova categoria" cria uma sua
 export function CatSelect({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   const mine = customCats();
   const create = async (tipo: "gasto" | "receita", suggestion = "") => {
@@ -319,22 +320,18 @@ export function CatSelect({ value, onChange }: { value: string; onChange: (c: st
       if (n) onChange(n);
       return;
     }
-    if (GENERIC_CATS.includes(v)) {
-      const n = await create(v === "Outros" ? "gasto" : "receita");
-      onChange(n ?? v); // cancelou: fica em Outros (e aparece no "Para revisar")
-      return;
-    }
     onChange(v);
   };
   const g = mine.filter((c) => c.tipo === "gasto").map((c) => c.name);
   const r = mine.filter((c) => c.tipo === "receita").map((c) => c.name);
   return (
     <select value={value} onChange={(e) => pick(e.target.value)} className={`cat-sel${GENERIC_CATS.includes(value) ? " unlinked" : ""}`}>
+      {GENERIC_CATS.includes(value) && <option value={value} disabled>{value}: escolha a categoria</option>}
       <optgroup label="Gastos">{[...CATS_GASTO.filter((c) => c !== "Outros"), ...g].map((c) => <option key={c}>{c}</option>)}
         <option value={CARD_PAY_CAT}>Fatura do cartao (pagamento)</option>
-        <option value="Outros">Outros (discriminar...)</option><option value="__new_g">+ nova categoria de gasto</option></optgroup>
+        <option value="__new_g">+ nova categoria de gasto</option></optgroup>
       <optgroup label="Entradas">{[...CATS_RECEITA.filter((c) => c !== "Outras entradas"), ...r].map((c) => <option key={c}>{c}</option>)}
-        <option value="Outras entradas">Outras entradas (discriminar...)</option><option value="__new_r">+ nova categoria de entrada</option></optgroup>
+        <option value="__new_r">+ nova categoria de entrada</option></optgroup>
       <optgroup label="Nao conta">{CATS_NEUTRO.filter((c) => c !== CARD_PAY_CAT).map((c) => <option key={c}>{c}</option>)}</optgroup>
       {!tipoOfCat(value) && !GENERIC_CATS.includes(value) && <option>{value}</option>}
     </select>
@@ -486,7 +483,7 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
             {paying === c.id + f.m && <CardPayForm card={c} fm={f.m} rest={f.rest} due={f.due} months={months} setup={setup} onDone={() => setPaying(null)} />}</li>
         ))}
         {generic > 0 && <li>{generic} {generic > 1 ? "lancamentos" : "lancamento"} em &quot;Outros&quot; sem dizer o que e: na lista, troque a categoria
-          (escolha uma existente, ou &quot;Outros (discriminar...)&quot; para criar a sua). Os iguais do mes mudam juntos e o site lembra para as proximas.</li>}
+          (escolha uma existente, ou &quot;+ nova categoria&quot; para criar a sua). Os iguais do mes mudam juntos e o site lembra para as proximas.</li>}
         {noBalance.map((r) => <li key={r.acc.id}>Conta {r.acc.name} sem saldo conferido: informe o saldo do app do banco em &quot;Contas&quot; para o patrimonio ficar certo.</li>)}
       </ul>
     </div>

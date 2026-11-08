@@ -551,6 +551,15 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
   const [paying, setPaying] = useState<string | null>(null); // fatura vencida com o formulario de pagamento aberto
   const accounts = accountsOf(setup);
   // marcacoes do "ja paguei" antigo: ficavam dentro do cartao sem direcao e eram lidas como compra (somavam na fatura)
+  // gasto gravado como entrada na conta (ou renda como saida): os totais do mes contam de um jeito e o saldo da conta do outro
+  const wrongDir: { m: string; g: Gasto }[] = [];
+  for (const [m, md] of Object.entries(months))
+    for (const g of md.items) if (!g.card && ((g.tipo === "gasto" && g.io === "in") || (g.tipo === "receita" && g.io === "out"))) wrongDir.push({ m, g });
+  const fixDir = async () => {
+    const by: Record<string, Set<string>> = {};
+    for (const { m, g } of wrongDir) (by[m] ??= new Set()).add(g.id);
+    await Promise.all(Object.entries(by).map(([m, ids]) => saveMonth(m, months[m].items.map((x) => (ids.has(x.id) ? { ...x, io: x.tipo === "gasto" ? "out" as const : "in" as const } : x)))));
+  };
   const oldMarks: { m: string; g: Gasto }[] = [];
   for (const [m, md] of Object.entries(months))
     for (const g of md.items) if (g.card && g.cat === CARD_PAY_CAT && !g.io && g.src === "manual" && g.desc.includes("(marcado como pago)")) oldMarks.push({ m, g });
@@ -595,7 +604,7 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
   const st = accountsStatus(months, setup);
   const noBalance = st.rows.filter((r) => r.used && !r.informed);
   const generic = genericCount(months);
-  if (!invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length && !generic && !oldMarks.length && !rf.length) return null;
+  if (!invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length && !generic && !oldMarks.length && !rf.length && !wrongDir.length) return null;
   const removeOldMarks = async () => {
     if (!await ask(`Apagar ${oldMarks.length} ${oldMarks.length > 1 ? "marcacoes" : "marcacao"} do "ja paguei" antigo? Depois marque o pagamento de novo pelo botao novo.`)) return;
     const by: Record<string, Set<string>> = {};
@@ -620,6 +629,11 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
         {recat > 0 && <li>{recat} {recat > 1 ? "lancamentos" : "lancamento"} em Outros/Outras entradas que o texto ja diz o que e (ex.: resgate de cofrinho = Investimento).</li>}
         {fixes.length > 0 && <li><button className="primary small-btn" disabled={busy} onClick={applyFixes}>{busy ? "Arrumando..." : `Arrumar ${fixes.length} automaticamente`}</button>
           {fixes.length < invMissing + payMissing + recat + rf.length && <span className="muted"> os outros: escolha na lista de lancamentos</span>}</li>}
+        {wrongDir.length > 0 && (
+          <li className="warn">{wrongDir.length} {wrongDir.length > 1 ? "lancamentos de gasto foram gravados" : "lancamento de gasto foi gravado"} como entrada na conta
+            ({wrongDir.slice(0, 3).map((x) => `${x.g.desc.slice(0, 20)} ${brl(x.g.v)}`).join(", ")}{wrongDir.length > 3 ? "..." : ""}): o saldo da conta soma em vez de descontar.
+            {" "}<button className="primary small-btn" onClick={fixDir}>Arrumar</button></li>
+        )}
         {oldMarks.length > 0 && (
           <li className="warn">{oldMarks.length} {oldMarks.length > 1 ? "marcacoes" : "marcacao"} do &quot;ja paguei&quot; antigo ({brl(oldMarks.reduce((t, x) => t + x.g.v, 0))}) {oldMarks.length > 1 ? "estao" : "esta"}
             somando como compra na fatura seguinte, em vez de pagar. <button className="ghost small-btn" onClick={removeOldMarks}>apagar e marcar de novo</button></li>
@@ -816,7 +830,9 @@ export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta", o
     const parcels = card && !entrada ? Math.max(1, Math.min(48, Math.round(num(n)) || 1)) : 1;
     const each = Math.round((total / parcels) * 100) / 100;
     const list: Gasto[] = Array.from({ length: parcels }, (_, k) => ({
-      id: newId(), d: dayIn(addMonths(monthOf(d), k), Number(d.slice(8, 10))), desc: desc.trim(), v: each, tipo, io: entrada ? "in" as const : "out" as const, cat: finalCat, src: "manual" as const,
+      id: newId(), d: dayIn(addMonths(monthOf(d), k), Number(d.slice(8, 10))), desc: desc.trim(), v: each, tipo,
+      // a categoria manda: gasto sempre sai da conta, renda sempre entra (o botao Entrada/Gasto so vale para os neutros)
+      io: tipo === "gasto" ? "out" as const : tipo === "receita" ? "in" as const : entrada ? "in" as const : "out" as const, cat: finalCat, src: "manual" as const,
       ...(card ? { card } : acc ? { acc } : {}), ...(parcels > 1 ? { parc: [k + 1, parcels] as [number, number] } : {}),
     }));
     const target = finalInv === "__new" ? await createBox(invest, desc, d) : finalInv || undefined;

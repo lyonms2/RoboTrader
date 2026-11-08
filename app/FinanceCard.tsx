@@ -1,10 +1,10 @@
 "use client";
 import { doc, setDoc } from "firebase/firestore";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
-import { accountBalance, accountsOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
+import { INVEST_CAT, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type Gasto, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
 import GastosCard, { AccountForm, AccountsPanel, CardForm, DebtsBlock, FixoForm, Fixos, ImportPanel, LoanForm, QuickAdd, monthSnapshot, saveSetup, upcoming } from "./GastosCard";
 import NetWorthChart from "./NetWorthChart";
 import CardsLoans, { type CardsEntry } from "./CardsLoans";
@@ -12,11 +12,12 @@ import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
 
 // Resumo = ver como esta; Lancamentos = unico lugar onde o dinheiro se move; Contas e bens = unico lugar com saldos e cadastros
 // O resumo (patrimonio, mes, proximos pagamentos, evolucao) fica na Visao geral
-export type Sub = "lanc" | "cards" | "bens";
+export type Sub = "lanc" | "invest" | "cards" | "bens";
 const SUBS: { id: Sub; label: string }[] = [
-  { id: "bens", label: "Contas e bens" }, { id: "lanc", label: "Lancamentos" }, { id: "cards", label: "Cartoes e emprestimos" },
+  { id: "bens", label: "Contas e bens" }, { id: "lanc", label: "Lancamentos" }, { id: "invest", label: "Investimentos" },
+  { id: "cards", label: "Cartoes e emprestimos" },
 ];
-const OLD_SUB: Record<string, Sub> = { gastos: "lanc", invest: "bens", dividas: "bens", resumo: "lanc", loans: "cards" };
+const OLD_SUB: Record<string, Sub> = { gastos: "lanc", dividas: "bens", resumo: "lanc", loans: "cards" };
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
@@ -67,9 +68,12 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
     try { if (localStorage.getItem("finSub") === "loans") return { type: "loan", id: null }; } catch { /* sem armazenamento */ }
     return { type: "compra", id: null };
   });
-  // cartao e emprestimo se lancam em Cartoes e emprestimos; o resto em Lancamentos
+  // investimento aberto para incluir/alterar na sub-aba Investimentos (undefined = fechado, null = novo)
+  const [invEdit, setInvEdit] = useState<string | null | undefined>(undefined);
+  // cartao e emprestimo se lancam em Cartoes e emprestimos; investimento em Investimentos; o resto em Lancamentos
   const goEdit = (type: EntryType | "card" | "loan", id: string | null) => {
     if (type === "card" || type === "loan") { setCardsEntry({ type, id }); setSub("cards"); return; }
+    if (type === "inv") { setInvEdit(id); setSub("invest"); return; }
     setEntry({ type, id }); setSub("lanc");
   };
   const items = cfg.finance ?? [];
@@ -82,13 +86,13 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
   }
   const upsert = async (it: FinItem) => {
     const list = items.some((x) => x.id === it.id) ? items.map((x) => (x.id === it.id ? it : x)) : [...items, it];
-    setEntry({ type: "inv", id: null });
+    if (it.kind !== "bem") setInvEdit(undefined);
     await save(list, it.kind === "acao" || it.kind === "tesouro");
   };
   const remove = async (it: FinItem) => {
     if (!confirm(`Remover "${it.name}" da lista? (so tira do site, nao mexe no investimento)`)) return;
     await save(items.filter((x) => x.id !== it.id), false);
-    setEntry({ type: "inv", id: null });
+    if (it.kind !== "bem") setInvEdit(undefined);
   };
 
   const order = GROUPS.map((g) => g.key);
@@ -113,6 +117,10 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       onSaveInv={upsert} onRemoveInv={remove} />
   );
   if (sub === "cards") return <>{nav}<CardsLoans months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} /></>;
+  if (sub === "invest") return (
+    <>{nav}<InvestPart items={items} rows={rows} fin={fin} months={months} reserve={s.reserve} reserveMonths={s.reserveMonths}
+      edit={invEdit} setEdit={setInvEdit} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} /></>
+  );
   if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} entry={entryPanel} /></>;
 
   return (
@@ -127,8 +135,8 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
           <div><span>O que voce deve</span><b className={debt.total > 0 ? "warn" : ""}>{brl(debt.total)}</b><small className="muted">cartoes {brl(debt.cards, 0)} - emprestimos {brl(debt.loans, 0)}</small></div>
           <div><span>Liquido sem bens</span><b>{brl(fin0 - debt.total)}</b><small className="muted">{s.bens > 0 ? `com bens: ${brl(fin0 + s.bens - debt.total)}` : "tem - deve"}</small></div>
         </div>
-        <p className="muted small">Aqui so se ve: para lancar ou alterar qualquer coisa (conta, investimento, cartao, emprestimo, fixo), use Lancamentos
-          ou o link &quot;alterar&quot; de cada item.
+        <p className="muted small">Aqui so se ve: para lancar ou alterar, use Lancamentos (contas, bens, fixos), Investimentos,
+          Cartoes e emprestimos, ou o link &quot;alterar&quot; de cada item.
           A cripto fica na aba Carteira{crypto > 0 ? ` (${brl(crypto, 0)})` : ""}; o patrimonio total da Visao geral soma tudo.</p>
       </section>
 
@@ -139,30 +147,23 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       </section>
 
       <section className="card">
-        <div className="card-head">
-          <h2>Investimentos</h2>
-          <button className="link" onClick={() => goEdit("inv", null)}>+ investimento</button>
-        </div>
+        <div className="card-head"><h2>Investimentos</h2><span className="muted small">{brl(invRows.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.value ?? 0), 0))}
+          <button className="link" onClick={() => setSub("invest")}>ver investimentos &rsaquo;</button></span></div>
         {invRows.length ? (
-          <div className="table-scroll">
-            <table className="stack fin">
-              <thead><tr><th>Investimento</th><th>Quantidade</th><th>Preco</th><th>Valor</th><th>Lucro</th><th>Rende/mes</th><th /></tr></thead>
-              <tbody>
-                {invRows.map((r) => <ItemRow key={r.item.id} r={r} onEdit={() => goEdit("inv", r.item.id)} />)}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="muted">Nenhum investimento cadastrado. Em Lancamentos, escolha &quot;Investimento&quot; para incluir cofrinho, Tesouro, acoes ou FIIs.</p>
-        )}
-        <p className="muted small">
-          Automatico: cotacao e proventos (Yahoo Finance), preco do Tesouro (Tesouro Transparente, 1 vez por dia), CDI, IPCA e dolar
-          (Banco Central). A mao: quantidades, saldo do cofrinho e precos medios, porque bancos e a B3 nao tem API aberta para ler sua
-          posicao. Valores brutos, antes de IR e taxas.
-        </p>
+          <ul className="pend small">
+            {invRows.map((r) => {
+              const gain = r.cost !== null && r.value !== null ? r.value - r.cost : null;
+              return (
+                <li key={r.item.id}>
+                  <b>{r.item.name}</b> <span className="tag">{r.kindLabel}</span>{r.item.reserva && <span className="tag">reserva</span>}
+                  <span className={gain !== null ? pnlClass(gain) : "muted"}>{gain !== null ? signed(gain) : r.problem ?? ""}</span>
+                  <span>{r.value !== null ? brl(r.value, 0) : "-"}</span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : <p className="muted small">Nenhum investimento cadastrado. Cofrinho, Tesouro, acoes e FIIs se cadastram em Investimentos.</p>}
       </section>
-
-      <Dividends rows={s.rows} fin={fin} />
 
       <section className="card">
         <div className="card-head"><h2>Bens</h2><span className="muted small">{brl(s.bens)}<button className="link" onClick={() => goEdit("bem", null)}>+ bem</button></span></div>
@@ -186,6 +187,116 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       <h3 className="bal-title">Compromissos todo mes</h3>
       <Fixos setup={setup} onEdit={(id) => goEdit("fixo", id)} />
       </>}
+    </>
+  );
+}
+
+// ---------- sub-aba Investimentos: cadastro, carteira, aportes/resgates e proventos ----------
+function InvestPart({ items, rows, fin, months, reserve, reserveMonths, edit, setEdit, onSave, onRemove, onLanc }: {
+  items: FinItem[]; rows: FinRow[]; fin: FinanceDoc | null; months: Record<string, MonthDoc>;
+  reserve: number; reserveMonths: number | null;
+  edit: string | null | undefined; setEdit: (id: string | null | undefined) => void;
+  onSave: (it: FinItem) => void; onRemove: (it: FinItem) => void; onLanc: () => void;
+}) {
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => { if (edit !== undefined) panel.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [edit]);
+  const [allMoves, setAllMoves] = useState(false);
+  const inv = rows.filter((r) => r.item.kind !== "bem");
+  const live = inv.filter((r) => !r.item.ignore);
+  const total = live.reduce((t, r) => t + (r.value ?? 0), 0);
+  const withCost = live.filter((r) => r.cost !== null && r.value !== null);
+  const cost = withCost.reduce((t, r) => t + r.cost!, 0);
+  const gain = withCost.reduce((t, r) => t + r.value! - r.cost!, 0);
+  const monthly = live.reduce((t, r) => t + (r.monthly ?? 0), 0);
+  const byGroup = Object.fromEntries(GROUPS.map((g) => [g.key, 0])) as Record<FinGroup, number>;
+  for (const r of live) byGroup[r.group] += r.value ?? 0;
+  // Aportes e resgates: lancamentos da categoria Investimento nos ultimos 12 meses
+  const from = addMonths(monthOf(todayBR()), -11);
+  const moves = Object.entries(months).filter(([m]) => m >= from).flatMap(([, md]) => md.items.filter((g) => g.cat === INVEST_CAT))
+    .sort((x, y) => y.d.localeCompare(x.d));
+  const put = moves.filter((g) => dirOf(g) < 0).reduce((t, g) => t + g.v, 0);
+  const took = moves.filter((g) => dirOf(g) > 0).reduce((t, g) => t + g.v, 0);
+  const unlinked = moves.filter((g) => !g.inv).length;
+  const nameOf = (id?: string) => items.find((i) => i.id === id)?.name;
+  const cur = edit ? items.find((i) => i.id === edit) ?? null : null;
+  const shown = allMoves ? moves : moves.slice(0, 8);
+  return (
+    <>
+      <section className="card">
+        <div className="card-head"><h2>Investimentos</h2><button className="link" onClick={() => setEdit(null)}>+ novo investimento</button></div>
+        <div className="kpis">
+          <div><span>Investido hoje</span><b>{brl(total)}</b><small className="muted">{live.length} {live.length === 1 ? "investimento" : "investimentos"}, fora cripto</small></div>
+          <div><span>Lucro / prejuizo</span><b className={pnlClass(gain)}>{cost > 0 ? signed(gain) : "-"}</b>
+            <small className="muted">{cost > 0 ? `${pctS(gain / cost)} sobre ${brl(cost, 0)} aplicados` : "informe os precos medios"}</small></div>
+          <div><span>Rende por mes (estimado)</span><b>{brl(monthly)}</b><small className="muted">{monthly > 0 ? `~${brl(monthly * 12, 0)} por ano, antes de IR` : "juros + proventos"}</small></div>
+          <div><span>Reserva de emergencia</span><b>{brl(reserve)}</b>
+            <small className="muted">{reserveMonths !== null ? `cobre ${fmt(reserveMonths, 1)} meses de gastos` : reserve > 0 ? "quantos meses cobre: depois do 1o mes de lancamentos" : "marque \"reserva\" no investimento"}</small></div>
+          <div><span>Guardou em 12 meses</span><b className={pnlClass(put - took)}>{moves.length ? signed(put - took) : "-"}</b>
+            <small className="muted">{moves.length ? `aplicou ${brl(put, 0)} - resgatou ${brl(took, 0)}` : "aportes lancados no extrato"}</small></div>
+        </div>
+        <FinBar byGroup={byGroup} />
+      </section>
+
+      {edit !== undefined && (
+        <section className="card loan-panel" ref={panel}>
+          <div className="card-head"><h2>{cur ? `Alterar ${cur.name}` : "Novo investimento"}</h2></div>
+          <ItemForm key={edit ?? "novo"} initial={cur} fin={fin} onSave={onSave} onCancel={() => setEdit(undefined)} />
+          {cur && <button className="ghost small-btn" onClick={() => onRemove(cur)}>remover este investimento</button>}
+        </section>
+      )}
+
+      <section className="card">
+        <div className="card-head"><h2>Sua carteira</h2><span className="muted small">{brl(total)}</span></div>
+        {inv.length ? (
+          <div className="table-scroll">
+            <table className="stack fin">
+              <thead><tr><th>Investimento</th><th>Quantidade</th><th>Preco</th><th>Valor</th><th>Lucro</th><th>Rende/mes</th><th /></tr></thead>
+              <tbody>
+                {inv.map((r) => <ItemRow key={r.item.id} r={r} onEdit={() => setEdit(r.item.id)} />)}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="muted">Nenhum investimento cadastrado. Clique em &quot;+ novo investimento&quot; para incluir cofrinho, Tesouro, acoes, FIIs ou outros.</p>
+        )}
+        <p className="muted small">
+          Automatico: cotacao e proventos (Yahoo Finance), preco do Tesouro (Tesouro Transparente, 1 vez por dia), CDI, IPCA e dolar
+          (Banco Central). A mao: quantidades, saldo do cofrinho e precos medios, porque bancos e a B3 nao tem API aberta para ler sua
+          posicao. Valores brutos, antes de IR e taxas.
+        </p>
+      </section>
+
+      <section className="card">
+        <div className="card-head"><h2>Aportes e resgates</h2><button className="link" onClick={onLanc}>ver lancamentos &rsaquo;</button></div>
+        {moves.length ? (
+          <div className="table-scroll">
+            <table className="stack moves">
+              <thead><tr><th>Data</th><th>Descricao</th><th>Investimento</th><th>Movimento</th></tr></thead>
+              <tbody>
+                {shown.map((g: Gasto) => {
+                  const out = dirOf(g) < 0;
+                  return (
+                    <tr key={g.id}>
+                      <td data-label="Data">{dm(g.d)}/{g.d.slice(2, 4)}</td>
+                      <td data-label="Descricao">{g.desc}</td>
+                      <td data-label="Investimento">{nameOf(g.inv) ?? <span className="warn">sem destino</span>}</td>
+                      <td data-label="Movimento" className={out ? "pos" : ""}>{out ? "aplicou" : "resgatou"} {brl(g.v)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : <p className="muted small">Nenhum aporte ou resgate nos ultimos 12 meses.</p>}
+        {moves.length > 8 && <button className="link" onClick={() => setAllMoves(!allMoves)}>{allMoves ? "ver menos" : `ver todos (${moves.length})`}</button>}
+        <p className="muted small">
+          Aportes e resgates vem do extrato (categoria Investimento, em Lancamentos). Ligados a um cofrinho ou &quot;outro&quot;, eles somam e
+          descontam o saldo sozinhos. Tesouro e acoes: atualize a quantidade aqui depois de comprar ou vender.
+          {unlinked > 0 && <b className="warn"> {unlinked} {unlinked === 1 ? "movimento esta" : "movimentos estao"} sem destino: escolha o investimento em Lancamentos.</b>}
+        </p>
+      </section>
+
+      <Dividends rows={rows} fin={fin} />
     </>
   );
 }
@@ -563,7 +674,7 @@ export function NetWorthBlock({ cfg, fin, wallet, months, setup, nwHist }: Ctx &
 // ---------- "O que voce quer lancar?" (unico lugar de entrada) ----------
 export type EntryType = "mov" | "import" | "inv" | "bem" | "fixo" | "conta";
 const ENTRY_TYPES: { id: EntryType; label: string }[] = [
-  { id: "mov", label: "Gasto ou entrada" }, { id: "import", label: "Importar extrato" }, { id: "inv", label: "Investimento" }, { id: "bem", label: "Bem (imovel, veiculo)" },
+  { id: "mov", label: "Gasto ou entrada" }, { id: "import", label: "Importar extrato" }, { id: "bem", label: "Bem (imovel, veiculo)" },
   { id: "fixo", label: "Gasto fixo" }, { id: "conta", label: "Conta / saldo" },
 ];
 
@@ -577,7 +688,6 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   const accounts = accountsOf(setup);
   // Itens existentes de cada tipo (para alterar ou remover)
   const existing: Record<string, { id: string; label: string }[]> = {
-    inv: invest.filter((i) => i.kind !== "bem").map((i) => ({ id: i.id, label: i.name })),
     bem: invest.filter((i) => i.kind === "bem").map((i) => ({ id: i.id, label: i.name })),
     fixo: setup.fixos.map((f) => ({ id: f.id, label: f.desc })),
     conta: accounts.map((a) => ({ id: a.id, label: a.name })),
@@ -587,7 +697,7 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   const usedAcc = new Set(Object.values(months).flatMap((md) => md.items.map((g) => g.acc ?? (g.card ? "" : accounts[0].id))));
   return (
     <div className="entry">
-      <p className="small entry-q">O que voce quer lancar? <span className="muted">(compras no cartao e emprestimos: em Cartoes e emprestimos)</span></p>
+      <p className="small entry-q">O que voce quer lancar? <span className="muted">(cadastro de investimentos: em Investimentos; compras no cartao e emprestimos: em Cartoes e emprestimos)</span></p>
       <div className="kind-pick entry-types">
         {ENTRY_TYPES.map((t) => (
           <button key={t.id} type="button" className={type === t.id ? "pill on" : "pill"} onClick={() => setEntry({ type: t.id, id: null })}>{t.label}</button>
@@ -603,12 +713,6 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
       )}
       {type === "mov" && <QuickAdd months={months} setup={setup} invest={invest} defaultDate={todayBR()} />}
       {type === "import" && <ImportPanel months={months} setup={setup} invest={invest} onDone={() => setEntry({ type: "mov", id: null })} />}
-      {type === "inv" && (
-        <>
-          <ItemForm key={id ?? "novo"} initial={invest.find((i) => i.id === id) ?? null} fin={fin} onSave={onSaveInv} onCancel={reset} />
-          {id && <button className="ghost small-btn" onClick={() => { const it = invest.find((i) => i.id === id); if (it) onRemoveInv(it); }}>remover este investimento</button>}
-        </>
-      )}
       {type === "bem" && (
         <>
           <ItemForm key={id ?? "novo-bem"} only="bem" initial={invest.find((i) => i.id === id) ?? null} fin={fin} onSave={(it) => { onSaveInv(it); setEntry({ type: "bem", id: null }); }} onCancel={reset} />

@@ -851,6 +851,18 @@ export function balanceAt(months: Record<string, MonthDoc>, accounts: Account[],
   return v;
 }
 
+// Movimentos de uma conta entre dois dias (para conferir o saldo linha a linha): + entrou, - saiu
+export function accountMoves(months: Record<string, MonthDoc>, accounts: Account[], accId: string, from: string, to: string) {
+  const out: { g: Gasto; v: number; via: "propria" | "transferencia" }[] = [];
+  for (const md of Object.values(months))
+    for (const g of md.items) {
+      if (g.d <= from || g.d > to) continue;
+      if (accIdOf(g, accounts) === accId) out.push({ g, v: dirOf(g) * g.v, via: "propria" });
+      else if (g.toAcc === accId && !g.card) out.push({ g, v: -dirOf(g) * g.v, via: "transferencia" });
+    }
+  return out.sort((a, b) => a.g.d.localeCompare(b.g.d));
+}
+
 // Situacao das contas no mes m: saldo no inicio (fim do mes anterior), no fim do mes (ou hoje) e agora
 export function accountsStatus(months: Record<string, MonthDoc>, setup: GastosSetup, m = monthOf(todayBR())) {
   const accounts = accountsOf(setup);

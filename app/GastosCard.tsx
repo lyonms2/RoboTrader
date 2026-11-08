@@ -8,7 +8,7 @@ import { CardPayForm } from "./CardsLoans";
 import { RecvSelect, linkRecv, receive } from "./Receivables";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
   type Bill, type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
@@ -321,7 +321,10 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
           const renda = acc.filter((g) => g.tipo === "receita").reduce((t, g) => t + g.v, 0);
           const gasto = acc.filter((g) => g.tipo === "gasto" || isFaturaOut(g)).reduce((t, g) => t + g.v, 0);
           const byCat: Record<string, { in: number; out: number }> = {};
-          for (const g of acc.filter((x) => x.tipo === "neutro" && !isFaturaOut(x))) { const c = (byCat[g.cat] ??= { in: 0, out: 0 }); if (dirOf(g) > 0) c.in += g.v; else c.out += g.v; }
+          // transferencia ligada a outra conta sua: sai de uma e entra na outra (o total das contas nao muda)
+          const accIds = new Set(accountsOf(setup).map((a) => a.id));
+          const internal = acc.filter((x) => x.cat === TRANSFER_CAT && x.toAcc && accIds.has(x.toAcc)).reduce((t, x) => t + x.v, 0);
+          for (const g of acc.filter((x) => x.tipo === "neutro" && !isFaturaOut(x) && !(x.cat === TRANSFER_CAT && x.toAcc && accIds.has(x.toAcc)))) { const c = (byCat[g.cat] ??= { in: 0, out: 0 }); if (dirOf(g) > 0) c.in += g.v; else c.out += g.v; }
           const ins = Object.entries(byCat).filter(([, v]) => v.in > 0.004);
           const outs = Object.entries(byCat).filter(([, v]) => v.out > 0.004);
           const tin = renda + ins.reduce((t, [, v]) => t + v.in, 0);
@@ -341,7 +344,8 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                 {outs.map(([c, v]) => <div key={c} className="flow-r move"><span>{LBL_OUT[c] ?? c}</span><span>{brl(v.out)}</span></div>)}
               </div>
               <div className="flow-net"><span>Resultado na conta no mes</span><b className={tin - tout >= 0 ? "pos" : "v-out"}>{tin - tout >= 0 ? "+" : "-"}{brl(Math.abs(tin - tout))}</b>
-                {(ins.length > 0 || outs.length > 0) && <small className="muted">azul = dinheiro seu mudando de lugar (nao e renda nem gasto)</small>}</div>
+                {(ins.length > 0 || outs.length > 0) && <small className="muted">azul = dinheiro seu mudando de lugar (nao e renda nem gasto)</small>}
+                {internal > 0 && <small className="muted">Entre suas contas: {brl(internal)} (saiu de uma e entrou na outra, nao muda o total)</small>}</div>
             </div>
           );
         })()}
@@ -667,7 +671,9 @@ function HowItWorks() {
 export function AccountsPanel({ months, setup, m, onEdit }: { months: Record<string, MonthDoc>; setup: GastosSetup; m: string; onEdit?: (id: string | null) => void }) {
   const st = accountsStatus(months, setup, m);
   const [edit, setEdit] = useState<string | null>(null); // id da conta em edicao ou "__new"
+  const [open, setOpen] = useState<string | null>(null); // conta com os movimentos abertos
   const accounts = accountsOf(setup);
+  const startDay = `${addMonths(m, -1)}-31`;
   const saveAccounts = (list: Account[]) => saveSetup({ accounts: clean(list), account: null } as Partial<GastosSetup>);
   const beforeData = !!st.first && `${m}-31` < st.first;
   const isNow = m === monthOf(todayBR());
@@ -689,10 +695,44 @@ export function AccountsPanel({ months, setup, m, onEdit }: { months: Record<str
             <span className="acc-name">{r.acc.name}</span>
             <span><b className={r.now < 0 ? "neg" : ""}>{brl(r.now)}</b> <span className="muted">hoje</span></span>
             <span className={r.informed ? "muted" : "warn"}>
-              {r.acc.noStatement ? `sem extrato: ${r.now > 0.005 ? `${brl(r.now)} recebidos ainda a discriminar (lance o que foi pago com "Pago com: ${r.acc.name}")` : "tudo discriminado"}`
+              {r.acc.noStatement ? (r.now > 0.005 ? `sem extrato: ${brl(r.now)} recebidos ainda a discriminar (lance o que foi pago com "Pago com: ${r.acc.name}")`
+                : r.now < -0.005 ? `sem extrato: saiu ${brl(-r.now)} a mais do que entrou - falta ligar a transferencia que mandou dinheiro para ela (Pix como "Transferencia entre contas" -> ${r.acc.name}), ou algum gasto foi lancado nela por engano`
+                : "sem extrato: tudo discriminado")
                 : r.acc.at ? `saldo conferido em ${dm(r.acc.at)}; o resto vem dos lancamentos` : r.used ? "sem saldo conferido: so o movimento desde o 1o lancamento" : "sem lancamentos"}
             </span>
-            <button className="link" onClick={() => (onEdit ? onEdit(r.acc.id) : setEdit(r.acc.id))}>{onEdit ? "alterar" : r.acc.noStatement ? "editar" : r.informed ? "conferir saldo" : "informar saldo"}</button>
+            <span className="acc-btns">
+              <button className="link" onClick={() => setOpen(open === r.acc.id ? null : r.acc.id)}>{open === r.acc.id ? "fechar" : "ver movimentos"}</button>
+              <button className="link" onClick={() => (onEdit ? onEdit(r.acc.id) : setEdit(r.acc.id))}>{onEdit ? "alterar" : r.acc.noStatement ? "editar" : r.informed ? "conferir saldo" : "informar saldo"}</button>
+            </span>
+            {open === r.acc.id && (() => {
+              const end = isNow ? todayBR() : `${m}-31`;
+              const mv = accountMoves(months, accounts, r.acc.id, startDay, end);
+              let bal = r.start;
+              const anchorIn = r.acc.at && r.acc.at > startDay && r.acc.at <= end;
+              return (
+                <div className="acc-moves">
+                  <table>
+                    <thead><tr><th>Data</th><th>Lancamento</th><th>Valor</th><th>Saldo</th></tr></thead>
+                    <tbody>
+                      <tr className="muted"><td>{dm(`${m}-01`)}</td><td>inicio do mes{r.acc.noStatement ? " (sem extrato: comeca do zero no 1o lancamento)" : ""}</td><td /><td><b>{brl(r.start)}</b></td></tr>
+                      {mv.map(({ g, v, via }) => {
+                        bal += v;
+                        return (
+                          <tr key={g.id + via}>
+                            <td>{dm(g.d)}</td>
+                            <td><span className="cell">{g.desc}<small className="muted">{g.cat}{via === "transferencia" ? ` - veio de outra conta sua` : g.toAcc ? ` - foi para ${accounts.find((a) => a.id === g.toAcc)?.name ?? "outra conta"}` : ""}</small></span></td>
+                            <td className={v >= 0 ? "pos" : "v-out"}>{v >= 0 ? "+" : "-"}{brl(Math.abs(v))}</td>
+                            <td>{brl(bal)}</td>
+                          </tr>
+                        );
+                      })}
+                      <tr><td>{isNow ? "hoje" : "fim"}</td><td><b>{isNow ? "saldo hoje" : "saldo no fim do mes"}</b>{anchorIn ? <small className="muted"> (conferido em {dm(r.acc.at!)}: {brl(r.acc.balance!)})</small> : null}</td><td /><td><b>{brl(r.end)}</b></td></tr>
+                    </tbody>
+                  </table>
+                  {mv.length === 0 && <p className="muted">Nenhum movimento neste mes.</p>}
+                </div>
+              );
+            })()}
           </li>
         ))}
       </ul>

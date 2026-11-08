@@ -14,7 +14,7 @@ import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
 // O resumo (patrimonio, mes, proximos pagamentos, evolucao) fica na Visao geral
 export type Sub = "lanc" | "cards" | "bens";
 const SUBS: { id: Sub; label: string }[] = [
-  { id: "lanc", label: "Lancamentos" }, { id: "cards", label: "Cartoes e emprestimos" }, { id: "bens", label: "Contas e bens" },
+  { id: "bens", label: "Contas e bens" }, { id: "lanc", label: "Lancamentos" }, { id: "cards", label: "Cartoes e emprestimos" },
 ];
 const OLD_SUB: Record<string, Sub> = { gastos: "lanc", invest: "bens", dividas: "bens", resumo: "lanc", loans: "cards" };
 
@@ -51,9 +51,9 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
     try {
       const raw = localStorage.getItem("finSub") ?? "";
       const v = (OLD_SUB[raw] ?? raw) as Sub;
-      return SUBS.some((x) => x.id === v) ? v : "lanc";
+      return SUBS.some((x) => x.id === v) ? v : "bens";
     } catch {
-      return "lanc";
+      return "bens";
     }
   });
   const setSub = (v: Sub) => {

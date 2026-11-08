@@ -33,6 +33,10 @@ async function addItems(months: Record<string, MonthDoc>, list: Gasto[]) {
 
 export { debts };
 
+// Pagamento de fatura saindo da conta: e o gasto do mes (as compras no cartao nao entram no mes, entram pela fatura)
+const isFaturaOut = (g: Gasto) =>
+  g.cat === CARD_PAY_CAT && !g.card && dirOf(g) < 0;
+
 // Resumo do mes atual (para a pagina Resumo das Financas)
 export function monthSnapshot(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const m = monthOf(todayBR());
@@ -260,9 +264,9 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                   const accs = accountsOf(setup);
                   const accName = !card && accs.length > 1 ? accs.find((a) => a.id === accIdOf(g, accs))?.name : null;
                   return (
-                    <tr key={g.id} className={g.tipo === "neutro" ? "neutral" : ""}>
+                    <tr key={g.id} className={g.tipo === "neutro" && !isFaturaOut(g) ? "neutral" : ""}>
                       <td><span className="cell">{g.desc}<small className="muted">
-                        {[dm(g.d), card ? `cartao ${card.name}` : accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, g.tipo === "neutro" ? "nao conta nos gastos" : null].filter(Boolean).join(" - ")}
+                        {[dm(g.d), card ? `cartao ${card.name}` : accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, isFaturaOut(g) ? "conta nos gastos do mes (fatura paga)" : g.tipo === "neutro" ? "nao conta nos gastos" : null].filter(Boolean).join(" - ")}
                       </small></span></td>
                       <td data-label="Categoria"><span className="cell">
                         <CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} />
@@ -274,7 +278,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                           <CardPaySelect value={g.payCard} cards={setup.cards} onChange={(id) => saveMonth(m, items.map((x) => (x.id === g.id ? clean({ ...x, payCard: id || undefined }) : x)))} />
                         )}
                       </span></td>
-                      <td data-label="Valor" className={g.tipo === "receita" ? "pos" : g.tipo === "neutro" ? "muted" : ""}>{g.tipo === "receita" ? "+" : g.tipo === "gasto" ? "-" : ""}{brl(g.v)}</td>
+                      <td data-label="Valor" className={g.tipo === "receita" ? "pos" : g.tipo === "neutro" && !isFaturaOut(g) ? "muted" : ""}>{g.tipo === "receita" ? "+" : g.tipo === "gasto" || isFaturaOut(g) ? "-" : ""}{brl(g.v)}</td>
                       <td className="actions"><button className="ghost small-btn" onClick={() => removeItem(g)} aria-label="Apagar">apagar</button></td>
                     </tr>
                   );
@@ -326,10 +330,11 @@ export function CatSelect({ value, onChange }: { value: string; onChange: (c: st
   return (
     <select value={value} onChange={(e) => pick(e.target.value)} className={`cat-sel${GENERIC_CATS.includes(value) ? " unlinked" : ""}`}>
       <optgroup label="Gastos">{[...CATS_GASTO.filter((c) => c !== "Outros"), ...g].map((c) => <option key={c}>{c}</option>)}
+        <option value={CARD_PAY_CAT}>Fatura do cartao (pagamento)</option>
         <option value="Outros">Outros (discriminar...)</option><option value="__new_g">+ nova categoria de gasto</option></optgroup>
       <optgroup label="Entradas">{[...CATS_RECEITA.filter((c) => c !== "Outras entradas"), ...r].map((c) => <option key={c}>{c}</option>)}
         <option value="Outras entradas">Outras entradas (discriminar...)</option><option value="__new_r">+ nova categoria de entrada</option></optgroup>
-      <optgroup label="Nao conta">{CATS_NEUTRO.map((c) => <option key={c}>{c}</option>)}</optgroup>
+      <optgroup label="Nao conta">{CATS_NEUTRO.filter((c) => c !== CARD_PAY_CAT).map((c) => <option key={c}>{c}</option>)}</optgroup>
       {!tipoOfCat(value) && !GENERIC_CATS.includes(value) && <option>{value}</option>}
     </select>
   );
@@ -484,8 +489,8 @@ function HowItWorks() {
       <table>
         <thead><tr><th>Situacao</th><th>Gasto do mes</th><th>Saldo da conta</th><th>Patrimonio</th></tr></thead>
         <tbody>
-          <tr><td><b>Compra no cartao</b></td><td>conta no dia da compra</td><td>nao mexe</td><td>vira divida da fatura</td></tr>
-          <tr><td><b>Pagar a fatura</b> (no extrato: &quot;Pagamento de fatura&quot;)</td><td>nao conta (a compra ja contou)</td><td>sai da conta</td><td>a divida baixa; nao muda</td></tr>
+          <tr><td><b>Compra no cartao</b></td><td>nao entra no mes da compra (fica na fatura, em Cartoes e emprestimos)</td><td>nao mexe</td><td>vira divida da fatura</td></tr>
+          <tr><td><b>Pagar a fatura</b> (no extrato: &quot;Pagamento de fatura&quot;)</td><td>conta como gasto no mes em que voce paga (e o total das compras)</td><td>sai da conta</td><td>a divida baixa; nao muda</td></tr>
           <tr><td><b>Parcela de emprestimo</b></td><td>conta como gasto</td><td>sai da conta</td><td>o saldo devedor baixa sozinho pela data</td></tr>
           <tr><td><b>Dinheiro do emprestimo caindo</b></td><td>nao e renda (&quot;Emprestimo recebido&quot;)</td><td>entra na conta</td><td>nao muda (cadastre a divida)</td></tr>
           <tr><td><b>Guardar no cofrinho / resgatar</b></td><td>nao conta</td><td>sai / entra</td><td>nao muda (vai para o cofrinho)</td></tr>

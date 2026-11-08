@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   accountsOf, addMonths, cardStatus, commitments, debts, faturaItems, faturaMonth, loanDue, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
   type Card, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
@@ -169,6 +169,9 @@ function LoanItem({ l, st, months, setup, single, initial }: {
   const [open, setOpen] = useState(single || !!initial || st.late > 0);
   const [mode, setMode] = useState<string | null>(initial); // "pay:k" | "prepay" | "edit"
   const [all, setAll] = useState(false);
+  // ao abrir pagar/adiantar/alterar (ex.: "pagar" na parcela 16, la embaixo), leva a tela ate o formulario
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (mode) panel.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }, [mode]);
   const rows = st.rows;
   const first = rows.findIndex((r) => r.status === "atrasada" || r.status === "aberta");
   // recolhido: as 2 ultimas pagas, as atrasadas e as 4 proximas
@@ -218,9 +221,11 @@ function LoanItem({ l, st, months, setup, single, initial }: {
             <button className={mode === "edit" ? "primary" : "ghost small-btn"} onClick={() => toggle("edit")}>Alterar</button>
             <button className="ghost small-btn" onClick={remove}>Remover</button>
           </div>
+          <div ref={panel} className="loan-panel">
           {mode?.startsWith("pay:") && <PayForm key={mode} l={l} k={Number(mode.slice(4))} months={months} setup={setup} onDone={() => setMode(null)} />}
           {mode === "prepay" && <PrepayForm setup={setup} loanId={l.id} onPick={() => undefined} />}
           {mode === "edit" && <LoanForm l={l} onSave={saveLoan} onCancel={() => setMode(null)} />}
+          </div>
 
           <div className="table-scroll">
             <table className="loan-rows">

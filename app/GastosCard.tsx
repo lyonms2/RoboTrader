@@ -268,7 +268,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                   return (
                     <tr key={g.id} className={g.tipo === "neutro" && !isFaturaOut(g) ? "neutral" : ""}>
                       <td><span className="cell">{g.desc}<small className="muted">
-                        {[dm(g.d), card ? `cartao ${card.name}` : accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, isFaturaOut(g) ? "conta nos gastos do mes (fatura paga)" : g.tipo === "neutro" ? "nao conta nos gastos" : null].filter(Boolean).join(" - ")}
+                        {[dm(g.d), card ? `cartao ${card.name}` : accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, isFaturaOut(g) ? "conta nos gastos do mes (fatura paga)" : g.tipo === "neutro" ? (dirOf(g) > 0 ? "entrou na conta - nao e renda (dinheiro seu voltando)" : "saiu da conta - nao e gasto") : null].filter(Boolean).join(" - ")}
                       </small></span></td>
                       <td data-label="Categoria"><span className="cell">
                         <CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} />
@@ -280,7 +280,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                           <CardPaySelect value={g.payCard} cards={setup.cards} onChange={(id) => saveMonth(m, items.map((x) => (x.id === g.id ? clean({ ...x, payCard: id || undefined }) : x)))} />
                         )}
                       </span></td>
-                      <td data-label="Valor" className={g.tipo === "receita" ? "pos" : g.tipo === "neutro" && !isFaturaOut(g) ? "muted" : ""}>{g.tipo === "receita" ? "+" : g.tipo === "gasto" || isFaturaOut(g) ? "-" : ""}{brl(g.v)}</td>
+                      <td data-label="Valor" className={g.tipo === "receita" ? "pos" : g.tipo === "neutro" && !isFaturaOut(g) ? "muted" : ""}>{g.tipo === "receita" || (g.tipo === "neutro" && dirOf(g) > 0) ? "+" : "-"}{brl(g.v)}</td>
                       <td className="actions"><button className="ghost small-btn" onClick={() => removeItem(g)} aria-label="Apagar">apagar</button></td>
                     </tr>
                   );
@@ -333,7 +333,7 @@ export function CatSelect({ value, onChange }: { value: string; onChange: (c: st
         <option value="__new_g">+ nova categoria de gasto</option></optgroup>
       <optgroup label="Entradas">{[...CATS_RECEITA.filter((c) => c !== "Outras entradas"), ...r].map((c) => <option key={c}>{c}</option>)}
         <option value="__new_r">+ nova categoria de entrada</option></optgroup>
-      <optgroup label="Nao conta">{CATS_NEUTRO.filter((c) => c !== CARD_PAY_CAT).map((c) => <option key={c}>{c}</option>)}</optgroup>
+      <optgroup label="Nem gasto nem renda (seu dinheiro mudando de lugar)">{CATS_NEUTRO.filter((c) => c !== CARD_PAY_CAT).map((c) => <option key={c}>{c}</option>)}</optgroup>
       {!tipoOfCat(value) && !GENERIC_CATS.includes(value) && <option>{value}</option>}
     </select>
   );

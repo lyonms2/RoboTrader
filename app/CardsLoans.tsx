@@ -429,6 +429,10 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry, onAdded }: {
   onAdded?: (card: string, d: string) => void;
 }) {
   const { type, id } = entry;
+  // recolhido: so a linha com os tipos; abre ao escolher um tipo (ou ao vir de um "alterar"/"+ novo" de outra tela)
+  const [open, setOpen] = useState(!!entry.id || entry.type !== "compra");
+  const first = useRef(true);
+  useEffect(() => { if (first.current) { first.current = false; return; } setOpen(true); }, [entry]);
   const reset = () => setEntry({ type, id: null });
   const noCards = !setup.cards.length && type === "compra";
   const saveCards = async (c: Card) => { await saveSetup({ cards: setup.cards.some((x) => x.id === c.id) ? setup.cards.map((x) => (x.id === c.id ? c : x)) : [...setup.cards, c] }); reset(); };
@@ -437,10 +441,14 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry, onAdded }: {
   const noLoans = type === "prepay" && !setup.loans.length;
   return (
     <div className="entry">
-      <p className="small entry-q">O que voce quer lancar?</p>
-      <div className="kind-pick entry-types">
-        {TYPES.filter((t) => LOAN_TYPES.includes(t.id) === LOAN_TYPES.includes(type)).map((t) => <button key={t.id} type="button" className={type === t.id ? "pill on" : "pill"} onClick={() => setEntry({ type: t.id, id: null })}>{t.label}</button>)}
+      <div className="entry-bar">
+        <p className="small entry-q">O que voce quer lancar?</p>
+        <div className="kind-pick entry-types">
+          {TYPES.filter((t) => LOAN_TYPES.includes(t.id) === LOAN_TYPES.includes(type)).map((t) => <button key={t.id} type="button" className={open && type === t.id ? "pill on" : "pill"} onClick={() => { setEntry({ type: t.id, id: null }); setOpen(true); }}>{t.label}</button>)}
+        </div>
+        {open && <button type="button" className="link entry-close" onClick={() => setOpen(false)}>fechar</button>}
       </div>
+      {open && <>
       {opts && (
         <label className="entry-pick small">Novo ou alterar:
           <select value={id ?? ""} onChange={(e) => setEntry({ type, id: e.target.value || null })}>
@@ -465,6 +473,7 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry, onAdded }: {
           {id && <button className="ghost small-btn" onClick={async () => { if (await ask("Remover este emprestimo?")) { await saveSetup({ loans: setup.loans.filter((l) => l.id !== id) }); reset(); } }}>remover este emprestimo</button>}
         </>
       )}
+      </>}
     </div>
   );
 }

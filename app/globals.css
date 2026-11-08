@@ -634,3 +634,10 @@ tr.grp-row:hover > td { background: color-mix(in srgb, var(--accent) 4%, transpa
 @media (max-width: 560px) { .saldo-accts { justify-content: flex-start; } .saldo-main > b { font-size: 23px; } }
 .bills-card { padding: 12px; }
 .bills-card .bills { margin: 0; }
+
+/* "O que voce quer lancar?" recolhido: uma linha so */
+.entry-bar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.entry-bar .entry-q { margin: 0; }
+.entry-bar .entry-types { margin: 0; }
+.entry-bar .entry-close { margin-left: auto; }
+.entry-hint { margin: 8px 0 4px; }

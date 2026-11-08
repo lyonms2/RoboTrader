@@ -792,6 +792,10 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   onSaveInv: (it: FinItem) => void; onRemoveInv: (it: FinItem) => void;
 }) {
   const { type, id } = entry;
+  // recolhido: so a linha com os tipos; abre ao escolher um tipo (ou ao vir de um "alterar"/"+ novo" de outra tela)
+  const [open, setOpen] = useState(!!entry.id || entry.type !== "mov");
+  const first = useRef(true);
+  useEffect(() => { if (first.current) { first.current = false; return; } setOpen(true); }, [entry]);
   // depois de salvar: mostra o que aconteceu e limpa o formulario (n muda a key)
   const [msg, setMsg] = useState("");
   const [n, setN] = useState(0);
@@ -811,12 +815,17 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   const usedAcc = new Set(Object.values(months).flatMap((md) => md.items.map((g) => g.acc ?? (g.card ? "" : accounts[0].id))));
   return (
     <div className="entry">
-      <p className="small entry-q">O que voce quer lancar? <span className="muted">(investimentos e bens: em Investimentos; compras no cartao e emprestimos: em Cartoes e emprestimos)</span></p>
-      <div className="kind-pick entry-types">
-        {ENTRY_TYPES.map((t) => (
-          <button key={t.id} type="button" className={type === t.id ? "pill on" : "pill"} onClick={() => { setMsg(""); setEntry({ type: t.id, id: null }); }}>{t.label}</button>
-        ))}
+      <div className="entry-bar">
+        <p className="small entry-q">O que voce quer lancar?</p>
+        <div className="kind-pick entry-types">
+          {ENTRY_TYPES.map((t) => (
+            <button key={t.id} type="button" className={open && type === t.id ? "pill on" : "pill"} onClick={() => { setMsg(""); setEntry({ type: t.id, id: null }); setOpen(true); }}>{t.label}</button>
+          ))}
+        </div>
+        {open && <button type="button" className="link entry-close" onClick={() => setOpen(false)}>fechar</button>}
       </div>
+      {open && <>
+      <p className="muted small entry-hint">Investimentos e bens: em Investimentos. Compras no cartao e emprestimos: em Cartoes e emprestimos.</p>
       {opts && (
         <label className="entry-pick small">Novo ou alterar:
           <select value={id ?? ""} onChange={(e) => { setMsg(""); setEntry({ type, id: e.target.value || null }); }}>
@@ -837,6 +846,8 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
           onSave={(a) => saveAccounts(accounts.some((x) => x.id === a.id) ? accounts.map((x) => (x.id === a.id ? a : x)) : [...accounts, a],
             `${accounts.some((x) => x.id === a.id) ? "Salva" : "Adicionada"}: conta ${a.name}${a.balance !== undefined ? `, saldo ${a.balance.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}.`)} />
       )}
+      </>}
+      {!open && msg && <p className="small pos entry-msg">&#10003; {msg}</p>}
     </div>
   );
 }

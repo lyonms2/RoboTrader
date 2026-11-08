@@ -44,6 +44,7 @@ export type Loan = {
 export type Fixo = { id: string; desc: string; v: number; cat: string; dia: number; card?: string };
 export type GastosSetup = {
   cards: Card[]; loans: Loan[]; fixos: Fixo[]; rules: Record<string, string>; categories?: string[];
+  customCats?: CustomCat[]; // categorias criadas por voce (ex.: Presentes, Pet)
   ownName?: string; // seu nome como aparece nos extratos: Pix para/de voce mesmo = transferencia entre contas (nao conta)
   account?: { balance: number; at: string } | null; // (antigo) um saldo so; agora vale "accounts"
   accounts?: Account[];
@@ -61,8 +62,16 @@ export const CATS_RECEITA = ["Salario", "Renda extra", "Rendimentos", "Pix receb
 export const CATS_NEUTRO = ["Fatura do cartao", "Investimento", "Compra de cripto", "Venda de cripto", "Transferencia entre contas", "Emprestimo recebido"];
 export const CARD_PAY_CAT = "Fatura do cartao";
 export const TRANSFER_CAT = "Transferencia entre contas";
+// Categorias suas (gasto ou entrada). Ficam num registro do modulo, atualizado quando o setup carrega
+export type CustomCat = { name: string; tipo: "gasto" | "receita" };
+let CUSTOM: CustomCat[] = [];
+export const setCustomCats = (c?: CustomCat[]) => { CUSTOM = c ?? []; };
+export const customCats = () => CUSTOM;
+// "Outros" e "Outras entradas" sozinhos nao dizem nada: o site pede para discriminar
+export const GENERIC_CATS = ["Outros", "Outras entradas"];
 export const tipoOfCat = (c: string): Tipo | null =>
-  CATS_NEUTRO.includes(c) ? "neutro" : CATS_RECEITA.includes(c) ? "receita" : CATS_GASTO.includes(c) ? "gasto" : null;
+  CATS_NEUTRO.includes(c) ? "neutro" : CATS_RECEITA.includes(c) ? "receita" : CATS_GASTO.includes(c) ? "gasto"
+    : CUSTOM.find((x) => x.name === c)?.tipo ?? null;
 
 // Palavras-chave comuns em extratos brasileiros -> categoria (a primeira que bater)
 const KEYWORDS: [RegExp, string][] = [

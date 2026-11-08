@@ -19,7 +19,7 @@ import CandidatesCard from "./CandidatesCard";
 import FinanceCard, { MonthAndUpcoming, NetWorthBlock, PatrimonioCard, type Sub as FinSub } from "./FinanceCard";
 import { debts, reviewCount, upcoming } from "./GastosCard";
 import type { NetWorthDoc } from "@/lib/patrimonio";
-import { EMPTY_SETUP, accountBalance, avgMonthly, investFlows, type GastosSetup, type MonthDoc } from "@/lib/gastos";
+import { EMPTY_SETUP, accountBalance, avgMonthly, investFlows, setCustomCats, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import { financeSummary } from "@/lib/financeMath";
 import type { CandidatesDoc } from "@/lib/candidates";
 import { usePrices, type Prices } from "./usePrices";
@@ -211,6 +211,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const eff = effectiveConfig(cfg, sync, wallet, px);
   const walletOk = !!wallet && wallet.address === walletKey(walletAddresses(cfg));
   const spend = avgMonthly(months);
+  setCustomCats(gSetup.customCats); // categorias criadas por voce (usadas nos menus e nos totais)
   const debt = debts(months, gSetup);
 
   if (!firebaseConfigured && !demo)

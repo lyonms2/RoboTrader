@@ -2,7 +2,7 @@
 import { doc, setDoc } from "firebase/firestore";
 import { useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
-import { CARD_PAY_CAT, INVEST_CAT, TRANSFER_CAT, accNameFromDesc, looksDuplicate, suggestCard, suggestToAcc, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
+import { CARD_PAY_CAT, GENERIC_CATS, INVEST_CAT, TRANSFER_CAT, customCats, setCustomCats, accNameFromDesc, looksDuplicate, suggestCard, suggestToAcc, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
@@ -262,13 +262,47 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
   );
 }
 
+// Escolha da categoria. "Outros"/"Outras entradas" pedem para discriminar: o que voce digitar vira uma categoria sua
 function CatSelect({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  const mine = customCats();
+  const create = async (tipo: "gasto" | "receita", suggestion = "") => {
+    const raw = window.prompt(tipo === "gasto" ? "O que e esse gasto? (vira uma categoria sua, ex.: Presentes, Pet, Academia)"
+      : "O que e essa entrada? (vira uma categoria sua, ex.: Freela, Venda, Reembolso)", suggestion);
+    const name = raw?.trim().replace(/^./, (c) => c.toUpperCase());
+    if (!name) return null;
+    // ja existe (com qualquer maiuscula/minuscula)? usa a existente
+    const all = [...CATS_GASTO, ...CATS_RECEITA, ...CATS_NEUTRO, ...mine.map((x) => x.name)];
+    const found = all.find((c) => c.toLowerCase() === name.toLowerCase());
+    if (found) return found;
+    const list = [...mine, { name, tipo }];
+    setCustomCats(list);
+    // grava em segundo plano: a escolha vale na hora
+    saveSetup({ customCats: list }).catch((e) => console.error("categoria nao gravada", e));
+    return name;
+  };
+  const pick = async (v: string) => {
+    if (v === "__new_g" || v === "__new_r") {
+      const n = await create(v === "__new_g" ? "gasto" : "receita");
+      if (n) onChange(n);
+      return;
+    }
+    if (GENERIC_CATS.includes(v)) {
+      const n = await create(v === "Outros" ? "gasto" : "receita");
+      onChange(n ?? v); // cancelou: fica em Outros (e aparece no "Para revisar")
+      return;
+    }
+    onChange(v);
+  };
+  const g = mine.filter((c) => c.tipo === "gasto").map((c) => c.name);
+  const r = mine.filter((c) => c.tipo === "receita").map((c) => c.name);
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="cat-sel">
-      <optgroup label="Gastos">{CATS_GASTO.map((c) => <option key={c}>{c}</option>)}</optgroup>
-      <optgroup label="Entradas">{CATS_RECEITA.map((c) => <option key={c}>{c}</option>)}</optgroup>
+    <select value={value} onChange={(e) => pick(e.target.value)} className={`cat-sel${GENERIC_CATS.includes(value) ? " unlinked" : ""}`}>
+      <optgroup label="Gastos">{[...CATS_GASTO.filter((c) => c !== "Outros"), ...g].map((c) => <option key={c}>{c}</option>)}
+        <option value="Outros">Outros (discriminar...)</option><option value="__new_g">+ nova categoria de gasto</option></optgroup>
+      <optgroup label="Entradas">{[...CATS_RECEITA.filter((c) => c !== "Outras entradas"), ...r].map((c) => <option key={c}>{c}</option>)}
+        <option value="Outras entradas">Outras entradas (discriminar...)</option><option value="__new_r">+ nova categoria de entrada</option></optgroup>
       <optgroup label="Nao conta">{CATS_NEUTRO.map((c) => <option key={c}>{c}</option>)}</optgroup>
-      {!tipoOfCat(value) && <option>{value}</option>}
+      {!tipoOfCat(value) && !GENERIC_CATS.includes(value) && <option>{value}</option>}
     </select>
   );
 }
@@ -336,7 +370,13 @@ export function reviewCount(months: Record<string, MonthDoc>, setup: GastosSetup
     }
   n += unmatchedTransfers(months, setup).filter((g) => dirOf(g) < 0).length;
   n += accountsStatus(months, setup).rows.filter((r) => r.used && !r.informed).length;
+  if (genericCount(months)) n++;
   return n;
+}
+
+// Lancamentos em "Outros"/"Outras entradas" (sem dizer o que e)
+export function genericCount(months: Record<string, MonthDoc>) {
+  return Object.values(months).reduce((s, md) => s + md.items.filter((g) => GENERIC_CATS.includes(g.cat)).length, 0);
 }
 
 // Para revisar: tudo que deixaria um numero errado, com o conserto de 1 clique quando da
@@ -370,7 +410,8 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
   const overdue = setup.cards.flatMap((c) => cardStatus(c, months).overdue.map((f) => ({ c, f })));
   const st = accountsStatus(months, setup);
   const noBalance = st.rows.filter((r) => r.used && !r.informed);
-  if (!invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length) return null;
+  const generic = genericCount(months);
+  if (!invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length && !generic) return null;
   const applyFixes = async () => {
     setBusy(true);
     const by: Record<string, Record<string, Partial<Gasto>>> = {};
@@ -399,6 +440,8 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
           <li key={c.id + f.m}>Fatura {c.name} de {monthLabel(f.m)} venceu em {dm(f.due)} com {brl(f.rest)} sem pagamento lancado.
             <button className="ghost small-btn" onClick={() => markPaid(c, f)}>ja paguei</button></li>
         ))}
+        {generic > 0 && <li>{generic} {generic > 1 ? "lancamentos" : "lancamento"} em &quot;Outros&quot; sem dizer o que e: na lista, troque a categoria
+          (escolha uma existente, ou &quot;Outros (discriminar...)&quot; para criar a sua). Os iguais do mes mudam juntos e o site lembra para as proximas.</li>}
         {noBalance.map((r) => <li key={r.acc.id}>Conta {r.acc.name} sem saldo conferido: informe o saldo do app do banco em &quot;Contas&quot; para o patrimonio ficar certo.</li>)}
       </ul>
     </div>

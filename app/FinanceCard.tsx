@@ -254,7 +254,7 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, edit, se
   return (
     <>
       <section className="card">
-        <div className="card-head"><h2>Investimentos</h2><button className="link" onClick={() => setEdit(null)}>+ novo investimento</button></div>
+        <div className="card-head"><h2>Investimentos</h2><button className="primary small-btn" onClick={() => setEdit(null)}>+ novo investimento</button></div>
         <div className="kpis">
           <div><span>Investido hoje</span><b>{brl(total)}</b><small className="muted">{live.length} {live.length === 1 ? "investimento" : "investimentos"}, fora cripto</small></div>
           <div><span>Lucro / prejuizo</span><b className={pnlClass(gain)}>{cost > 0 ? signed(gain) : "-"}</b>
@@ -280,11 +280,25 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, edit, se
         <div className="card-head"><h2>Sua carteira</h2><span className="muted small">{brl(total)}</span></div>
         {inv.length ? (
           <div className="table-scroll">
-            <table className="stack fin">
+            <table className="stack fin grouped">
               <thead><tr><th>Investimento</th><th>Quantidade</th><th>Preco</th><th>Valor</th><th>Lucro</th><th>Rende/mes</th><th /></tr></thead>
-              <tbody>
-                {inv.map((r) => <ItemRow key={r.item.id} r={r} onEdit={() => setEdit(r.item.id)} />)}
-              </tbody>
+              {GROUPS.filter((g) => inv.some((r) => r.group === g.key)).map((g) => {
+                const gr = inv.filter((r) => r.group === g.key).sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+                const gv = gr.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.value ?? 0), 0);
+                const gm = gr.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.monthly ?? 0), 0);
+                return (
+                  <tbody key={g.key}>
+                    <tr className="grp-row">
+                      <td colSpan={7}>
+                        <span className="grp-name"><i className={`dot g-${g.key}`} aria-hidden="true" />{g.label}</span>
+                        <span className="grp-nums"><b>{brl(gv)}</b><span className="muted">{total > 0 ? pctS(gv / total) : ""}</span>
+                          {gm > 0 && <span className="muted">rende ~{brl(gm)}/mes</span>}</span>
+                      </td>
+                    </tr>
+                    {gr.map((r) => <ItemRow key={r.item.id} r={r} onEdit={() => setEdit(r.item.id)} />)}
+                  </tbody>
+                );
+              })}
             </table>
           </div>
         ) : (
@@ -298,7 +312,31 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, edit, se
       </section>
 
       <section className="card">
-        <div className="card-head"><h2>Aportes e resgates</h2><button className="link" onClick={onLanc}>ver lancamentos &rsaquo;</button></div>
+        <div className="card-head"><h2>Aportes e resgates</h2><span className="muted small">ultimos 12 meses<button className="link" onClick={onLanc}>ver lancamentos &rsaquo;</button></span></div>
+        {moves.length > 0 && (() => {
+          const per = (out: boolean) => {
+            const by: Record<string, number> = {};
+            for (const g of moves) if ((dirOf(g) < 0) === out) { const k = nameOf(g.inv) ?? "sem destino"; by[k] = (by[k] ?? 0) + g.v; }
+            return Object.entries(by).sort((a, b) => b[1] - a[1]);
+          };
+          const ap = per(true), rs = per(false);
+          return (
+            <div className="flow small">
+              <div className="flow-col">
+                <div className="flow-h"><span>Aplicou (saiu da conta)</span><b className="v-move">{brl(put)}</b></div>
+                {ap.length ? ap.map(([k, v]) => <div key={k} className="flow-r"><span className={k === "sem destino" ? "warn" : ""}>{k}</span><span>{brl(v)}</span></div>)
+                  : <div className="flow-r muted"><span>nada aplicado</span></div>}
+              </div>
+              <div className="flow-col">
+                <div className="flow-h"><span>Resgatou (voltou para a conta)</span><b className="v-move">{brl(took)}</b></div>
+                {rs.length ? rs.map(([k, v]) => <div key={k} className="flow-r"><span className={k === "sem destino" ? "warn" : ""}>{k}</span><span>{brl(v)}</span></div>)
+                  : <div className="flow-r muted"><span>nada resgatado</span></div>}
+              </div>
+              <div className="flow-net"><span>Guardou no periodo</span><b className={put - took >= 0 ? "pos" : "v-out"}>{put - took >= 0 ? "+" : "-"}{brl(Math.abs(put - took))}</b>
+                <small className="muted">{put - took >= 0 ? "aplicou mais do que resgatou" : "resgatou mais do que aplicou"}</small></div>
+            </div>
+          );
+        })()}
         {moves.length ? (
           <div className="table-scroll">
             <table className="stack moves">
@@ -311,7 +349,7 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, edit, se
                       <td data-label="Data">{dm(g.d)}/{g.d.slice(2, 4)}</td>
                       <td data-label="Descricao">{g.desc}</td>
                       <td data-label="Investimento">{nameOf(g.inv) ?? <span className="warn">sem destino</span>}</td>
-                      <td data-label="Movimento" className={out ? "pos" : ""}>{out ? "aplicou" : "resgatou"} {brl(g.v)}</td>
+                      <td data-label="Movimento" className="v-move">{out ? "aplicou " : "resgatou "}<b>{brl(g.v)}</b></td>
                     </tr>
                   );
                 })}
@@ -330,7 +368,7 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, edit, se
       <Dividends rows={rows} fin={fin} />
 
       <section className="card">
-        <div className="card-head"><h2>Bens</h2><span className="muted small">{brl(bensTotal)}<button className="link" onClick={() => setBemEdit(null)}>+ novo bem</button></span></div>
+        <div className="card-head"><h2>Bens</h2><span className="muted small"><b>{brl(bensTotal)}</b><button className="ghost small-btn" onClick={() => setBemEdit(null)}>+ novo bem</button></span></div>
         {bemEdit !== undefined && (
           <div className="loan-panel" ref={bemPanel}>
             <p className="small"><b>{curBem ? `Alterar ${curBem.name}` : "Novo bem"}</b></p>
@@ -339,15 +377,19 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, edit, se
           </div>
         )}
         {bens.length ? (
-          <ul className="pend small">
-            {bens.map((r) => (
-              <li key={r.item.id}>
-                <b>{r.item.name}</b> <span className="tag">{r.kindLabel}</span>{r.item.ignore && <span className="tag">fora do patrimonio</span>}
-                <span className="muted">{r.note}{r.cost !== null && r.value !== null ? ` - pagou ${brl(r.cost, 0)}` : ""}</span>
-                <span className={r.item.ignore ? "muted" : ""}>{r.value !== null ? brl(r.value, 0) : "-"}</span>
-                <button className="link" onClick={() => setBemEdit(r.item.id)}>alterar</button>
-              </li>
-            ))}
+          <ul className="asset-list">
+            {[...bens].sort((a, b) => (b.value ?? 0) - (a.value ?? 0)).map((r) => {
+              const dif = r.cost !== null && r.value !== null ? r.value - r.cost : null;
+              return (
+                <li key={r.item.id} className={r.item.ignore ? "off" : ""}>
+                  <span className="a-name"><b>{r.item.name}</b>
+                    <small className="muted">{r.kindLabel}{r.item.ignore ? " - fora do patrimonio" : ""}{r.note ? ` - ${r.note}` : ""}</small></span>
+                  <span className="a-paid small">{r.cost !== null ? <>pagou {brl(r.cost, 0)}{dif !== null && <small className={pnlClass(dif)}>{signed(dif)}</small>}</> : <span className="muted">-</span>}</span>
+                  <span className="a-v"><b>{r.value !== null ? brl(r.value, 0) : "-"}</b></span>
+                  <button className="link" onClick={() => setBemEdit(r.item.id)}>alterar</button>
+                </li>
+              );
+            })}
           </ul>
         ) : <p className="muted small">Nenhum bem cadastrado.</p>}
         <p className="muted small">Imoveis, terrenos e veiculos: entram no patrimonio &quot;com bens&quot;, separados do financeiro, e nao somam no

@@ -41,7 +41,8 @@ export type Loan = {
   dueDay: number;
   rate?: number; // juros % ao mes (opcional: deixa o saldo devedor mais certo)
   // Parcelas adiantadas (quitadas antes, as ultimas do contrato): data, quantas e quanto pagou
-  prepay?: { id: string; d: string; n: number; v: number }[];
+  // from: "fim" = as ultimas do contrato (termina antes); "AAAA-MM" = as parcelas a partir desse mes (pula esses meses)
+  prepay?: { id: string; d: string; n: number; v: number; from?: string }[];
 };
 export type Fixo = { id: string; desc: string; v: number; cat: string; dia: number; card?: string };
 export type GastosSetup = {
@@ -161,33 +162,50 @@ export function faturaMonth(card: Card, d: string) {
 
 // ---------- emprestimos ----------
 // Parcelas ja vencidas ate hoje, restantes, saldo devedor (valor presente com juros, ou soma simples) e quitacao
-// Parcelas adiantadas ate a data (saem do fim do contrato: o emprestimo termina antes)
-export const prepaidUntil = (l: Loan, today = todayBR()) =>
-  (l.prepay ?? []).filter((p) => p.d <= today).reduce((s, p) => s + p.n, 0);
-// Numero de parcelas que de fato vao vencer (contrato menos as adiantadas)
-const effN = (l: Loan) => Math.max(0, l.n - (l.prepay ?? []).reduce((s, p) => s + p.n, 0));
+// Quais parcelas (indice 0..n-1) cada adiantamento cobre: as ultimas ("fim") ou a partir de um mes
+export function prepaidSlots(l: Loan, today?: string) {
+  const taken = new Map<number, string>(); // indice -> id do adiantamento
+  const list = [...(l.prepay ?? [])].filter((p) => !today || p.d <= today).sort((a, b) => a.d.localeCompare(b.d));
+  for (const p of list) {
+    let left = p.n;
+    if (!p.from || p.from === "fim") {
+      for (let k = l.n - 1; k >= 0 && left > 0; k--) if (!taken.has(k)) { taken.set(k, p.id); left--; }
+    } else {
+      for (let k = Math.max(0, monthDiff(l.first, p.from)); k < l.n && left > 0; k++) if (!taken.has(k)) { taken.set(k, p.id); left--; }
+      for (let k = l.n - 1; k >= 0 && left > 0; k--) if (!taken.has(k)) { taken.set(k, p.id); left--; } // sobrou: tira do fim
+    }
+  }
+  return taken;
+}
+export const prepaidUntil = (l: Loan, today = todayBR()) => prepaidSlots(l, today).size;
 
 export function loanStatus(l: Loan, today = todayBR()) {
-  const pre = prepaidUntil(l, today);
-  const nEff = Math.max(0, l.n - pre);
-  let byDate = 0;
-  for (let k = 0; k < nEff; k++) if (dayIn(addMonths(l.first, k), l.dueDay) <= today) byDate++;
-  const paid = Math.min(l.n, byDate + pre);
+  const pre = prepaidSlots(l, today);
+  const all = prepaidSlots(l);
+  let byDate = 0, nextK = -1, lastK = -1;
+  for (let k = 0; k < l.n; k++) {
+    if (all.has(k)) continue;
+    lastK = k;
+    if (pre.has(k)) continue;
+    if (dayIn(addMonths(l.first, k), l.dueDay) <= today) byDate++;
+    else if (nextK < 0) nextK = k;
+  }
+  const paid = Math.min(l.n, byDate + pre.size);
   const left = l.n - paid;
   const r = (l.rate ?? 0) / 100;
   const saldo = r > 0 ? (l.parcela * (1 - (1 + r) ** -left)) / r : l.parcela * left;
   const prepaidV = (l.prepay ?? []).filter((p) => p.d <= today).reduce((s, p) => s + p.v, 0);
   return {
-    paid, left, saldo, byDate, prepaid: pre,
-    saved: Math.max(0, pre * l.parcela - prepaidV), // desconto por adiantar
-    end: addMonths(l.first, Math.max(0, nEff - 1)), originalEnd: addMonths(l.first, l.n - 1),
-    next: left > 0 ? dayIn(addMonths(l.first, byDate), l.dueDay) : null,
+    paid, left, saldo, byDate, prepaid: pre.size,
+    saved: Math.max(0, pre.size * l.parcela - prepaidV), // desconto por adiantar
+    end: addMonths(l.first, Math.max(0, lastK)), originalEnd: addMonths(l.first, l.n - 1),
+    next: left > 0 && nextK >= 0 ? dayIn(addMonths(l.first, nextK), l.dueDay) : null,
   };
 }
 // Parcela do emprestimo que vence no mes m (null se fora do prazo)
 export function loanInstallment(l: Loan, m: string) {
   const k = monthDiff(l.first, m);
-  return k >= 0 && k < effN(l) ? k + 1 : null;
+  return k >= 0 && k < l.n && !prepaidSlots(l).has(k) ? k + 1 : null;
 }
 export const monthDiff = (a: string, b: string) =>
   (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7));

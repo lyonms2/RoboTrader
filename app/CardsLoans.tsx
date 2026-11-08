@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import {
-  addMonths, cardStatus, commitments, debts, faturaItems, faturaMonth, loanStatus, monthLabel, monthOf, newId, tipoOfCat, todayBR,
+  addMonths, cardStatus, commitments, debts, faturaItems, faturaMonth, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
   type Card, type GastosSetup, type Loan, type MonthDoc,
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
@@ -243,7 +243,7 @@ function CommitmentsChart({ data, which }: { data: Com; which: "cards" | "loans"
           ))}
         </div>
       </figure>
-      <p className="muted small">{which === "cards" ? "Faturas futuras somam as parcelas que ainda vem; compras novas aumentam esses valores." : "Parcelas adiantadas ja saem daqui."}</p>
+      <p className="muted small">{which === "cards" ? "Faturas futuras somam as parcelas que ainda vem; compras novas aumentam esses valores." : "Parcelas adiantadas ja saem daqui. Para mudar quais meses o adiantamento cobre, use \"Adiantar parcelas\"."}</p>
     </section>
   );
 }
@@ -301,16 +301,26 @@ function PrepayForm({ setup, loanId, onPick }: { setup: GastosSetup; loanId: str
   const [d, setD] = useState(todayBR());
   const [n, setN] = useState("1");
   const [v, setV] = useState("");
+  const [from, setFrom] = useState("fim");
+  const nextM = st.next ? monthOf(st.next) : monthOf(todayBR());
   const num = (x: string) => Number(x.replace(/\./g, "").replace(",", ".")) || 0;
   const qty = Math.max(1, Math.round(num(n)));
   const paidV = num(v) > 0 ? num(v) : qty * loan.parcela;
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (qty > st.left) return alert(`So restam ${st.left} parcelas.`);
-    const prepay = [...(loan.prepay ?? []), { id: newId(), d, n: qty, v: Math.round(paidV * 100) / 100 }];
+    const prepay = [...(loan.prepay ?? []), { id: newId(), d, n: qty, v: Math.round(paidV * 100) / 100, from: from === "next" ? nextM : from }];
     await saveSetup({ loans: setup.loans.map((l) => (l.id === loan.id ? { ...l, prepay } : l)) });
-    setN("1"); setV("");
+    setN("1"); setV(""); setFrom("fim");
   };
+  const setPFrom = async (pid: string, f: string) => {
+    await saveSetup({ loans: setup.loans.map((l) => (l.id === loan.id ? { ...l, prepay: (l.prepay ?? []).map((p) => (p.id === pid ? { ...p, from: f } : p)) } : l)) });
+  };
+  // meses do contrato para escolher "a partir de"
+  const monthsOpt = Array.from({ length: loan.n }, (_, k) => addMonths(loan.first, k));
+  const slots = prepaidSlots(loan);
+  const covered = (pid: string) => [...slots].filter(([, id]) => id === pid).map(([k]) => k).sort((a, b) => a - b);
+  const range = (ks: number[]) => ks.length ? `${monthLabel(addMonths(loan.first, ks[0]))}${ks.length > 1 ? ` a ${monthLabel(addMonths(loan.first, ks[ks.length - 1]))}` : ""}` : "-";
   const undo = async (pid: string) => {
     if (!confirm("Desfazer este adiantamento?")) return;
     await saveSetup({ loans: setup.loans.map((l) => (l.id === loan.id ? { ...l, prepay: (l.prepay ?? []).filter((p) => p.id !== pid) } : l)) });
@@ -324,18 +334,32 @@ function PrepayForm({ setup, loanId, onPick }: { setup: GastosSetup; loanId: str
         <label>Data<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
         <label>Quantas parcelas<input value={n} inputMode="numeric" onChange={(e) => setN(e.target.value)} style={{ width: 80 }} /></label>
         <label>Quanto pagou (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder={fmt(qty * loan.parcela)} /></label>
+        <label>Quais parcelas
+          <select value={from} onChange={(e) => setFrom(e.target.value)}>
+            <option value="fim">as ultimas (termina antes)</option>
+            <option value="next">as proximas ({monthLabel(nextM)} em diante)</option>
+            {monthsOpt.map((m) => <option key={m} value={m}>a partir de {monthLabel(m, true)}</option>)}
+          </select>
+        </label>
         <button className="primary" type="submit">Adiantar</button>
       </div>
       <p className="muted small">
         {qty} x {brl(loan.parcela)} = {brl(qty * loan.parcela)}{num(v) > 0 && num(v) < qty * loan.parcela ? ` - desconto de ${brl(qty * loan.parcela - num(v))}` : ""}.
-        As adiantadas saem do fim do contrato: termina em {monthLabel(addMonths(st.end, -qty), true)} (hoje: {monthLabel(st.end, true)}).
+        {from === "fim" ? <>As ultimas parcelas saem do contrato: termina em {monthLabel(addMonths(st.end, -qty), true)} (hoje: {monthLabel(st.end, true)}).</>
+          : <>Esses meses ficam sem parcela; o fim do contrato nao muda.</>}
         O pagamento em si entra pelo extrato da conta (categoria Emprestimos).
       </p>
       {(loan.prepay ?? []).length > 0 && (
         <ul className="pend small">
           {loan.prepay!.map((p) => (
             <li key={p.id}><span className="muted">{dm(p.d)}</span> <b>{p.n} {p.n > 1 ? "parcelas adiantadas" : "parcela adiantada"}</b>
-              <span>{brl(p.v)}</span><button className="link" type="button" onClick={() => undo(p.id)}>desfazer</button></li>
+              <span>{brl(p.v)}</span>
+              <span className="muted">cobre {range(covered(p.id))}</span>
+              <select className="pay-sel" value={!p.from || p.from === "fim" ? "fim" : p.from} onChange={(e) => setPFrom(p.id, e.target.value)} aria-label="Quais parcelas">
+                <option value="fim">as ultimas</option>
+                {monthsOpt.map((m) => <option key={m} value={m}>a partir de {monthLabel(m, true)}</option>)}
+              </select>
+              <button className="link" type="button" onClick={() => undo(p.id)}>desfazer</button></li>
           ))}
         </ul>
       )}

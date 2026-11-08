@@ -6,7 +6,7 @@ import { CARD_PAY_CAT, GENERIC_CATS, INVEST_CAT, TRANSFER_CAT, customCats, setCu
 import type { FinItem } from "@/lib/types";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, fixoExpected, fixoHistory, fixoReajPending, fixoValue, monthOf, newId, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, monthOf, newId, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
   type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 
@@ -1010,7 +1010,7 @@ export function LoanForm({ l, onSave, onCancel }: { l: Loan; onSave: (l: Loan) =
 export function Fixos({ setup, months, onEdit }: { setup: GastosSetup; months?: Record<string, MonthDoc>; onEdit?: (id: string | null) => void }) {
   const m = monthOf(todayBR());
   const val = (f: Fixo) => fixoExpected(f, m, months);
-  const total = setup.fixos.reduce((s, f) => s + val(f), 0);
+  const total = setup.fixos.filter((f) => fixoActive(f, m)).reduce((s, f) => s + val(f), 0);
   return (
     <section className="card">
       <div className="card-head"><h2>Gastos fixos</h2>
@@ -1024,6 +1024,8 @@ export function Fixos({ setup, months, onEdit }: { setup: GastosSetup; months?: 
                 {f.varia && <span className="tag">varia{months && fixoHistory(f, m, months).length ? ": media" : ""}</span>}
                 {f.reaj && <span className={fixoReajPending(f, m) ? "tag warn" : "tag"}>reajuste em {monthLabel(`2000-${String(f.reaj).padStart(2, "0")}`).slice(0, 3)}</span>}
                 {next && <span className="muted">{brl(next.v)} a partir de {monthLabel(next.from)}</span>}
+                {f.start && f.start > m && <span className="tag">comeca em {monthLabel(f.start)}</span>}
+                {f.end && <span className={f.end < m ? "tag warn" : "tag"}>{f.end < m ? "terminou" : "ate"} {monthLabel(f.end)}</span>}
                 <span>{f.varia ? "~" : ""}{brl(val(f))}</span>
                 {onEdit && <button className="link" onClick={() => onEdit(f.id)}>alterar</button>}</li>
             );
@@ -1049,6 +1051,9 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
   const [varia, setVaria] = useState(!!fixo?.varia);
   const [reaj, setReaj] = useState(fixo?.reaj ?? 0);
   const [steps, setSteps] = useState(fixo?.steps ?? []);
+  const [start, setStart] = useState(fixo ? fixo.start ?? "" : cur); // novo fixo comeca neste mes
+  const [end, setEnd] = useState(fixo?.end ?? "");
+  const monthOpts = (back: number, fwd: number) => Array.from({ length: back + fwd + 1 }, (_, i) => addMonths(cur, i - back));
   const finalCat = cat ?? categorize(desc, false, setup.rules).cat;
   const changed = !!fixo && Math.abs(num(v) - curV) > 0.005;
   const submit = async (e: React.FormEvent) => {
@@ -1065,10 +1070,12 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
       }
     }
     st.sort((x, y) => x.from.localeCompare(y.from));
-    const { steps: _s, varia: _v, reaj: _r, ...rest } = fixo ?? ({} as Partial<Fixo>);
-    void _s; void _v; void _r;
+    if (start && end && end < start) return;
+    const { steps: _s, varia: _v, reaj: _r, start: _a, end: _b, ...rest } = fixo ?? ({} as Partial<Fixo>);
+    void _s; void _v; void _r; void _a; void _b;
     const f: Fixo = { ...rest, id: fixo?.id ?? newId(), desc: desc.trim(), v: base, cat: finalCat, dia: Math.max(1, Math.min(31, Math.round(num(dia)) || 1)),
-      ...(st.length ? { steps: st } : {}), ...(varia ? { varia: true } : {}), ...(reaj ? { reaj } : {}) };
+      ...(st.length ? { steps: st } : {}), ...(varia ? { varia: true } : {}), ...(reaj ? { reaj } : {}),
+      ...(start ? { start } : {}), ...(end ? { end } : {}) };
     await saveSetup({ fixos: setup.fixos.some((x) => x.id === f.id) ? setup.fixos.map((x) => (x.id === f.id ? f : x)) : [...setup.fixos, f] });
     onDone();
   };
@@ -1092,6 +1099,20 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
         )}
         <label>Dia<input value={dia} inputMode="numeric" onChange={(e) => setDia(e.target.value)} style={{ width: 60 }} /></label>
         <label>Categoria<CatSelect value={finalCat} onChange={setCat} /></label>
+        <label>Comeca em
+          <select value={start} onChange={(e) => setStart(e.target.value)}>
+            <option value="">desde sempre</option>
+            {start && !monthOpts(36, 24).includes(start) && <option value={start}>{monthLabel(start)}</option>}
+            {monthOpts(36, 24).map((mm) => <option key={mm} value={mm}>{monthLabel(mm)}</option>)}
+          </select>
+        </label>
+        <label>Termina em
+          <select value={end} onChange={(e) => setEnd(e.target.value)}>
+            <option value="">sem fim</option>
+            {end && !monthOpts(36, 60).includes(end) && <option value={end}>{monthLabel(end)}</option>}
+            {monthOpts(36, 60).filter((mm) => !start || mm >= start).map((mm) => <option key={mm} value={mm}>{monthLabel(mm)}</option>)}
+          </select>
+        </label>
         <label>Reajuste anual
           <select value={reaj} onChange={(e) => setReaj(Number(e.target.value))}>
             <option value={0}>nao tem</option>

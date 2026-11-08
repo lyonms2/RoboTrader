@@ -58,7 +58,10 @@ export type Fixo = {
   varia?: boolean; // valor diferente todo mes (luz, agua): a previsao e a media dos ultimos pagamentos
   reaj?: number; // mes do reajuste anual (1-12): avisa para atualizar o valor
   keys?: string[]; // descricoes do extrato ja ligadas a este fixo (aprende quando voce liga um lancamento)
+  start?: string; end?: string; // AAAA-MM: primeiro e ultimo mes do gasto (sem start = desde sempre; sem end = sem fim)
 };
+// O fixo existe neste mes?
+export const fixoActive = (f: Fixo, m: string) => (!f.start || m >= f.start) && (!f.end || m <= f.end);
 export type GastosSetup = {
   cards: Card[]; loans: Loan[]; fixos: Fixo[]; rules: Record<string, string>; categories?: string[];
   customCats?: CustomCat[]; // categorias criadas por voce (ex.: Presentes, Pet)
@@ -338,6 +341,7 @@ export function pendingFor(m: string, items: Gasto[], setup: GastosSetup, months
   };
   const out: { ref: string; desc: string; v: number; cat: string; d: string; card?: string; parc?: [number, number]; varia?: boolean; reaj?: boolean }[] = [];
   for (const f of setup.fixos) {
+    if (!fixoActive(f, m)) continue;
     const v = fixoExpected(f, m, months);
     // valor que varia: tambem vale um gasto da mesma categoria (nao generica) ate 35% longe da media
     const extra = (i: Gasto) => fixoLinked(f, i) || (!!f.varia && i.cat === f.cat && !GENERIC_CATS.includes(f.cat) && Math.abs(i.v - v) <= v * 0.35);

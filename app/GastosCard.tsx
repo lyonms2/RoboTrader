@@ -48,7 +48,7 @@ export function DebtsBlock({ months, setup, onEdit }: { months: Record<string, M
   return (
     <div className="two-col">
       <Cards cards={cards} setup={setup} onEdit={onEdit && ((id) => onEdit("card", id))} />
-      <Loans setup={setup} onEdit={onEdit && ((id) => onEdit("loan", id))} />
+      <Loans setup={setup} months={months} onEdit={onEdit && ((id) => onEdit("loan", id))} />
     </div>
   );
 }
@@ -57,7 +57,7 @@ export function DebtsBlock({ months, setup, onEdit }: { months: Record<string, M
 export function upcoming(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const today = todayBR();
   const limit = new Date(Date.parse(`${today}T12:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10);
-  const out: { d: string; desc: string; v: number; late: boolean }[] = [];
+  const out: { d: string; desc: string; v: number; late: boolean; loan?: boolean }[] = [];
   for (const c of setup.cards) {
     const st = cardStatus(c, months);
     for (const f of st.overdue) out.push({ d: f.due, desc: `Fatura ${c.name} (${monthLabel(f.m)})`, v: f.rest, late: true });
@@ -66,7 +66,11 @@ export function upcoming(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const m = monthOf(today);
   for (const mm of [m, addMonths(m, 1)])
     for (const p of pendingFor(mm, months[mm]?.items ?? [], setup))
-      if (p.d <= limit && !p.card) out.push({ d: p.d, desc: p.desc, v: p.v, late: p.d < today });
+      if (p.d <= limit && !p.card) out.push({ d: p.d, desc: p.desc, v: p.v, late: p.d < today, loan: !!p.parc });
+  // parcelas de emprestimo de meses anteriores que continuam sem pagamento
+  for (const l of setup.loans)
+    for (const r of loanStatus(l, today, { months, setup }).rows)
+      if (r.status === "atrasada" && r.m < m) out.push({ d: r.due, desc: `${l.name} (parcela ${r.k + 1}/${l.n})`, v: l.parcela, late: true, loan: true });
   return out.sort((a, b) => a.d.localeCompare(b.d));
 }
 
@@ -900,7 +904,7 @@ export function CardForm({ c, onSave, onCancel }: { c: Card; onSave: (c: Card) =
   );
 }
 
-export function Loans({ setup, onEdit, onPrepay }: { setup: GastosSetup; onEdit?: (id: string | null) => void; onPrepay?: (id: string) => void }) {
+export function Loans({ setup, months, onEdit, onPrepay }: { setup: GastosSetup; months?: Record<string, MonthDoc>; onEdit?: (id: string | null) => void; onPrepay?: (id: string) => void }) {
   const [form, setForm] = useState<Loan | null>(null);
   const today = todayBR();
   const save = async (l: Loan) => {
@@ -910,7 +914,7 @@ export function Loans({ setup, onEdit, onPrepay }: { setup: GastosSetup; onEdit?
   const remove = async (l: Loan) => {
     if (confirm(`Remover ${l.name}?`)) await saveSetup({ loans: setup.loans.filter((x) => x.id !== l.id) });
   };
-  const list = setup.loans.map((l) => ({ l, st: loanStatus(l, today) }));
+  const list = setup.loans.map((l) => ({ l, st: loanStatus(l, today, months ? { months, setup } : undefined) }));
   const total = list.reduce((s, x) => s + x.st.saldo, 0);
   const monthly = list.filter((x) => x.st.left > 0).reduce((s, x) => s + x.l.parcela, 0);
   return (
@@ -928,7 +932,7 @@ export function Loans({ setup, onEdit, onPrepay }: { setup: GastosSetup; onEdit?
           </div>
           <div className="limit">
             <span className="limit-fill paid" style={{ width: `${(st.paid / l.n) * 100}%` }} />
-            <small className="muted">{st.paid} de {l.n} parcelas pagas{st.prepaid ? ` (${st.prepaid} adiantadas)` : ""} - {st.left > 0 ? `termina em ${monthLabel(st.end, true)}` : "quitado"}
+            <small className="muted">{st.paid} de {l.n} parcelas pagas{st.prepaid ? ` (${st.prepaid} adiantadas)` : ""}{st.late ? `, ${st.late} atrasada${st.late > 1 ? "s" : ""}` : ""} - {st.left > 0 ? `termina em ${monthLabel(st.end, true)}` : "quitado"}
               {st.prepaid > 0 && st.end !== st.originalEnd ? ` (era ${monthLabel(st.originalEnd, true)})` : ""}</small>
           </div>
           {st.saved > 0.005 && <p className="small pos">Economizou {brl(st.saved)} adiantando parcelas</p>}

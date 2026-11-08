@@ -16,7 +16,7 @@ export type Sub = "lanc" | "cards" | "bens";
 const SUBS: { id: Sub; label: string }[] = [
   { id: "lanc", label: "Lancamentos" }, { id: "cards", label: "Cartoes e emprestimos" }, { id: "bens", label: "Contas e bens" },
 ];
-const OLD_SUB: Record<string, Sub> = { gastos: "lanc", invest: "bens", dividas: "bens", resumo: "lanc" };
+const OLD_SUB: Record<string, Sub> = { gastos: "lanc", invest: "bens", dividas: "bens", resumo: "lanc", loans: "cards" };
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
@@ -62,7 +62,11 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
     window.scrollTo({ top: 0 });
   };
   const [entry, setEntry] = useState<{ type: EntryType; id: string | null }>({ type: "mov", id: null });
-  const [cardsEntry, setCardsEntry] = useState<CardsEntry>({ type: "compra", id: null });
+  // "loans" (aviso de parcela atrasada na Visao geral) abre direto em Emprestimos
+  const [cardsEntry, setCardsEntry] = useState<CardsEntry>(() => {
+    try { if (localStorage.getItem("finSub") === "loans") return { type: "loan", id: null }; } catch { /* sem armazenamento */ }
+    return { type: "compra", id: null };
+  });
   // cartao e emprestimo se lancam em Cartoes e emprestimos; o resto em Lancamentos
   const goEdit = (type: EntryType | "card" | "loan", id: string | null) => {
     if (type === "card" || type === "loan") { setCardsEntry({ type, id }); setSub("cards"); return; }

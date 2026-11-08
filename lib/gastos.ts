@@ -43,6 +43,10 @@ export type Loan = {
   // Parcelas adiantadas (quitadas antes, as ultimas do contrato): data, quantas e quanto pagou
   // from: "fim" = as ultimas do contrato (termina antes); "AAAA-MM" = as parcelas a partir desse mes (pula esses meses)
   prepay?: { id: string; d: string; n: number; v: number; from?: string }[];
+  // Parcelas pagas marcadas por voce (botao "pagar"): indice k (0..n-1), data, valor e o lancamento criado na conta
+  pays?: { k: number; d: string; v: number; gid?: string; gm?: string }[];
+  // Parcelas ja pagas quando o emprestimo foi cadastrado (as primeiras). Sem o campo: as vencidas ate LOAN_CUTOFF
+  paidBefore?: number;
 };
 export type Fixo = { id: string; desc: string; v: number; cat: string; dia: number; card?: string };
 export type GastosSetup = {
@@ -179,33 +183,64 @@ export function prepaidSlots(l: Loan, today?: string) {
 }
 export const prepaidUntil = (l: Loan, today = todayBR()) => prepaidSlots(l, today).size;
 
-export function loanStatus(l: Loan, today = todayBR()) {
+// Emprestimos cadastrados antes do botao "pagar": parcelas vencidas ate esta data contam como pagas
+const LOAN_CUTOFF = "2026-11-08";
+export const loanDue = (l: Loan, k: number) => dayIn(addMonths(l.first, k), l.dueDay);
+export function paidBeforeOf(l: Loan) {
+  if (l.paidBefore !== undefined) return Math.max(0, Math.min(l.n, l.paidBefore));
+  let n = 0;
+  for (let k = 0; k < l.n; k++) if (loanDue(l, k) <= LOAN_CUTOFF) n++;
+  return n;
+}
+export type LoanRow = {
+  k: number; m: string; due: string;
+  status: "paga" | "adiantada" | "atrasada" | "aberta"; // aberta = ainda nao venceu
+  via?: "antes" | "voce" | "extrato" | "adiantada"; d?: string; v?: number;
+};
+// Cronograma do emprestimo, parcela por parcela. Paga = marcada por voce, ja paga no cadastro, adiantada,
+// ou achada no extrato do mes do vencimento (lancamento ligado ao emprestimo ou em Emprestimos com o mesmo valor)
+export function loanRows(l: Loan, today = todayBR(), ctx?: { months: Record<string, MonthDoc>; setup: GastosSetup }): LoanRow[] {
   const pre = prepaidSlots(l, today);
-  const all = prepaidSlots(l);
-  let byDate = 0, nextK = -1, lastK = -1;
+  const before = paidBeforeOf(l);
+  const pays = new Map((l.pays ?? []).map((p) => [p.k, p]));
+  const rows: LoanRow[] = [];
   for (let k = 0; k < l.n; k++) {
-    if (all.has(k)) continue;
-    lastK = k;
-    if (pre.has(k)) continue;
-    if (dayIn(addMonths(l.first, k), l.dueDay) <= today) byDate++;
-    else if (nextK < 0) nextK = k;
+    const m = addMonths(l.first, k), due = loanDue(l, k);
+    const p = pays.get(k);
+    if (p) rows.push({ k, m, due, status: "paga", via: "voce", d: p.d, v: p.v });
+    else if (pre.has(k)) rows.push({ k, m, due, status: "adiantada", via: "adiantada" });
+    else if (k < before) rows.push({ k, m, due, status: "paga", via: "antes" });
+    else if (ctx && ctx.months[m]?.items.length && !pendingFor(m, ctx.months[m].items, ctx.setup).some((x) => x.ref === l.id))
+      rows.push({ k, m, due, status: "paga", via: "extrato" });
+    else rows.push({ k, m, due, status: due < today ? "atrasada" : "aberta" });
   }
-  const paid = Math.min(l.n, byDate + pre.size);
+  return rows;
+}
+
+export function loanStatus(l: Loan, today = todayBR(), ctx?: { months: Record<string, MonthDoc>; setup: GastosSetup }) {
+  const rows = loanRows(l, today, ctx);
+  const all = prepaidSlots(l);
+  const pre = rows.filter((r) => r.status === "adiantada").length;
+  const paid = rows.filter((r) => r.status === "paga" || r.status === "adiantada").length;
+  const late = rows.filter((r) => r.status === "atrasada");
   const left = l.n - paid;
   const r = (l.rate ?? 0) / 100;
   const saldo = r > 0 ? (l.parcela * (1 - (1 + r) ** -left)) / r : l.parcela * left;
   const prepaidV = (l.prepay ?? []).filter((p) => p.d <= today).reduce((s, p) => s + p.v, 0);
+  let lastK = -1;
+  for (let k = 0; k < l.n; k++) if (!all.has(k)) lastK = k;
+  const nextRow = rows.find((x) => x.status === "atrasada" || x.status === "aberta");
   return {
-    paid, left, saldo, byDate, prepaid: pre.size,
-    saved: Math.max(0, pre.size * l.parcela - prepaidV), // desconto por adiantar
+    rows, paid, left, saldo, prepaid: pre, late: late.length, lateV: late.length * l.parcela,
+    saved: Math.max(0, pre * l.parcela - prepaidV), // desconto por adiantar
     end: addMonths(l.first, Math.max(0, lastK)), originalEnd: addMonths(l.first, l.n - 1),
-    next: left > 0 && nextK >= 0 ? dayIn(addMonths(l.first, nextK), l.dueDay) : null,
+    next: nextRow ? nextRow.due : null, nextK: nextRow ? nextRow.k : null,
   };
 }
 // Parcela do emprestimo que vence no mes m (null se fora do prazo)
 export function loanInstallment(l: Loan, m: string) {
   const k = monthDiff(l.first, m);
-  return k >= 0 && k < l.n && !prepaidSlots(l).has(k) ? k + 1 : null;
+  return k >= 0 && k < l.n && !prepaidSlots(l).has(k) && !(l.pays ?? []).some((p) => p.k === k) && k >= paidBeforeOf(l) ? k + 1 : null;
 }
 export const monthDiff = (a: string, b: string) =>
   (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7));
@@ -257,10 +292,11 @@ export function pendingFor(m: string, items: Gasto[], setup: GastosSetup) {
   const used = new Set<string>();
   // Ja pago se ha lancamento ligado a ele; ou um gasto do mes com o mesmo valor (2%), de preferencia na mesma categoria
   // (o aluguel pago por Pix costuma cair em "Pix e transferencias", por isso nao exige a categoria)
-  const match = (ref: string, v: number, cat: string) => {
-    const free = items.filter((i) => !used.has(i.id) && i.tipo === "gasto");
-    const hit = free.find((i) => i.ref === ref) ?? free.find((i) => i.cat === cat && Math.abs(i.v - v) <= v * 0.02)
-      ?? free.find((i) => Math.abs(i.v - v) <= v * 0.02);
+  const match = (ref: string, v: number, cat: string, k?: number) => {
+    // lancamento ligado a outra parcela (ex.: parcela atrasada paga neste mes) nao conta para esta
+    const free = items.filter((i) => !used.has(i.id) && i.tipo === "gasto" && !(i.ref && i.ref !== ref) && !(k && i.ref === ref && i.parc && i.parc[0] !== k));
+    const hit = free.find((i) => i.ref === ref) ?? free.find((i) => !i.ref && i.cat === cat && Math.abs(i.v - v) <= v * 0.02)
+      ?? (k ? undefined : free.find((i) => !i.ref && Math.abs(i.v - v) <= v * 0.02));
     if (hit) used.add(hit.id);
     return !!hit;
   };
@@ -268,7 +304,7 @@ export function pendingFor(m: string, items: Gasto[], setup: GastosSetup) {
   for (const f of setup.fixos) if (!match(f.id, f.v, f.cat)) out.push({ ref: f.id, desc: f.desc, v: f.v, cat: f.cat, d: dayIn(m, f.dia), card: f.card });
   for (const l of setup.loans) {
     const k = loanInstallment(l, m);
-    if (k && !match(l.id, l.parcela, "Emprestimos")) out.push({ ref: l.id, desc: `${l.name} (parcela ${k}/${l.n})`, v: l.parcela, cat: "Emprestimos", d: dayIn(m, l.dueDay), parc: [k, l.n] });
+    if (k && !match(l.id, l.parcela, "Emprestimos", k)) out.push({ ref: l.id, desc: `${l.name} (parcela ${k}/${l.n})`, v: l.parcela, cat: "Emprestimos", d: dayIn(m, l.dueDay), parc: [k, l.n] });
   }
   return out;
 }
@@ -460,7 +496,7 @@ export function parcOf(desc: string): [number, number] | undefined {
 // Dividas em aberto: saldo dos emprestimos + faturas de cartao ainda nao vencidas (inclui parcelas futuras)
 export function debts(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const today = todayBR();
-  const loans = setup.loans.reduce((s, l) => s + loanStatus(l, today).saldo, 0);
+  const loans = setup.loans.reduce((s, l) => s + loanStatus(l, today, { months, setup }).saldo, 0);
   const cards = setup.cards.map((c) => cardStatus(c, months, today));
   return { loans, cards: cards.reduce((s, c) => s + c.open, 0), total: loans + cards.reduce((s, c) => s + c.open, 0) };
 }

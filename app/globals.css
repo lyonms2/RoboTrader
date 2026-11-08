@@ -475,3 +475,29 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 .subtabs.inner { margin-top: -4px; }
 .subtabs.inner .pill { font-size: 13px; padding: 5px 12px; }
 .subtabs.inner .pill .muted { margin-left: 6px; font-size: 12px; }
+
+/* Emprestimos: um por linha, recolhidos */
+.loan { border-top: 1px solid var(--line); }
+.loan-head { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 2px; cursor: pointer; flex-wrap: wrap; }
+.loan-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.loan-caret { color: var(--muted); width: 12px; }
+.loan-name { display: flex; flex-direction: column; gap: 2px; flex: 1 1 200px; }
+.loan-badge { margin-left: auto; }
+.loan-body { padding: 0 2px 14px 22px; }
+.loan-actions { gap: 8px; margin: 10px 0; }
+.loan-pay, .loan-form { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 8px 0 12px; }
+.loan-rows tr.late td { background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.loan-rows tr.nextrow td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.sit { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
+.sit-paga { color: var(--buy); border-color: color-mix(in srgb, var(--buy) 40%, transparent); }
+.sit-adiantada { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.sit-atrasada { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+.sit-aberta { color: var(--muted); }
+@media (max-width: 600px) { .loan-body { padding-left: 4px; } }
+.loan-rows .cell { display: flex; flex-direction: column; gap: 2px; }
+.loan-actions .primary { padding: 6px 12px; font-size: 13px; }
+.loan-rows { width: 100%; font-size: 13px; }
+.loan-rows td, .loan-rows th { padding: 6px 6px; }
+.loan-body .limit small { white-space: normal; }
+@media (max-width: 600px) { .loan-rows td, .loan-rows th { padding: 6px 3px; } .loan-rows .sit + small { display: block; } }
+@media (max-width: 600px) { .loan-body .loan-actions { margin-top: 24px; } }

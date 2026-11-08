@@ -1,11 +1,11 @@
 "use client";
 import { useState } from "react";
 import {
-  addMonths, cardStatus, commitments, debts, faturaItems, faturaMonth, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
-  type Card, type GastosSetup, type Loan, type MonthDoc,
+  accountsOf, addMonths, cardStatus, commitments, debts, faturaItems, faturaMonth, loanDue, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
+  type Card, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
-import { CardForm, CatSelect, ImportPanel, LoanForm, Loans, QuickAdd, saveMonth, saveSetup } from "./GastosCard";
+import { CardForm, CatSelect, ImportPanel, LoanForm, QuickAdd, saveMonth, saveSetup } from "./GastosCard";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
@@ -14,7 +14,6 @@ const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 export type CardsEntry = { type: "compra" | "import" | "card" | "loan" | "prepay"; id: string | null };
 const TYPES: { id: CardsEntry["type"]; label: string }[] = [
   { id: "compra", label: "Compra no cartao" }, { id: "import", label: "Importar fatura" }, { id: "card", label: "Cadastrar cartao" },
-  { id: "loan", label: "Cadastrar emprestimo" }, { id: "prepay", label: "Adiantar parcelas" },
 ];
 const STATUS: Record<string, string> = { aberta: "aberta (ainda recebendo compras)", fechada: "fechada, a pagar", paga: "paga", vencida: "vencida sem pagamento" };
 
@@ -52,7 +51,7 @@ export default function CardsLoans({ months, setup, invest, entry, setEntry }: {
       {nav}
       {part === "cards"
         ? <CardsPart months={months} setup={setup} invest={invest} entry={entry} setEntry={setEntry} owed={d.cards} com={com} />
-        : <LoansPart setup={setup} entry={entry} setEntry={setEntry} owed={d.loans} com={com} />}
+        : <LoansPart months={months} setup={setup} entry={entry} owed={d.loans} com={com} />}
     </>
   );
 }
@@ -109,36 +108,179 @@ function CardsPart({ months, setup, invest, entry, setEntry, owed, com }: {
   );
 }
 
-function LoansPart({ setup, entry, setEntry, owed, com }: {
-  setup: GastosSetup; entry: CardsEntry; setEntry: (e: CardsEntry) => void; owed: number; com: Com;
+function LoansPart({ months, setup, entry, owed, com }: {
+  months: Record<string, MonthDoc>; setup: GastosSetup; entry: CardsEntry; owed: number; com: Com;
 }) {
   const next = com[1];
-  const sts = setup.loans.map((l) => ({ l, st: loanStatus(l) }));
+  const ctx = { months, setup };
+  const sts = setup.loans.map((l) => ({ l, st: loanStatus(l, todayBR(), ctx) }));
   const active = sts.filter((x) => x.st.left > 0);
   const lastEnd = active.reduce((m, x) => (x.st.end > m ? x.st.end : m), "");
   const saved = sts.reduce((s, x) => s + x.st.saved, 0);
-  const top = () => window.scrollTo({ top: 0, behavior: "smooth" });
+  const late = sts.reduce((s, x) => s + x.st.late, 0);
+  const lateV = sts.reduce((s, x) => s + x.st.lateV, 0);
+  const [adding, setAdding] = useState(!setup.loans.length);
+  const saveLoan = async (l: Loan) => {
+    await saveSetup({ loans: setup.loans.some((x) => x.id === l.id) ? setup.loans.map((x) => (x.id === l.id ? l : x)) : [...setup.loans, l] });
+    setAdding(false);
+  };
   return (
     <>
       <section className="card">
         <h2>Emprestimos</h2>
         <div className="kpis">
           <div><span>Devendo em emprestimos</span><b>{brl(owed)}</b><small className="muted">saldo devedor de {active.length} {active.length === 1 ? "emprestimo" : "emprestimos"}</small></div>
-          <div><span>Parcelas em {monthLabel(next.m)}</span><b>{brl(next.loans)}</b><small className="muted">sai da conta todo mes</small></div>
+          {late > 0 && <div><span>Parcelas atrasadas</span><b className="warn">{late} - {brl(lateV)}</b><small className="muted">venceram sem pagamento</small></div>}
+          <div><span>Parcelas em {monthLabel(next.m)}</span><b>{brl(next.loans)}</b><small className="muted">previsto</small></div>
           <div><span>Livre de emprestimos em</span><b>{lastEnd ? monthLabel(lastEnd, true) : "-"}</b><small className="muted">ultima parcela</small></div>
           {saved > 0.005 && <div><span>Economizou adiantando</span><b className="pos">{brl(saved)}</b></div>}
         </div>
-        <p className="muted small">As parcelas saem pelo extrato da conta (categoria Emprestimos). Aqui fica o contrato: quanto falta, quando termina e os adiantamentos.</p>
+        <p className="muted small">Abra o emprestimo para ver as parcelas. Parcela paga pelo extrato e reconhecida sozinha;
+          se pagou e nao aparece, use &quot;pagar&quot;. Parcela vencida sem pagamento fica como atrasada.</p>
       </section>
 
-      <section className="card entry-card">
-        <CardsEntryPanel months={{}} setup={setup} invest={[]} entry={entry} setEntry={setEntry} />
+      <section className="card">
+        <div className="card-head"><h2>Seus emprestimos</h2>
+          {!adding && <button className="ghost small-btn" onClick={() => setAdding(true)}>+ novo emprestimo</button>}</div>
+        {adding && (
+          <div className="loan-form">
+            <LoanForm l={{ id: newId(), name: "", parcela: 0, n: 12, first: monthOf(todayBR()), dueDay: 10 }} onSave={saveLoan} onCancel={() => setAdding(false)} />
+          </div>
+        )}
+        {sts.map(({ l, st }) => (
+          <LoanItem key={l.id} l={l} st={st} months={months} setup={setup} single={sts.length === 1}
+            initial={entry.id === l.id ? (entry.type === "prepay" ? "prepay" : "edit") : null} />
+        ))}
+        {!sts.length && !adding && <p className="muted small">Nenhum emprestimo cadastrado.</p>}
       </section>
-
-      <Loans setup={setup} onEdit={(id) => { setEntry({ type: "loan", id }); top(); }} onPrepay={(id) => { setEntry({ type: "prepay", id }); top(); }} />
 
       <CommitmentsChart data={com} which="loans" />
     </>
+  );
+}
+
+type LStat = ReturnType<typeof loanStatus>;
+const SIT: Record<LoanRow["status"], string> = { paga: "paga", adiantada: "adiantada", atrasada: "atrasada", aberta: "a vencer" };
+
+// Um emprestimo: linha recolhida com o resumo; aberto mostra as acoes (pagar, adiantar, alterar) e as parcelas
+function LoanItem({ l, st, months, setup, single, initial }: {
+  l: Loan; st: LStat; months: Record<string, MonthDoc>; setup: GastosSetup; single: boolean; initial: "prepay" | "edit" | null;
+}) {
+  const [open, setOpen] = useState(single || !!initial || st.late > 0);
+  const [mode, setMode] = useState<string | null>(initial); // "pay:k" | "prepay" | "edit"
+  const [all, setAll] = useState(false);
+  const rows = st.rows;
+  const first = rows.findIndex((r) => r.status === "atrasada" || r.status === "aberta");
+  // recolhido: as 2 ultimas pagas, as atrasadas e as 4 proximas
+  const shown = all ? rows : rows.filter((r, i) => r.status === "atrasada" || (first >= 0 ? i >= first - 2 && i < first + 4 : i >= rows.length - 3));
+  const toggle = (m: string) => setMode(mode === m ? null : m);
+  const undoPay = async (k: number) => {
+    const p = (l.pays ?? []).find((x) => x.k === k);
+    if (!p || !confirm(`Desfazer o pagamento da parcela ${k + 1}?`)) return;
+    if (p.gid && p.gm && months[p.gm]) await saveMonth(p.gm, months[p.gm].items.filter((g) => g.id !== p.gid));
+    await saveSetup({ loans: setup.loans.map((x) => (x.id === l.id ? { ...x, pays: (x.pays ?? []).filter((y) => y.k !== k) } : x)) });
+  };
+  const remove = async () => {
+    if (confirm(`Remover ${l.name}? (os lancamentos na conta continuam)`)) await saveSetup({ loans: setup.loans.filter((x) => x.id !== l.id) });
+  };
+  const saveLoan = async (nl: Loan) => { await saveSetup({ loans: setup.loans.map((x) => (x.id === l.id ? nl : x)) }); setMode(null); };
+  return (
+    <div className={`loan${open ? " open" : ""}`}>
+      <button className="loan-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="loan-caret" aria-hidden>{open ? "\u25BE" : "\u25B8"}</span>
+        <span className="loan-name"><b>{l.name}</b><small className="muted">{st.paid} de {l.n} pagas - saldo {brl(st.saldo, 0)}</small></span>
+        <span className="loan-badge small">
+          {st.late > 0 ? <span className="warn">{st.late} {st.late > 1 ? "atrasadas" : "atrasada"}</span>
+            : st.next ? <span className="muted">proxima {dm(st.next)} - {brl(l.parcela, 0)}</span> : <span className="pos">quitado</span>}
+        </span>
+      </button>
+      {open && (
+        <div className="loan-body">
+          <div className="limit">
+            <span className="limit-fill paid" style={{ width: `${(st.paid / l.n) * 100}%` }} />
+            <small className="muted">{st.paid} de {l.n} parcelas pagas{st.prepaid ? ` (${st.prepaid} adiantadas)` : ""} - {st.left > 0 ? `termina em ${monthLabel(st.end, true)}` : "quitado"}
+              {st.prepaid > 0 && st.end !== st.originalEnd ? ` (era ${monthLabel(st.originalEnd, true)})` : ""}
+              {" "}- parcela {brl(l.parcela)} dia {l.dueDay}{l.rate ? `, juros ${fmt(l.rate)}% ao mes` : ""}</small>
+          </div>
+          {st.saved > 0.005 && <p className="small pos">Economizou {brl(st.saved)} adiantando parcelas</p>}
+          <div className="row wrapline loan-actions">
+            {st.nextK !== null && <button className={mode === `pay:${st.nextK}` ? "primary" : "ghost small-btn"} onClick={() => toggle(`pay:${st.nextK}`)}>
+              Pagar parcela {st.nextK + 1}</button>}
+            {st.left > 0 && <button className={mode === "prepay" ? "primary" : "ghost small-btn"} onClick={() => toggle("prepay")}>Adiantar parcelas</button>}
+            <button className={mode === "edit" ? "primary" : "ghost small-btn"} onClick={() => toggle("edit")}>Alterar</button>
+            <button className="ghost small-btn" onClick={remove}>Remover</button>
+          </div>
+          {mode?.startsWith("pay:") && <PayForm key={mode} l={l} k={Number(mode.slice(4))} months={months} setup={setup} onDone={() => setMode(null)} />}
+          {mode === "prepay" && <PrepayForm setup={setup} loanId={l.id} onPick={() => undefined} />}
+          {mode === "edit" && <LoanForm l={l} onSave={saveLoan} onCancel={() => setMode(null)} />}
+
+          <div className="table-scroll">
+            <table className="loan-rows">
+              <thead><tr><th>Parcela</th><th>Valor</th><th>Situacao</th><th /></tr></thead>
+              <tbody>
+                {shown.map((r) => (
+                  <tr key={r.k} className={r.status === "atrasada" ? "late" : r.k === st.nextK ? "nextrow" : ""}>
+                    <td><span className="cell">{r.k + 1}/{l.n}<small className="muted">vence {dm(r.due)}/{r.due.slice(2, 4)}</small></span></td>
+                    <td data-label="Valor">{brl(r.v ?? l.parcela)}</td>
+                    <td data-label="Situacao"><span className={`sit sit-${r.status}`}>{SIT[r.status]}</span>
+                      {r.via === "extrato" && <small className="muted"> pelo extrato</small>}
+                      {r.via === "voce" && r.d && <small className="muted"> em {dm(r.d)}</small>}</td>
+                    <td className="actions">
+                      {(r.status === "atrasada" || r.status === "aberta") && <button className="link" onClick={() => toggle(`pay:${r.k}`)}>pagar</button>}
+                      {r.via === "voce" && <button className="link" onClick={() => undoPay(r.k)}>desfazer</button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {rows.length > shown.length || all ? <button className="link small" onClick={() => setAll(!all)}>{all ? "mostrar menos" : `ver todas as ${l.n} parcelas`}</button> : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Pagar uma parcela: quanto, quando e de qual conta (lanca a saida na conta) - ou so marcar como paga
+function PayForm({ l, k, months, setup, onDone }: { l: Loan; k: number; months: Record<string, MonthDoc>; setup: GastosSetup; onDone: () => void }) {
+  const accounts = accountsOf(setup);
+  const [v, setV] = useState(fmt(l.parcela));
+  const [d, setD] = useState(todayBR());
+  const [acc, setAcc] = useState(accounts[0]?.id ?? "");
+  const num = (x: string) => Number(x.replace(/\./g, "").replace(",", ".")) || 0;
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = num(v);
+    if (!(val > 0)) return;
+    const pay: NonNullable<Loan["pays"]>[number] = { k, d, v: Math.round(val * 100) / 100 };
+    if (acc) {
+      const gm = monthOf(d), gid = newId();
+      const g: Gasto = { id: gid, d, desc: `${l.name} (parcela ${k + 1}/${l.n})`, v: pay.v, tipo: "gasto", cat: "Emprestimos", src: "emprestimo", ref: l.id, parc: [k + 1, l.n], acc };
+      await saveMonth(gm, [...(months[gm]?.items ?? []), g]);
+      pay.gid = gid; pay.gm = gm;
+    }
+    await saveSetup({ loans: setup.loans.map((x) => (x.id === l.id ? { ...x, pays: [...(x.pays ?? []).filter((y) => y.k !== k), pay] } : x)) });
+    onDone();
+  };
+  const due = loanDue(l, k);
+  return (
+    <form className="fin-form loan-pay" onSubmit={save}>
+      <p className="small"><b>Parcela {k + 1}/{l.n}</b> <span className="muted">vence {dm(due)}/{due.slice(2, 4)}</span></p>
+      <div className="row wrapline">
+        <label>Quanto pagou (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
+        <label>Quando<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
+        <label>De qual conta
+          <select value={acc} onChange={(e) => setAcc(e.target.value)}>
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            <option value="">nao lancar saida (ja esta no extrato / paguei por fora)</option>
+          </select>
+        </label>
+        <button className="primary" type="submit">Pagar</button>
+        <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
+      </div>
+      <p className="muted small">{acc ? "Lanca a saida nessa conta (categoria Emprestimos) e marca a parcela como paga." : "So marca a parcela como paga; o saldo da conta nao muda."}
+        {num(v) > l.parcela * 1.005 ? ` Pagou ${brl(num(v) - l.parcela)} a mais (juros/multa?).` : ""}</p>
+    </form>
   );
 }
 

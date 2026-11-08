@@ -288,7 +288,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         {tab === "geral" && (
           <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} sync={cfg.lighter?.enabled ? sync : null} onTab={setTab}
             money={{ cfg, fin: finance, wallet: walletOk ? wallet : null, spend, debt, months, setup: gSetup, nwHist }}
-            onFin={(s: FinSub) => { try { localStorage.setItem("finSub", s); } catch { /* sem armazenamento */ } setTab("financas"); }} />
+            onFin={(s: FinSub | "loans") => { try { localStorage.setItem("finSub", s); } catch { /* sem armazenamento */ } setTab("financas"); }} />
         )}
         {inCrypto && (
           <nav className="subtabs" role="tablist" aria-label="Cripto">
@@ -341,7 +341,7 @@ type Money = Parameters<typeof PatrimonioCard>[0] extends infer P ? Omit<P, "onB
 // Visao geral: patrimonio, o que fazer hoje, o mes e os proximos pagamentos, evolucao e, depois, o robo e a cripto
 function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onFin }: {
   cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null;
-  sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub) => void;
+  sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub | "loans") => void;
 }) {
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
   // Posicoes do robo e lucro aberto
@@ -363,7 +363,7 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
   const realized = Object.values(cfg.realized ?? {}).reduce((a, b) => a + b, 0);
 
   // O que fazer hoje: sinais do robo, acoes das fichas e avisos da carteira
-  type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId; fin?: FinSub };
+  type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId; fin?: FinSub | "loans" };
   const todo: Todo[] = [];
   for (const l of [...latest].sort((a, b) => SYMBOLS.indexOf(a.symbol) - SYMBOLS.indexOf(b.symbol))) {
     const coin = l.symbol.replace("USDT", "");
@@ -391,7 +391,7 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
   if (sync?.shorts.length) todo.push({ tone: "warn", who: "Lighter", text: `posicao vendida (${sync.shorts.join(", ")}) fica fora da conta`, tab: "carteira" });
   // Financas: pagamentos vencidos e pontos para revisar
   for (const p of upcoming(money.months, money.setup).filter((x) => x.late))
-    todo.push({ tone: "warn", who: "Pagar", text: `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: "lanc" });
+    todo.push({ tone: "warn", who: "Pagar", text: `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : "lanc" });
   for (const b of budgetAlerts(money.months, money.setup))
     todo.push({ tone: "warn", who: "Cartao", text: `${b.c.name}: R$ ${fmt(b.used, 0)} na fatura aberta, ${fmt(b.pct * 100, 0)}% do planejado (R$ ${fmt(b.c.budget!, 0)})`, tab: "financas", fin: "cards" });
   const rc = reviewCount(money.months, money.setup);

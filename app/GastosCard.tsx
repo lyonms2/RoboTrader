@@ -191,6 +191,22 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
             {onBens && <button className="link" onClick={onBens}>ver contas</button>}
           </p>
         )}
+        {(() => {
+          // dinheiro que so mudou de lugar (cofrinho, cripto, entre contas): entra/sai da conta, mas nao e renda nem gasto
+          const moves = items.filter((g) => !g.card && g.tipo === "neutro" && !isFaturaOut(g));
+          if (!moves.length) return null;
+          const byCat: Record<string, { in: number; out: number }> = {};
+          for (const g of moves) { const b = (byCat[g.cat] ??= { in: 0, out: 0 }); if (dirOf(g) > 0) b.in += g.v; else b.out += g.v; }
+          const mIn = moves.filter((g) => dirOf(g) > 0).reduce((t, g) => t + g.v, 0);
+          const mOut = moves.filter((g) => dirOf(g) < 0).reduce((t, g) => t + g.v, 0);
+          return (
+            <p className="small acct-line">
+              Na conta: entrou <b className="pos">{brl(s.receitas + mIn)}</b> <span className="muted">(renda {brl(s.receitas, 0)}{mIn ? ` + ${brl(mIn, 0)} de dinheiro seu voltando` : ""})</span>
+              {" "}- saiu <b>{brl(s.gastos + mOut)}</b> <span className="muted">(gastos {brl(s.gastos, 0)}{mOut ? ` + ${brl(mOut, 0)} guardado/movido` : ""})</span>
+              <br /><span className="muted">{Object.entries(byCat).map(([c, b]) => `${c}: ${[b.out ? `saiu ${brl(b.out, 0)}` : "", b.in ? `entrou ${brl(b.in, 0)}` : ""].filter(Boolean).join(", ")}`).join(" | ")}</span>
+            </p>
+          );
+        })()}
         <Review months={months} setup={setup} invest={invest} />
         {pending.length > 0 && (
           <>

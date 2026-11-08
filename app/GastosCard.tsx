@@ -707,7 +707,9 @@ export function AccountsPanel({ months, setup, m, onEdit }: { months: Record<str
         {st.rows.map((r) => (
           <li key={r.acc.id}>
             <span className="acc-name">{r.acc.name}</span>
-            <span><b className={r.now < 0 ? "neg" : ""}>{brl(r.now)}</b> <span className="muted">hoje</span></span>
+            <span><b className={r.now < 0 ? "neg" : ""}>{brl(r.now)}</b> <span className="muted">hoje</span>
+              {isNow && (() => { const lt = accountMoves(months, accounts, r.acc.id, todayBR(), `${m}-31`); const sum = lt.reduce((t, x) => t + x.v, 0);
+                return lt.length ? <span className="muted"> - {brl(r.now + sum)} depois de {lt.length} {lt.length > 1 ? "agendados" : "agendado"}</span> : null; })()}</span>
             <span className={r.informed ? "muted" : "warn"}>
               {r.acc.noStatement ? (r.now > 0.005 ? `sem extrato: ${brl(r.now)} recebidos ainda a discriminar (lance o que foi pago com "Pago com: ${r.acc.name}")`
                 : r.now < -0.005 ? `sem extrato: saiu ${brl(-r.now)} a mais do que entrou - falta ligar a transferencia que mandou dinheiro para ela (Pix como "Transferencia entre contas" -> ${r.acc.name}), ou algum gasto foi lancado nela por engano`
@@ -721,6 +723,8 @@ export function AccountsPanel({ months, setup, m, onEdit }: { months: Record<str
             {open === r.acc.id && (() => {
               const end = isNow ? todayBR() : `${m}-31`;
               const mv = accountMoves(months, accounts, r.acc.id, startDay, end);
+              // lancamentos com data futura neste mes (ex.: aluguel do dia 10): ainda nao mexeram no saldo de hoje
+              const later = isNow ? accountMoves(months, accounts, r.acc.id, end, `${m}-31`) : [];
               let bal = r.start;
               const anchorIn = r.acc.at && r.acc.at > startDay && r.acc.at <= end;
               return (
@@ -741,6 +745,23 @@ export function AccountsPanel({ months, setup, m, onEdit }: { months: Record<str
                         );
                       })}
                       <tr><td>{isNow ? "hoje" : "fim"}</td><td><b>{isNow ? "saldo hoje" : "saldo no fim do mes"}</b>{anchorIn ? <small className="muted"> (conferido em {dm(r.acc.at!)}: {brl(r.acc.balance!)})</small> : null}</td><td /><td><b>{brl(r.end)}</b></td></tr>
+                      {later.length > 0 && (() => {
+                        let b2 = r.end;
+                        return <>
+                          {later.map(({ g, v, via }) => {
+                            b2 += v;
+                            return (
+                              <tr key={"f" + g.id + via} className="sched">
+                                <td>{dm(g.d)}</td>
+                                <td><span className="cell">{g.desc}<small className="muted">agendado - {g.cat}{via === "transferencia" ? " - veio de outra conta sua" : ""}</small></span></td>
+                                <td className={v >= 0 ? "pos" : "v-out"}>{v >= 0 ? "+" : "-"}{brl(Math.abs(v))}</td>
+                                <td>{brl(b2)}</td>
+                              </tr>
+                            );
+                          })}
+                          <tr><td>fim</td><td><b>previsto no fim do mes</b><small className="muted"> (depois dos agendados)</small></td><td /><td><b>{brl(b2)}</b></td></tr>
+                        </>;
+                      })()}
                     </tbody>
                   </table>
                   {mv.length === 0 && <p className="muted">Nenhum movimento neste mes.</p>}

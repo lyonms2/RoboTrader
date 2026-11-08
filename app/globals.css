@@ -621,3 +621,4 @@ tr.grp-row:hover > td { background: color-mix(in srgb, var(--accent) 4%, transpa
 .accts li .acc-btns { margin-left: auto; }
 .accts li .acc-btns button.link { margin-left: 0; }
 .acc-moves .cell { display: flex; flex-direction: column; }
+.acc-moves tr.sched td { opacity: .7; font-style: italic; }

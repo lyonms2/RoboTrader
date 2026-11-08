@@ -5,15 +5,15 @@ import {
   type Card, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
-import { CardForm, CatSelect, ImportPanel, LoanForm, QuickAdd, saveMonth, saveSetup } from "./GastosCard";
+import { CardForm, CatSelect, LoanForm, QuickAdd, saveMonth, saveSetup } from "./GastosCard";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
-export type CardsEntry = { type: "compra" | "import" | "card" | "loan" | "prepay"; id: string | null };
+export type CardsEntry = { type: "compra" | "card" | "loan" | "prepay"; id: string | null };
 const TYPES: { id: CardsEntry["type"]; label: string }[] = [
-  { id: "compra", label: "Compra no cartao" }, { id: "import", label: "Importar fatura" }, { id: "card", label: "Cadastrar cartao" },
+  { id: "compra", label: "Compra no cartao" }, { id: "card", label: "Cadastrar cartao" },
 ];
 const STATUS: Record<string, string> = { aberta: "aberta (ainda recebendo compras)", fechada: "fechada, a pagar", paga: "paga", vencida: "vencida sem pagamento" };
 
@@ -411,7 +411,7 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry }: {
 }) {
   const { type, id } = entry;
   const reset = () => setEntry({ type, id: null });
-  const noCards = !setup.cards.length && (type === "compra" || type === "import");
+  const noCards = !setup.cards.length && type === "compra";
   const saveCards = async (c: Card) => { await saveSetup({ cards: setup.cards.some((x) => x.id === c.id) ? setup.cards.map((x) => (x.id === c.id ? c : x)) : [...setup.cards, c] }); reset(); };
   const saveLoans = async (l: Loan) => { await saveSetup({ loans: setup.loans.some((x) => x.id === l.id) ? setup.loans.map((x) => (x.id === l.id ? l : x)) : [...setup.loans, l] }); reset(); };
   const opts = type === "card" ? setup.cards.map((c) => ({ id: c.id, label: c.name })) : type === "loan" ? setup.loans.map((l) => ({ id: l.id, label: l.name })) : null;
@@ -434,7 +434,6 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry }: {
       {noLoans && <p className="muted small">Cadastre o emprestimo primeiro (opcao &quot;Cadastrar emprestimo&quot;).</p>}
       {type === "prepay" && !noLoans && <PrepayForm key={id ?? "p"} setup={setup} loanId={id ?? setup.loans[0].id} onPick={(lid) => setEntry({ type, id: lid })} />}
       {type === "compra" && !noCards && <QuickAdd key="compra" mode="cartao" months={months} setup={setup} invest={invest} defaultDate={todayBR()} />}
-      {type === "import" && !noCards && <ImportPanel mode="cartao" months={months} setup={setup} invest={invest} onDone={() => setEntry({ type: "compra", id: null })} />}
       {type === "card" && (
         <>
           <CardForm key={id ?? "novo"} c={setup.cards.find((c) => c.id === id) ?? { id: newId(), name: "", closeDay: 1, dueDay: 8 }} onSave={saveCards} onCancel={reset} />

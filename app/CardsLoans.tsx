@@ -111,13 +111,14 @@ function CardsPart({ months, setup, invest, entry, setEntry, owed, com }: {
 function LoansPart({ months, setup, entry, owed, com }: {
   months: Record<string, MonthDoc>; setup: GastosSetup; entry: CardsEntry; owed: number; com: Com;
 }) {
-  const next = com[1];
   const ctx = { months, setup };
   const sts = setup.loans.map((l) => ({ l, st: loanStatus(l, todayBR(), ctx) }));
   const active = sts.filter((x) => x.st.left > 0);
   const lastEnd = active.reduce((m, x) => (x.st.end > m ? x.st.end : m), "");
   const saved = sts.reduce((s, x) => s + x.st.saved, 0);
   const late = sts.reduce((s, x) => s + x.st.late, 0);
+  // proxima parcela a pagar (a que vence primeiro entre todos os emprestimos)
+  const nx = sts.filter((x) => x.st.next).sort((a, b) => a.st.next!.localeCompare(b.st.next!))[0];
   const lateV = sts.reduce((s, x) => s + x.st.lateV, 0);
   const [adding, setAdding] = useState(!setup.loans.length);
   const saveLoan = async (l: Loan) => {
@@ -131,7 +132,8 @@ function LoansPart({ months, setup, entry, owed, com }: {
         <div className="kpis">
           <div><span>Devendo em emprestimos</span><b>{brl(owed)}</b><small className="muted">saldo devedor de {active.length} {active.length === 1 ? "emprestimo" : "emprestimos"}</small></div>
           {late > 0 && <div><span>Parcelas atrasadas</span><b className="warn">{late} - {brl(lateV)}</b><small className="muted">venceram sem pagamento</small></div>}
-          <div><span>Parcelas em {monthLabel(next.m)}</span><b>{brl(next.loans)}</b><small className="muted">previsto</small></div>
+          <div><span>Proxima parcela</span><b className={nx && nx.st.next! < todayBR() ? "warn" : ""}>{nx ? brl(nx.l.parcela) : "-"}</b>
+            <small className="muted">{nx ? `${nx.st.nextK! + 1}/${nx.l.n}${sts.length > 1 ? ` ${nx.l.name}` : ""} - ${nx.st.next! < todayBR() ? "venceu" : "vence"} ${dm(nx.st.next!)}/${nx.st.next!.slice(2, 4)}` : "nenhuma"}</small></div>
           <div><span>Livre de emprestimos em</span><b>{lastEnd ? monthLabel(lastEnd, true) : "-"}</b><small className="muted">ultima parcela</small></div>
           {saved > 0.005 && <div><span>Economizou adiantando</span><b className="pos">{brl(saved)}</b></div>}
         </div>
@@ -209,7 +211,7 @@ function LoanItem({ l, st, months, setup, single, initial }: {
           <div className="limit">
             <span className="limit-fill paid" style={{ width: `${(st.paid / l.n) * 100}%` }} />
             <small className="muted">{st.paid} de {l.n} parcelas pagas{st.prepaid ? ` (${st.prepaid} adiantadas)` : ""} - {st.left > 0 ? `termina em ${monthLabel(st.end, true)}` : "quitado"}
-              {st.prepaid > 0 && st.end !== st.originalEnd ? ` (era ${monthLabel(st.originalEnd, true)})` : ""}
+              {st.left > 0 && st.end !== st.originalEnd ? ` (era ${monthLabel(st.originalEnd, true)})` : ""}
               {" "}- parcela {brl(l.parcela)} dia {l.dueDay}{l.rate ? `, juros ${fmt(l.rate)}% ao mes` : ""}</small>
           </div>
           {st.saved > 0.005 && <p className="small pos">Economizou {brl(st.saved)} adiantando parcelas</p>}

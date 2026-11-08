@@ -933,7 +933,7 @@ export function Loans({ setup, months, onEdit, onPrepay }: { setup: GastosSetup;
           <div className="limit">
             <span className="limit-fill paid" style={{ width: `${(st.paid / l.n) * 100}%` }} />
             <small className="muted">{st.paid} de {l.n} parcelas pagas{st.prepaid ? ` (${st.prepaid} adiantadas)` : ""}{st.late ? `, ${st.late} atrasada${st.late > 1 ? "s" : ""}` : ""} - {st.left > 0 ? `termina em ${monthLabel(st.end, true)}` : "quitado"}
-              {st.prepaid > 0 && st.end !== st.originalEnd ? ` (era ${monthLabel(st.originalEnd, true)})` : ""}</small>
+              {st.left > 0 && st.end !== st.originalEnd ? ` (era ${monthLabel(st.originalEnd, true)})` : ""}</small>
           </div>
           {st.saved > 0.005 && <p className="small pos">Economizou {brl(st.saved)} adiantando parcelas</p>}
           {st.left > 0 && <p className="small">Parcela {brl(l.parcela)} (dia {l.dueDay}) - saldo devedor {l.rate ? "" : "~"}{brl(st.saldo)}

@@ -221,8 +221,10 @@ export function loanStatus(l: Loan, today = todayBR(), ctx?: { months: Record<st
   const r = (l.rate ?? 0) / 100;
   const saldo = r > 0 ? (l.parcela * (1 - (1 + r) ** -left)) / r : l.parcela * left;
   const prepaidV = (l.prepay ?? []).filter((p) => p.d <= today).reduce((s, p) => s + p.v, 0);
+  // termina na ultima parcela que ainda falta pagar (pagar as ultimas antes encurta o emprestimo)
   let lastK = -1;
-  for (let k = 0; k < l.n; k++) if (!all.has(k)) lastK = k;
+  for (const x of rows) if (x.status === "atrasada" || x.status === "aberta") lastK = x.k;
+  if (lastK < 0) for (let k = 0; k < l.n; k++) if (!all.has(k)) lastK = k;
   const nextRow = rows.find((x) => x.status === "atrasada" || x.status === "aberta");
   return {
     rows, paid, left, saldo, prepaid: pre, late: late.length, lateV: late.length * l.parcela,

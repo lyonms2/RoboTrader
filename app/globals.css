@@ -632,3 +632,5 @@ tr.grp-row:hover > td { background: color-mix(in srgb, var(--accent) 4%, transpa
 .saldo-accts { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; justify-content: flex-end; }
 .saldo-chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 12.5px; background: var(--card); font-variant-numeric: tabular-nums; }
 @media (max-width: 560px) { .saldo-accts { justify-content: flex-start; } .saldo-main > b { font-size: 23px; } }
+.bills-card { padding: 12px; }
+.bills-card .bills { margin: 0; }

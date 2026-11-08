@@ -250,7 +250,69 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
           <div><span>Ainda a pagar</span><b className={pendingTotal > 0 ? "warn" : ""}>{brl(pendingTotal)}</b>
             <small className="muted">{pending.length ? `${pending.length} fixos/parcelas - previsto ${brl(s.gastos + pendingTotal, 0)}` : "fixos e parcelas em dia"}</small></div>
         </div>
-        {(bills.length > 0 || recs.length > 0) && (
+        {(() => {
+          // So o que passou pela conta (sem cartao e sem o que outra pessoa pagou por voce), separado em renda/gasto
+          // e dinheiro seu so mudando de lugar (cofrinho, cripto, entre contas, emprestimos)
+          const acc = items.filter((g) => !g.card && !g.by);
+          if (!acc.length) return null;
+          const renda = acc.filter((g) => g.tipo === "receita").reduce((t, g) => t + g.v, 0);
+          const gasto = acc.filter((g) => g.tipo === "gasto" || isFaturaOut(g)).reduce((t, g) => t + g.v, 0);
+          const byCat: Record<string, { in: number; out: number }> = {};
+          // transferencia ligada a outra conta sua: sai de uma e entra na outra (o total das contas nao muda)
+          const accIds = new Set(accountsOf(setup).map((a) => a.id));
+          const internal = acc.filter((x) => x.cat === TRANSFER_CAT && x.toAcc && accIds.has(x.toAcc)).reduce((t, x) => t + x.v, 0);
+          for (const g of acc.filter((x) => x.tipo === "neutro" && !isFaturaOut(x) && !(x.cat === TRANSFER_CAT && x.toAcc && accIds.has(x.toAcc)))) { const c = (byCat[g.cat] ??= { in: 0, out: 0 }); if (dirOf(g) > 0) c.in += g.v; else c.out += g.v; }
+          const ins = Object.entries(byCat).filter(([, v]) => v.in > 0.004);
+          const outs = Object.entries(byCat).filter(([, v]) => v.out > 0.004);
+          const tin = renda + ins.reduce((t, [, v]) => t + v.in, 0);
+          const tout = gasto + outs.reduce((t, [, v]) => t + v.out, 0);
+          const LBL_IN: Record<string, string> = { Investimento: "Resgate de investimento", "Transferencia entre contas": "De outra conta sua", "Venda de cripto": "Venda de cripto" };
+          const LBL_OUT: Record<string, string> = { Investimento: "Guardado em investimento", "Transferencia entre contas": "Para outra conta sua", "Compra de cripto": "Compra de cripto" };
+          return (
+            <div className="flow small">
+              <div className="flow-col">
+                <div className="flow-h"><span>Entrou na conta</span><b className="pos">{brl(tin)}</b></div>
+                <div className="flow-r"><span>Renda</span><span>{brl(renda)}</span></div>
+                {ins.map(([c, v]) => <div key={c} className="flow-r move"><span>{LBL_IN[c] ?? c}</span><span>{brl(v.in)}</span></div>)}
+              </div>
+              <div className="flow-col">
+                <div className="flow-h"><span>Saiu da conta</span><b className="v-out">{brl(tout)}</b></div>
+                <div className="flow-r"><span>Gastos</span><span>{brl(gasto)}</span></div>
+                {outs.map(([c, v]) => <div key={c} className="flow-r move"><span>{LBL_OUT[c] ?? c}</span><span>{brl(v.out)}</span></div>)}
+              </div>
+              <div className="flow-net"><span>Resultado na conta no mes</span><b className={tin - tout >= 0 ? "pos" : "v-out"}>{tin - tout >= 0 ? "+" : "-"}{brl(Math.abs(tin - tout))}</b>
+                {(ins.length > 0 || outs.length > 0) && <small className="muted">azul = dinheiro seu mudando de lugar (nao e renda nem gasto)</small>}
+                {internal > 0 && <small className="muted">Entre suas contas: {brl(internal)} (saiu de uma e entrou na outra, nao muda o total)</small>}</div>
+            </div>
+          );
+        })()}
+        <Review months={months} setup={setup} invest={invest} />
+        {cats.length > 0 && (
+          <figure className="viz">
+            <figcaption className="small muted">Gastos por categoria {prevAvg.n ? <>- <i className="tick-key" /> media dos {prevAvg.n} meses anteriores</> : ""} (clique para filtrar)</figcaption>
+            <div className="hbars">
+              {cats.map(([c, v]) => {
+                const a = prevAvg.acc[c];
+                return (
+                  <div key={c} className={`hbar click${filter && filter !== c ? " dim" : ""}`} onClick={() => setFilter(filter === c ? null : c)}
+                    title={`${c}: ${brl(v)}${a ? ` (media ${brl(a)})` : ""}`}>
+                    <span className="hbar-label small">{c}</span>
+                    <span className="hbar-track">
+                      <span className="hbar-fill" style={{ width: `${(v / maxCat) * 100}%` }} />
+                      {a ? <span className="hbar-tick" style={{ left: `${(a / maxCat) * 100}%` }} /> : null}
+                    </span>
+                    <span className="hbar-value small">{fmt(v, 0)} <span className={a && v > a * 1.2 ? "warn" : "muted"}>{s.gastos > 0 ? `${fmt((v / s.gastos) * 100, 0)}%` : ""}</span></span>
+                  </div>
+                );
+              })}
+            </div>
+          </figure>
+        )}
+        <MonthsChart months={months} current={m} onPick={setM} />
+      </section>
+
+      {(bills.length > 0 || recs.length > 0) && (
+        <section className="card bills-card">
           <div className="bills">
             {bills.length > 0 && <>
             <div className="bills-head">
@@ -337,67 +399,8 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
               </>
             )}
           </div>
-        )}
-        {(() => {
-          // So o que passou pela conta (sem cartao e sem o que outra pessoa pagou por voce), separado em renda/gasto
-          // e dinheiro seu so mudando de lugar (cofrinho, cripto, entre contas, emprestimos)
-          const acc = items.filter((g) => !g.card && !g.by);
-          if (!acc.length) return null;
-          const renda = acc.filter((g) => g.tipo === "receita").reduce((t, g) => t + g.v, 0);
-          const gasto = acc.filter((g) => g.tipo === "gasto" || isFaturaOut(g)).reduce((t, g) => t + g.v, 0);
-          const byCat: Record<string, { in: number; out: number }> = {};
-          // transferencia ligada a outra conta sua: sai de uma e entra na outra (o total das contas nao muda)
-          const accIds = new Set(accountsOf(setup).map((a) => a.id));
-          const internal = acc.filter((x) => x.cat === TRANSFER_CAT && x.toAcc && accIds.has(x.toAcc)).reduce((t, x) => t + x.v, 0);
-          for (const g of acc.filter((x) => x.tipo === "neutro" && !isFaturaOut(x) && !(x.cat === TRANSFER_CAT && x.toAcc && accIds.has(x.toAcc)))) { const c = (byCat[g.cat] ??= { in: 0, out: 0 }); if (dirOf(g) > 0) c.in += g.v; else c.out += g.v; }
-          const ins = Object.entries(byCat).filter(([, v]) => v.in > 0.004);
-          const outs = Object.entries(byCat).filter(([, v]) => v.out > 0.004);
-          const tin = renda + ins.reduce((t, [, v]) => t + v.in, 0);
-          const tout = gasto + outs.reduce((t, [, v]) => t + v.out, 0);
-          const LBL_IN: Record<string, string> = { Investimento: "Resgate de investimento", "Transferencia entre contas": "De outra conta sua", "Venda de cripto": "Venda de cripto" };
-          const LBL_OUT: Record<string, string> = { Investimento: "Guardado em investimento", "Transferencia entre contas": "Para outra conta sua", "Compra de cripto": "Compra de cripto" };
-          return (
-            <div className="flow small">
-              <div className="flow-col">
-                <div className="flow-h"><span>Entrou na conta</span><b className="pos">{brl(tin)}</b></div>
-                <div className="flow-r"><span>Renda</span><span>{brl(renda)}</span></div>
-                {ins.map(([c, v]) => <div key={c} className="flow-r move"><span>{LBL_IN[c] ?? c}</span><span>{brl(v.in)}</span></div>)}
-              </div>
-              <div className="flow-col">
-                <div className="flow-h"><span>Saiu da conta</span><b className="v-out">{brl(tout)}</b></div>
-                <div className="flow-r"><span>Gastos</span><span>{brl(gasto)}</span></div>
-                {outs.map(([c, v]) => <div key={c} className="flow-r move"><span>{LBL_OUT[c] ?? c}</span><span>{brl(v.out)}</span></div>)}
-              </div>
-              <div className="flow-net"><span>Resultado na conta no mes</span><b className={tin - tout >= 0 ? "pos" : "v-out"}>{tin - tout >= 0 ? "+" : "-"}{brl(Math.abs(tin - tout))}</b>
-                {(ins.length > 0 || outs.length > 0) && <small className="muted">azul = dinheiro seu mudando de lugar (nao e renda nem gasto)</small>}
-                {internal > 0 && <small className="muted">Entre suas contas: {brl(internal)} (saiu de uma e entrou na outra, nao muda o total)</small>}</div>
-            </div>
-          );
-        })()}
-        <Review months={months} setup={setup} invest={invest} />
-        {cats.length > 0 && (
-          <figure className="viz">
-            <figcaption className="small muted">Gastos por categoria {prevAvg.n ? <>- <i className="tick-key" /> media dos {prevAvg.n} meses anteriores</> : ""} (clique para filtrar)</figcaption>
-            <div className="hbars">
-              {cats.map(([c, v]) => {
-                const a = prevAvg.acc[c];
-                return (
-                  <div key={c} className={`hbar click${filter && filter !== c ? " dim" : ""}`} onClick={() => setFilter(filter === c ? null : c)}
-                    title={`${c}: ${brl(v)}${a ? ` (media ${brl(a)})` : ""}`}>
-                    <span className="hbar-label small">{c}</span>
-                    <span className="hbar-track">
-                      <span className="hbar-fill" style={{ width: `${(v / maxCat) * 100}%` }} />
-                      {a ? <span className="hbar-tick" style={{ left: `${(a / maxCat) * 100}%` }} /> : null}
-                    </span>
-                    <span className="hbar-value small">{fmt(v, 0)} <span className={a && v > a * 1.2 ? "warn" : "muted"}>{s.gastos > 0 ? `${fmt((v / s.gastos) * 100, 0)}%` : ""}</span></span>
-                  </div>
-                );
-              })}
-            </div>
-          </figure>
-        )}
-        <MonthsChart months={months} current={m} onPick={setM} />
-      </section>
+        </section>
+      )}
 
       <section className="card">
         <div className="card-head">

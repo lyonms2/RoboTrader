@@ -225,6 +225,22 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
           </div>
           <span className="muted small">{items.filter((g) => !g.card).length} lancamentos na conta</span>
         </div>
+        {acSt.rows.some((r) => r.used || r.informed) && (
+          <div className="saldo-bar">
+            <div className="saldo-main">
+              <span>{isNow ? "Saldo nas contas hoje" : "Saldo nas contas no fim do mes"}</span>
+              <b className={acSt.end < 0 ? "neg" : ""}>{brl(acSt.end)}</b>
+              <small className="muted">inicio do mes {brl(acSt.start)} <span className={acSt.end - acSt.start >= 0 ? "pos" : "neg"}>({acSt.end - acSt.start >= 0 ? "+" : "-"}{brl(Math.abs(acSt.end - acSt.start))})</span>
+                {!acSt.allInformed && <span className="warn"> - falta conferir o saldo de alguma conta</span>}</small>
+            </div>
+            <div className="saldo-accts">
+              {acSt.rows.filter((r) => r.used || r.informed).map((r) => (
+                <span key={r.acc.id} className="saldo-chip"><span className="muted">{r.acc.name}</span> <b className={(isNow ? r.now : r.end) < 0 ? "neg" : ""}>{brl(isNow ? r.now : r.end)}</b></span>
+              ))}
+              {onBens && <button className="link" onClick={onBens}>ver contas &rsaquo;</button>}
+            </div>
+          </div>
+        )}
         <div className="kpis">
           <div><span>Saidas (gastos)</span><b>{brl(s.gastos)}</b>
             <small className={avg && s.gastos > avg.value * 1.1 ? "warn" : "muted"}>{avg ? `media ${brl(avg.value, 0)} (${avg.months} ${avg.months > 1 ? "meses" : "mes"})` : "a media aparece no 2o mes"}</small></div>
@@ -321,13 +337,6 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
               </>
             )}
           </div>
-        )}
-        {acSt.rows.some((r) => r.used || r.informed) && (
-          <p className="small acct-line">
-            Contas: inicio do mes <b>{brl(acSt.start)}</b> &rarr; {isNow ? "hoje" : "fim do mes"} <b className={acSt.end < 0 ? "neg" : ""}>{brl(acSt.end)}</b>
-            {!acSt.allInformed && <span className="warn"> (falta conferir o saldo de alguma conta)</span>}
-            {onBens && <button className="link" onClick={onBens}>ver contas</button>}
-          </p>
         )}
         {(() => {
           // So o que passou pela conta (sem cartao e sem o que outra pessoa pagou por voce), separado em renda/gasto

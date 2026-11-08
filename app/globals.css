@@ -622,3 +622,13 @@ tr.grp-row:hover > td { background: color-mix(in srgb, var(--accent) 4%, transpa
 .accts li .acc-btns button.link { margin-left: 0; }
 .acc-moves .cell { display: flex; flex-direction: column; }
 .acc-moves tr.sched td { opacity: .7; font-style: italic; }
+
+/* Lancamentos: saldo das contas em destaque */
+.saldo-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px 20px; flex-wrap: wrap; margin: 4px 0 12px; padding: 12px 14px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--buy) 35%, var(--line)); background: color-mix(in srgb, var(--buy) 7%, transparent); }
+.saldo-main { display: flex; flex-direction: column; gap: 2px; }
+.saldo-main > span { color: var(--muted); font-size: 12.5px; }
+.saldo-main > b { font-size: 26px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.saldo-accts { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; justify-content: flex-end; }
+.saldo-chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 12.5px; background: var(--card); font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .saldo-accts { justify-content: flex-start; } .saldo-main > b { font-size: 23px; } }

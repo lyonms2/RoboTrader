@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
-  CARD_PAY_CAT, accountsOf, addMonths, cardStatus, commitments, debts, faturaItems, faturaMonth, loanDue, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
+  CARD_PAY_CAT, accountsOf, addMonths, cardStatus, dayIn, descKey, commitments, debts, faturaItems, faturaMonth, loanDue, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
   type Card, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
@@ -321,6 +321,7 @@ function FaturaView({ card, st, fm, months, setup }: {
     const md = months[m];
     await saveMonth(m, md.items.map((x) => (x.id === id ? { ...x, cat, tipo: tipoOfCat(cat) ?? x.tipo } : x)));
   };
+  const [editId, setEditId] = useState<string | null>(null);
   const remove = async (m: string, id: string, desc: string) => {
     if (!confirm(`Apagar "${desc}"?`)) return;
     await saveMonth(m, months[m].items.filter((x) => x.id !== id));
@@ -366,14 +367,16 @@ function FaturaView({ card, st, fm, months, setup }: {
           <table className="stack gastos">
             <thead><tr><th>Compra</th><th>Categoria</th><th>Valor</th><th /></tr></thead>
             <tbody>
-              {list.map(({ m, g }) => (
-                <tr key={g.id}>
+              {list.map(({ m, g }) => (<Fragment key={g.id}>
+                <tr>
                   <td><span className="cell">{g.desc}<small className="muted">{[dm(g.d), g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null].filter(Boolean).join(" - ")}</small></span></td>
                   <td data-label="Categoria"><CatSelect value={g.cat} onChange={(c) => setCat(m, g.id, c)} /></td>
                   <td data-label="Valor" className={g.tipo === "receita" ? "pos" : ""}>{g.tipo === "receita" ? "+" : "-"}{brl(g.v)}</td>
-                  <td className="actions"><button className="ghost small-btn" onClick={() => remove(m, g.id, g.desc)}>apagar</button></td>
+                  <td className="actions"><button className="link" onClick={() => setEditId(editId === g.id ? null : g.id)}>alterar</button>
+                    <button className="ghost small-btn" onClick={() => remove(m, g.id, g.desc)}>apagar</button></td>
                 </tr>
-              ))}
+                {editId === g.id && <tr className="edit-row"><td colSpan={4}><EditBuy g={g} months={months} setup={setup} onDone={() => setEditId(null)} /></td></tr>}
+              </Fragment>))}
             </tbody>
           </table>
         </div>
@@ -631,6 +634,79 @@ function CardPayForm({ card, fm, rest, due, months, setup, onDone }: {
       </div>
       <p className="muted small">{acc ? "Lanca a saida nessa conta (categoria Fatura do cartao) e abate desta fatura." : "So abate desta fatura; o saldo da conta nao muda."}
         {num(v) > 0 && num(v) < rest - 0.005 ? ` Pagamento parcial: ficam ${brl(rest - num(v))} em aberto.` : ""}</p>
+    </form>
+  );
+}
+
+// Alterar uma compra no cartao: data, descricao, valor e cartao. Parcelada: vale para todas as parcelas da compra
+// (as datas andam juntas, uma por mes). A categoria muda direto na lista.
+function EditBuy({ g, months, setup, onDone }: { g: Gasto; months: Record<string, MonthDoc>; setup: GastosSetup; onDone: () => void }) {
+  // todas as parcelas da mesma compra (mesmo cartao, descricao, valor e numero de parcelas), com o mes onde estao gravadas
+  const siblings: { m: string; x: Gasto }[] = [];
+  for (const [m, md] of Object.entries(months))
+    for (const x of md.items)
+      if (x.id === g.id || (g.parc && x.parc && x.card === g.card && x.parc[1] === g.parc[1] && descKey(x.desc) === descKey(g.desc) && Math.abs(x.v - g.v) < 0.01))
+        siblings.push({ m, x });
+  const many = siblings.length > 1;
+  const [d, setD] = useState(g.d);
+  const [desc, setDesc] = useState(g.desc);
+  const [v, setV] = useState(fmt(g.v));
+  const [card, setCard] = useState(g.card ?? "");
+  const [all, setAll] = useState(many);
+  const [busy, setBusy] = useState(false);
+  const num = (x: string) => Number(x.replace(/\./g, "").replace(",", ".")) || 0;
+  const targets = all ? siblings : siblings.filter((s) => s.x.id === g.id);
+  // grava: tira cada parcela do mes antigo e poe no mes da nova data
+  const write = async (change: ((x: Gasto) => Gasto) | null) => {
+    const work: Record<string, Gasto[]> = {};
+    const get = (m: string) => (work[m] ??= [...(months[m]?.items ?? [])]);
+    for (const { m, x } of targets) {
+      work[m] = get(m).filter((y) => y.id !== x.id);
+      if (change) { const nx = change(x); get(monthOf(nx.d)).push(nx); }
+    }
+    for (const [m, items] of Object.entries(work)) await saveMonth(m, items);
+  };
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = Math.round(num(v) * 100) / 100;
+    if (!desc.trim() || !(val > 0) || !card) return;
+    setBusy(true);
+    const day = Number(d.slice(8, 10));
+    await write((x) => {
+      const off = x.parc && g.parc ? x.parc[0] - g.parc[0] : 0;
+      const nd = x.id === g.id ? d : dayIn(addMonths(monthOf(d), off), day);
+      return { ...x, d: nd, desc: desc.trim(), v: val, card };
+    });
+    setBusy(false);
+    onDone();
+  };
+  const removeAll = async () => {
+    if (!confirm(`Apagar as ${siblings.length} parcelas de "${g.desc}"?`)) return;
+    setAll(true);
+    const work: Record<string, Gasto[]> = {};
+    for (const { m, x } of siblings) work[m] = (work[m] ?? [...(months[m]?.items ?? [])]).filter((y) => y.id !== x.id);
+    for (const [m, items] of Object.entries(work)) await saveMonth(m, items);
+    onDone();
+  };
+  return (
+    <form className="fin-form loan-pay" onSubmit={save}>
+      <div className="row wrapline">
+        <label>Data{many && all ? " desta parcela" : ""}<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
+        <label className="grow">Descricao<input value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
+        <label>{many ? "Valor da parcela" : "Valor"} (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
+        <label>Cartao
+          <select value={card} onChange={(e) => setCard(e.target.value)}>{setup.cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        </label>
+      </div>
+      {many && (
+        <label className="check small"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
+          aplicar nas {siblings.length} parcelas desta compra (as datas mudam juntas, uma por mes)</label>
+      )}
+      <div className="row">
+        <button className="primary" type="submit" disabled={busy}>Salvar</button>
+        <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
+        {many && <button className="ghost small-btn" type="button" onClick={removeAll}>apagar a compra inteira ({siblings.length} parcelas)</button>}
+      </div>
     </form>
   );
 }

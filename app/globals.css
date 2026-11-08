@@ -9,6 +9,7 @@
   --warn: #e8c547; /* amarelo: aviso (o laranja e da marca) */
   --accent: #f7931a; /* laranja SeuBitico */
   --brand-ink: #1b1104; /* texto sobre o laranja */
+  --brand-yellow: #fdd303; /* amarelo do avatar do canal */
   --move: #6ea8ff; /* azul: dinheiro seu mudando de lugar e linhas de grafico */
 }
 * { box-sizing: border-box; }
@@ -646,14 +647,13 @@ tr.grp-row:hover > td { background: color-mix(in srgb, var(--accent) 4%, transpa
 
 /* ===== marca SeuBitico ===== */
 .brand-name { font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
-.brand-name .bb { color: var(--accent); }
-.brand-mark { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: var(--accent);
-  color: var(--brand-ink); font-weight: 900; font-size: 17px; margin-right: 10px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.brand-name .bb { color: var(--brand-yellow); }
+.brand-mark { width: 34px; height: 34px; border-radius: 50%; margin-right: 10px; object-fit: cover; box-shadow: 0 0 0 2px var(--brand-yellow); }
 .brand-row { display: flex; align-items: center; }
 .topbar { border-bottom-color: color-mix(in srgb, var(--accent) 22%, var(--line)); }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); }
 a { color: var(--accent); }
 .login { max-width: 420px; margin: 14vh auto 0; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.login .brand-mark { width: 64px; height: 64px; font-size: 34px; margin: 0 0 4px; }
+.login .brand-mark { width: 96px; height: 96px; margin: 0 0 4px; box-shadow: 0 0 0 4px var(--brand-yellow), 0 10px 30px rgba(0,0,0,.35); }
 .login h1 { margin: 0; font-size: 28px; }
 .login button { padding: 10px 20px; font-weight: 700; }

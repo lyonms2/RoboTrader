@@ -223,7 +223,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   if (!user)
     return (
       <main className="wrap login">
-        <span className="brand-mark" aria-hidden="true">S</span>
+        <img className="brand-mark" src="/seubitico-96.png" alt="" width={34} height={34} />
         <h1 className="brand-name">Seu<span className="bb">Bitico</span></h1>
         <p className="muted">Financas pessoais e cripto num lugar so: contas, cartoes, investimentos e carteira.</p>
         <button onClick={() => signInWithPopup(auth(), new GoogleAuthProvider())}>Entrar com Google</button>
@@ -259,7 +259,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand-row">
-            <span className="brand-mark" aria-hidden="true">S</span>
+            <img className="brand-mark" src="/seubitico-256.png" alt="SeuBitico" width={96} height={96} />
             <div className="brand">
               <span className="brand-name">Seu<span className="bb">Bitico</span></span>
               <span className="muted small">financas e cripto{updatedAt ? ` - dados ${ago(updatedAt)}` : ""}</span>

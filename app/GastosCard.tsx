@@ -20,7 +20,7 @@ function num(s: string) {
   else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
   return Number(t) || 0;
 }
-const saveMonth = (m: string, items: Gasto[]) =>
+export const saveMonth = (m: string, items: Gasto[]) =>
   setDoc(doc(db(), "config", `gastos-${m}`), { items: clean([...items].sort((a, b) => a.d.localeCompare(b.d))) });
 export const saveSetup = (s: Partial<GastosSetup>) => setDoc(doc(db(), "config", "gastos-setup"), clean(s), { merge: true });
 
@@ -126,8 +126,9 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
   };
 
   const accs = accountsOf(setup);
-  const shown = [...items].filter((g) => !filter || g.cat === filter)
-    .filter((g) => !where || (where.startsWith("card:") ? g.card === where.slice(5) : accIdOf(g, accs) === where.slice(4)))
+  // Lancamentos = extrato da conta: compras no cartao ficam em Cartoes e emprestimos
+  const shown = [...items].filter((g) => !g.card).filter((g) => !filter || g.cat === filter)
+    .filter((g) => !where || accIdOf(g, accs) === where.slice(4))
     .sort((a, b) => b.d.localeCompare(a.d));
   const acSt = accountsStatus(months, setup, m);
   const cats = Object.entries(s.byCat).sort((a, b) => b[1] - a[1]);
@@ -145,10 +146,10 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
             <button className="ghost icon" aria-label="Proximo mes" onClick={() => setM(addMonths(m, 1))}>&rsaquo;</button>
             {!isNow && <button className="ghost small-btn" onClick={() => setM(monthOf(todayBR()))}>hoje</button>}
           </div>
-          <span className="muted small">{items.length} lancamentos</span>
+          <span className="muted small">{items.filter((g) => !g.card).length} lancamentos na conta</span>
         </div>
         <div className="kpis">
-          <div><span>Gastos</span><b>{brl(s.gastos)}</b>
+          <div><span>Saidas (gastos)</span><b>{brl(s.gastos)}</b>
             <small className={avg && s.gastos > avg.value * 1.1 ? "warn" : "muted"}>{avg ? `media ${brl(avg.value, 0)} (${avg.months} ${avg.months > 1 ? "meses" : "mes"})` : "a media aparece no 2o mes"}</small></div>
           <div><span>Entradas</span><b>{brl(s.receitas)}</b><small className="muted">salario, Pix recebidos...</small></div>
           <div><span>Sobrou</span><b className={s.receitas - s.gastos >= 0 ? "pos" : "neg"}>{brl(s.receitas - s.gastos)}</b>
@@ -210,11 +211,10 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
         <div className="card-head">
           <h2>Lancamentos {filter && <span className="tag">{filter} <button className="link" onClick={() => setFilter(null)}>x</button></span>}</h2>
           <div className="row">
-            {(accs.length > 1 || setup.cards.length > 0) && (
-              <select value={where} onChange={(e) => setWhere(e.target.value)} aria-label="Filtrar por conta ou cartao" className="where-sel">
-                <option value="">Todas as contas e cartoes</option>
+            {accs.length > 1 && (
+              <select value={where} onChange={(e) => setWhere(e.target.value)} aria-label="Filtrar por conta" className="where-sel">
+                <option value="">Todas as contas</option>
                 {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>Conta {a.name}</option>)}
-                {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>Cartao {c.name}</option>)}
               </select>
             )}
             {!entry && <button className="ghost" onClick={() => setImporting(!importing)}>{importing ? "Fechar importacao" : "Importar extrato"}</button>}
@@ -263,7 +263,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
 }
 
 // Escolha da categoria. "Outros"/"Outras entradas" pedem para discriminar: o que voce digitar vira uma categoria sua
-function CatSelect({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+export function CatSelect({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   const mine = customCats();
   const create = async (tipo: "gasto" | "receita", suggestion = "") => {
     const raw = window.prompt(tipo === "gasto" ? "O que e esse gasto? (vira uma categoria sua, ex.: Presentes, Pet, Academia)"
@@ -555,14 +555,16 @@ export function AccountForm({ acc, canRemove, onSave, onCancel, onRemove }: {
 }
 
 // Lancamento rapido: categoria sugerida pela descricao; no cartao pode ser parcelado
-export function QuickAdd({ months, setup, invest, defaultDate }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; defaultDate: string }) {
+export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta" }: {
+  months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; defaultDate: string; mode?: "conta" | "cartao";
+}) {
   const [d, setD] = useState(defaultDate);
   const [desc, setDesc] = useState("");
   const [v, setV] = useState("");
   const [entrada, setEntrada] = useState(false);
   const [cat, setCat] = useState<string | null>(null);
   const accs = accountsOf(setup);
-  const [src, setSrc] = useState(`acc:${accs[0].id}`); // "acc:id" ou "card:id"
+  const [src, setSrc] = useState(mode === "cartao" && setup.cards[0] ? `card:${setup.cards[0].id}` : `acc:${accs[0].id}`); // "acc:id" ou "card:id"
   const card = src.startsWith("card:") ? src.slice(5) : "";
   const acc = src.startsWith("acc:") ? src.slice(4) : "";
   const [n, setN] = useState("1");
@@ -595,10 +597,10 @@ export function QuickAdd({ months, setup, invest, defaultDate }: { months: Recor
   };
   return (
     <form className="fin-form quick" onSubmit={submit}>
-      <div className="kind-pick">
+      {mode === "conta" && <div className="kind-pick">
         <button type="button" className={!entrada ? "pill on" : "pill"} onClick={() => { setEntrada(false); setCat(null); }}>Gasto</button>
         <button type="button" className={entrada ? "pill on" : "pill"} onClick={() => { setEntrada(true); setCat(null); if (card) setSrc(`acc:${accs[0].id}`); }}>Entrada</button>
-      </div>
+      </div>}
       <div className="row wrapline">
         <label>Data<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
         <label className="grow">Descricao<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={entrada ? "Salario" : "Mercado, ifood, aluguel..."} /></label>
@@ -607,10 +609,10 @@ export function QuickAdd({ months, setup, invest, defaultDate }: { months: Recor
         {finalCat === TRANSFER_CAT && <label>{entrada ? "Veio de" : "Foi para"}<ToAccSelect value={toAcc ?? suggestToAcc(desc, acc || null, setup) ?? ""} from={acc || null} out={!entrada} setup={setup} onChange={setToAcc} /></label>}
         {finalCat === CARD_PAY_CAT && setup.cards.length > 0 && <label>Cartao pago<CardPaySelect value={finalPay} cards={setup.cards} onChange={setPayCard} /></label>}
         {finalCat === INVEST_CAT && <label>{entrada ? "Veio de" : "Foi para"}<InvSelect value={finalInv} desc={desc} invest={invest} out={!entrada} onChange={setInv} /></label>}
-        <label>{entrada ? "Entrou em" : "Pago com"}
+        <label>{mode === "cartao" ? "Cartao" : entrada ? "Entrou em" : "Pago com"}
           <select value={src} onChange={(e) => setSrc(e.target.value)}>
-            {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>{entrada ? a.name : `${a.name} (debito / Pix)`}</option>)}
-            {!entrada && finalCat !== INVEST_CAT && finalCat !== CARD_PAY_CAT && setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>Cartao {c.name}</option>)}
+            {mode === "conta" && accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>{entrada ? a.name : `${a.name} (debito / Pix)`}</option>)}
+            {mode === "cartao" && setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>{c.name}</option>)}
           </select>
         </label>
         {card && !entrada && <label>Parcelas<input value={n} inputMode="numeric" onChange={(e) => setN(e.target.value)} style={{ width: 70 }} /></label>}
@@ -622,14 +624,17 @@ export function QuickAdd({ months, setup, invest, defaultDate }: { months: Recor
 }
 
 // Importar extrato OFX ou CSV: tudo e lido no seu navegador; so os lancamentos escolhidos sao gravados
-export function ImportPanel({ months, setup, invest, onDone }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; onDone: () => void }) {
+export function ImportPanel({ months, setup, invest, onDone, mode = "conta" }: {
+  months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; onDone: () => void; mode?: "conta" | "cartao";
+}) {
   type Row = Raw & { on: boolean; cat: string; tipo: Tipo; inv?: string; payCard?: string; toAcc?: string; dup: "" | "ja importado" | "parece repetido" };
   const [rows, setRows] = useState<Row[]>([]);
   const [file, setFile] = useState("");
   const [err, setErr] = useState("");
   const accs = accountsOf(setup);
   const implicit = !setup.accounts?.length; // ainda so existe a "Conta principal" automatica
-  const [dest, setDest] = useState(`acc:${accs[0].id}`); // "acc:id", "card:id" ou "new"
+  const [dest, setDest] = useState(mode === "cartao" && setup.cards[0] ? `card:${setup.cards[0].id}` : `acc:${accs[0].id}`); // "acc:id", "card:id" ou "new"
+  const [cardHint, setCardHint] = useState(false);
   const [newName, setNewName] = useState("");
   const [bank, setBank] = useState<string | null>(null);
   const [fileBal, setFileBal] = useState<{ v: number; d: string } | null>(null);
@@ -658,7 +663,11 @@ export function ImportPanel({ months, setup, invest, onDone }: { months: Record<
     setBank(b);
     // Conta de destino: cartao (fatura), a conta com o nome do banco, a "Conta principal" automatica (vira o banco) ou uma nova
     const pickAccount = (isCard: boolean) => {
-      if (isCard && setup.cards.length) return setDest(`card:${setup.cards[0].id}`);
+      setCardHint(mode === "conta" && isCard);
+      if (mode === "cartao") {
+        const byName = !b ? undefined : setup.cards.find((c) => plain(c.name).includes(plain(b)) || plain(b).includes(plain(c.name)));
+        return setDest(`card:${(byName ?? setup.cards[0])?.id}`);
+      }
       const match = b && accs.find((a) => plain(a.name).includes(plain(b)) || plain(b).includes(plain(a.name)));
       if (match) return setDest(`acc:${match.id}`);
       if (implicit || !b) return setDest(`acc:${accs[0].id}`);
@@ -724,9 +733,9 @@ export function ImportPanel({ months, setup, invest, onDone }: { months: Record<
         <label className="file-btn">Escolher arquivo<input type="file" accept=".ofx,.csv,.txt,.qfx" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} /></label>
         <span className="muted small">{file}</span>
         <label>De onde e<select value={dest} onChange={(e) => setDest(e.target.value)}>
-          {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>Conta {renameTo && a.id === "main" ? renameTo : a.name}</option>)}
-          {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>Fatura do cartao {c.name}</option>)}
-          <option value="new">+ nova conta{bank ? `: ${bank}` : ""}</option>
+          {mode === "conta" && accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>Conta {renameTo && a.id === "main" ? renameTo : a.name}</option>)}
+          {mode === "cartao" && setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>Fatura do cartao {c.name}</option>)}
+          {mode === "conta" && <option value="new">+ nova conta{bank ? `: ${bank}` : ""}</option>}
         </select></label>
         {dest === "new" && <label>Nome da conta<input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={bank ?? "Nubank, Inter..."} /></label>}
         {rows.length > 0 && <button type="button" className="ghost small-btn" onClick={invert}>inverter sinais</button>}
@@ -737,6 +746,7 @@ export function ImportPanel({ months, setup, invest, onDone }: { months: Record<
         </label>
       </div>
       {err && <p className="error small">{err}</p>}
+      {cardHint && <p className="warn small">Este arquivo parece uma fatura de cartao: importe em Financas &rarr; Cartoes e emprestimos (aqui ficam so as contas).</p>}
       {rows.length > 0 && (
         <>
           {info && <p className="muted small">Lido: {info}{bank ? ` - banco: ${bank}` : ""}.</p>}
@@ -822,7 +832,7 @@ function MonthsChart({ months, current, onPick }: { months: Record<string, Month
   );
 }
 
-function Cards({ cards, setup, onEdit }: { cards: { c: Card; st: ReturnType<typeof cardStatus> }[]; setup: GastosSetup; onEdit?: (id: string | null) => void }) {
+export function Cards({ cards, setup, onEdit }: { cards: { c: Card; st: ReturnType<typeof cardStatus> }[]; setup: GastosSetup; onEdit?: (id: string | null) => void }) {
   const [form, setForm] = useState<Card | null>(null);
   const save = async (c: Card) => {
     await saveSetup({ cards: setup.cards.some((x) => x.id === c.id) ? setup.cards.map((x) => (x.id === c.id ? c : x)) : [...setup.cards, c] });
@@ -874,21 +884,23 @@ export function CardForm({ c, onSave, onCancel }: { c: Card; onSave: (c: Card) =
   const [close, setClose] = useState(String(c.closeDay));
   const [due, setDue] = useState(String(c.dueDay));
   const [limit, setLimit] = useState(c.limit ? fmt(c.limit, 0) : "");
+  const [budget, setBudget] = useState(c.budget ? fmt(c.budget, 0) : "");
   const day = (s: string) => Math.max(1, Math.min(31, Math.round(num(s)) || 1));
   return (
-    <form className="fin-form" onSubmit={(e) => { e.preventDefault(); if (name.trim()) onSave({ id: c.id, name: name.trim(), closeDay: day(close), dueDay: day(due), ...(num(limit) > 0 ? { limit: num(limit) } : {}) }); }}>
+    <form className="fin-form" onSubmit={(e) => { e.preventDefault(); if (name.trim()) onSave({ id: c.id, name: name.trim(), closeDay: day(close), dueDay: day(due), ...(num(limit) > 0 ? { limit: num(limit) } : {}), ...(num(budget) > 0 ? { budget: num(budget) } : {}) }); }}>
       <div className="row wrapline">
         <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nubank" /></label>
         <label>Dia que fecha<input value={close} inputMode="numeric" onChange={(e) => setClose(e.target.value)} style={{ width: 70 }} /></label>
         <label>Dia que vence<input value={due} inputMode="numeric" onChange={(e) => setDue(e.target.value)} style={{ width: 70 }} /></label>
         <label>Limite (opcional)<input value={limit} inputMode="decimal" onChange={(e) => setLimit(e.target.value)} /></label>
+        <label>Planejado por fatura (opcional)<input value={budget} inputMode="decimal" onChange={(e) => setBudget(e.target.value)} placeholder="ex.: 1.500" /></label>
       </div>
       <div className="row"><button className="primary" type="submit">Salvar</button><button className="ghost" type="button" onClick={onCancel}>Cancelar</button></div>
     </form>
   );
 }
 
-function Loans({ setup, onEdit }: { setup: GastosSetup; onEdit?: (id: string | null) => void }) {
+export function Loans({ setup, onEdit }: { setup: GastosSetup; onEdit?: (id: string | null) => void }) {
   const [form, setForm] = useState<Loan | null>(null);
   const today = todayBR();
   const save = async (l: Loan) => {

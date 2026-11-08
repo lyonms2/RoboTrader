@@ -460,3 +460,13 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 .g-bens { fill: var(--muted); background: var(--muted); }
 .ranges .sep { width: 1px; background: var(--line); margin: 0 4px; }
 .ranges { flex-wrap: wrap; justify-content: flex-end; }
+
+/* Cartoes e emprestimos */
+.k-cards { background: var(--g-reserva); } .k-loans { background: var(--g-rendafixa); }
+.mbars.twelve { grid-template-columns: repeat(12, 1fr); gap: 4px; height: 140px; }
+.stack-col { display: flex; flex-direction: column-reverse; justify-content: flex-start; height: 100%; gap: 2px; }
+.stack-col .mbar-fill { border-radius: 0; }
+.stack-col .mbar-fill:last-child { border-radius: 4px 4px 0 0; }
+.limit.budget { margin-top: 12px; }
+.limit-fill.over { background: var(--sell, #e66767); }
+@media (max-width: 600px) { .mbars.twelve small { font-size: 9px; } }

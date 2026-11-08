@@ -32,7 +32,7 @@ export type Account = {
   noStatement?: boolean;
 };
 export type MonthDoc = { items: Gasto[] };
-export type Card = { id: string; name: string; closeDay: number; dueDay: number; limit?: number };
+export type Card = { id: string; name: string; closeDay: number; dueDay: number; limit?: number; budget?: number }; // budget = planejado por fatura
 export type Loan = {
   id: string; name: string;
   parcela: number; // R$ por mes
@@ -177,17 +177,41 @@ export const monthDiff = (a: string, b: string) =>
 
 // ---------- resumo ----------
 export type MonthSummary = { gastos: number; receitas: number; byCat: Record<string, number> };
+// Mes pelo extrato da conta: compras no cartao ficam de fora (o controle delas e em Cartoes e emprestimos) e o
+// pagamento da fatura conta como uma saida, no dia em que sai da conta
 export function summarize(items: Gasto[]): MonthSummary {
   const s: MonthSummary = { gastos: 0, receitas: 0, byCat: {} };
   for (const i of items) {
-    if (i.tipo === "gasto") { s.gastos += i.v; s.byCat[i.cat] = (s.byCat[i.cat] ?? 0) + i.v; }
+    if (i.card) continue;
+    if (i.tipo === "gasto" || (i.cat === CARD_PAY_CAT && dirOf(i) < 0)) { s.gastos += i.v; s.byCat[i.cat] = (s.byCat[i.cat] ?? 0) + i.v; }
     else if (i.tipo === "receita") s.receitas += i.v;
   }
   return s;
 }
+
+// Compras de uma fatura (cartao c, fatura que vence no mes fm), em qualquer mes de lancamento
+export function faturaItems(c: Card, months: Record<string, MonthDoc>, fm: string) {
+  const out: { m: string; g: Gasto }[] = [];
+  for (const [m, md] of Object.entries(months))
+    for (const g of md.items) if (g.card === c.id && g.tipo !== "neutro" && faturaMonth(c, g.d) === fm) out.push({ m, g });
+  return out.sort((a, b) => b.g.d.localeCompare(a.g.d));
+}
+
+// Compromissos dos proximos meses: faturas (com parcelas futuras, sem o que ja foi pago) e parcelas de emprestimo
+export function commitments(months: Record<string, MonthDoc>, setup: GastosSetup, n = 12) {
+  const start = monthOf(todayBR());
+  const st = setup.cards.map((c) => cardStatus(c, months));
+  return Array.from({ length: n }, (_, k) => {
+    const m = addMonths(start, k);
+    const cards = st.reduce((s, x) => s + (x.all.find((f) => f.m === m)?.rest ?? 0), 0);
+    const loans = setup.loans.reduce((s, l) => s + (loanInstallment(l, m) ? l.parcela : 0), 0);
+    return { m, cards, loans };
+  });
+}
 // Media de gastos dos ultimos 3 meses fechados que tem lancamentos (usada na reserva de emergencia)
 export function avgMonthly(months: Record<string, MonthDoc>, current = monthOf(todayBR())) {
-  const keys = Object.keys(months).filter((m) => m < current && months[m].items.some((i) => i.tipo === "gasto")).sort().slice(-3);
+  // so meses com saidas da conta (compras no cartao sozinhas nao contam: elas entram quando a fatura e paga)
+  const keys = Object.keys(months).filter((m) => m < current && summarize(months[m].items).gastos > 0).sort().slice(-3);
   if (!keys.length) return null;
   return { value: keys.reduce((s, m) => s + summarize(months[m].items).gastos, 0) / keys.length, months: keys.length };
 }

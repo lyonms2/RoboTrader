@@ -7,12 +7,15 @@ import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/t
 import { accountBalance, accountsOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
 import GastosCard, { AccountForm, AccountsPanel, CardForm, DebtsBlock, FixoForm, Fixos, ImportPanel, LoanForm, QuickAdd, monthSnapshot, saveSetup, upcoming } from "./GastosCard";
 import NetWorthChart from "./NetWorthChart";
+import CardsLoans, { type CardsEntry } from "./CardsLoans";
 import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
 
 // Resumo = ver como esta; Lancamentos = unico lugar onde o dinheiro se move; Contas e bens = unico lugar com saldos e cadastros
 // O resumo (patrimonio, mes, proximos pagamentos, evolucao) fica na Visao geral
-export type Sub = "lanc" | "bens";
-const SUBS: { id: Sub; label: string }[] = [{ id: "lanc", label: "Lancamentos" }, { id: "bens", label: "Contas e bens" }];
+export type Sub = "lanc" | "cards" | "bens";
+const SUBS: { id: Sub; label: string }[] = [
+  { id: "lanc", label: "Lancamentos" }, { id: "cards", label: "Cartoes e emprestimos" }, { id: "bens", label: "Contas e bens" },
+];
 const OLD_SUB: Record<string, Sub> = { gastos: "lanc", invest: "bens", dividas: "bens", resumo: "lanc" };
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -59,7 +62,12 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
     window.scrollTo({ top: 0 });
   };
   const [entry, setEntry] = useState<{ type: EntryType; id: string | null }>({ type: "mov", id: null });
-  const goEdit = (type: EntryType, id: string | null) => { setEntry({ type, id }); setSub("lanc"); };
+  const [cardsEntry, setCardsEntry] = useState<CardsEntry>({ type: "compra", id: null });
+  // cartao e emprestimo se lancam em Cartoes e emprestimos; o resto em Lancamentos
+  const goEdit = (type: EntryType | "card" | "loan", id: string | null) => {
+    if (type === "card" || type === "loan") { setCardsEntry({ type, id }); setSub("cards"); return; }
+    setEntry({ type, id }); setSub("lanc");
+  };
   const items = cfg.finance ?? [];
   const acct = accountBalance(months, setup);
   const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost, acct?.value, investFlows(months));
@@ -100,6 +108,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
     <EntryPanel entry={entry} setEntry={setEntry} months={months} setup={setup} invest={items} fin={fin}
       onSaveInv={upsert} onRemoveInv={remove} />
   );
+  if (sub === "cards") return <>{nav}<CardsLoans months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} /></>;
   if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} entry={entryPanel} /></>;
 
   return (
@@ -548,10 +557,10 @@ export function NetWorthBlock({ cfg, fin, wallet, months, setup, nwHist }: Ctx &
 }
 
 // ---------- "O que voce quer lancar?" (unico lugar de entrada) ----------
-export type EntryType = "mov" | "import" | "inv" | "bem" | "card" | "loan" | "fixo" | "conta";
+export type EntryType = "mov" | "import" | "inv" | "bem" | "fixo" | "conta";
 const ENTRY_TYPES: { id: EntryType; label: string }[] = [
   { id: "mov", label: "Gasto ou entrada" }, { id: "import", label: "Importar extrato" }, { id: "inv", label: "Investimento" }, { id: "bem", label: "Bem (imovel, veiculo)" },
-  { id: "card", label: "Cartao" }, { id: "loan", label: "Emprestimo" }, { id: "fixo", label: "Gasto fixo" }, { id: "conta", label: "Conta / saldo" },
+  { id: "fixo", label: "Gasto fixo" }, { id: "conta", label: "Conta / saldo" },
 ];
 
 function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, onRemoveInv }: {
@@ -566,19 +575,15 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   const existing: Record<string, { id: string; label: string }[]> = {
     inv: invest.filter((i) => i.kind !== "bem").map((i) => ({ id: i.id, label: i.name })),
     bem: invest.filter((i) => i.kind === "bem").map((i) => ({ id: i.id, label: i.name })),
-    card: setup.cards.map((c) => ({ id: c.id, label: c.name })),
-    loan: setup.loans.map((l) => ({ id: l.id, label: l.name })),
     fixo: setup.fixos.map((f) => ({ id: f.id, label: f.desc })),
     conta: accounts.map((a) => ({ id: a.id, label: a.name })),
   };
   const opts = existing[type];
-  const saveCards = async (c: Card) => { await saveSetup({ cards: setup.cards.some((x) => x.id === c.id) ? setup.cards.map((x) => (x.id === c.id ? c : x)) : [...setup.cards, c] }); reset(); };
-  const saveLoans = async (l: Loan) => { await saveSetup({ loans: setup.loans.some((x) => x.id === l.id) ? setup.loans.map((x) => (x.id === l.id ? l : x)) : [...setup.loans, l] }); reset(); };
   const saveAccounts = async (list: Account[]) => { await saveSetup({ accounts: JSON.parse(JSON.stringify(list)), account: null } as Partial<GastosSetup>); reset(); };
   const usedAcc = new Set(Object.values(months).flatMap((md) => md.items.map((g) => g.acc ?? (g.card ? "" : accounts[0].id))));
   return (
     <div className="entry">
-      <p className="small entry-q">O que voce quer lancar?</p>
+      <p className="small entry-q">O que voce quer lancar? <span className="muted">(compras no cartao e emprestimos: em Cartoes e emprestimos)</span></p>
       <div className="kind-pick entry-types">
         {ENTRY_TYPES.map((t) => (
           <button key={t.id} type="button" className={type === t.id ? "pill on" : "pill"} onClick={() => setEntry({ type: t.id, id: null })}>{t.label}</button>
@@ -604,18 +609,6 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
         <>
           <ItemForm key={id ?? "novo-bem"} only="bem" initial={invest.find((i) => i.id === id) ?? null} fin={fin} onSave={(it) => { onSaveInv(it); setEntry({ type: "bem", id: null }); }} onCancel={reset} />
           {id && <button className="ghost small-btn" onClick={() => { const it = invest.find((i) => i.id === id); if (it) { onRemoveInv(it); setEntry({ type: "bem", id: null }); } }}>remover este bem</button>}
-        </>
-      )}
-      {type === "card" && (
-        <>
-          <CardForm key={id ?? "novo"} c={setup.cards.find((c) => c.id === id) ?? { id: newId(), name: "", closeDay: 1, dueDay: 8 }} onSave={saveCards} onCancel={reset} />
-          {id && <button className="ghost small-btn" onClick={async () => { if (confirm("Remover este cartao? (os lancamentos continuam)")) { await saveSetup({ cards: setup.cards.filter((c) => c.id !== id) }); reset(); } }}>remover este cartao</button>}
-        </>
-      )}
-      {type === "loan" && (
-        <>
-          <LoanForm key={id ?? "novo"} l={setup.loans.find((l) => l.id === id) ?? { id: newId(), name: "", parcela: 0, n: 12, first: monthOf(todayBR()), dueDay: 10 }} onSave={saveLoans} onCancel={reset} />
-          {id && <button className="ghost small-btn" onClick={async () => { if (confirm("Remover este emprestimo?")) { await saveSetup({ loans: setup.loans.filter((l) => l.id !== id) }); reset(); } }}>remover este emprestimo</button>}
         </>
       )}
       {type === "fixo" && <FixoForm key={id ?? "novo"} setup={setup} fixo={setup.fixos.find((f) => f.id === id) ?? null} onDone={reset} />}

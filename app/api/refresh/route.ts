@@ -4,7 +4,7 @@ import { refreshFichas } from "@/lib/fichas";
 import { snapshotNetWorth } from "@/lib/patrimonioServer";
 import { serverProjectId } from "@/lib/firebaseAdmin";
 import { runJob } from "@/lib/job";
-import { requireOwner } from "@/lib/ownerAuth";
+import { requireUser } from "@/lib/ownerAuth";
 import { SYMBOLS } from "@/lib/types";
 import { refreshWallet } from "@/lib/wallet";
 
@@ -15,8 +15,9 @@ export const maxDuration = 60;
 // Botao "Atualizar tudo" do painel: carteiras -> sinais (com a Lighter) -> fichas, nessa ordem, porque os sinais usam
 // o saldo das carteiras e as fichas usam os sinais. Exige o login do e-mail em ALLOWED_EMAIL.
 export async function POST(req: Request) {
-  const denied = await requireOwner(req);
-  if (denied) return denied;
+  const r = await requireUser(req);
+  if ("denied" in r) return r.denied;
+  const { who } = r;
   const step = async <T,>(fn: () => Promise<T>) => {
     try {
       return await fn();
@@ -24,6 +25,12 @@ export async function POST(req: Request) {
       return { error: String(e) };
     }
   };
+  // Membro: so a carteira dele (no maximo a cada 30 min, para poupar a cota da Zerion) e a foto do patrimonio
+  if (who.role === "member") {
+    const wallet = await step(() => refreshWallet({ force: false, base: who.base }));
+    const patrimonio = await step(() => snapshotNetWorth(who.base));
+    return NextResponse.json({ ok: true, member: true, wallet, patrimonio });
+  }
   try {
     const wallet = await step(() => refreshWallet({ force: true }));
     const job = await runJob({ force: true, fichas: false });

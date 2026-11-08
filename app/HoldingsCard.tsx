@@ -2,6 +2,7 @@
 import { deleteField, doc, updateDoc } from "firebase/firestore";
 import { useState } from "react";
 import { db } from "@/lib/firebaseClient";
+import { P } from "@/lib/paths";
 import type { AppConfig, WalletDoc } from "@/lib/types";
 import { holdings, type Row } from "@/lib/holdings";
 
@@ -40,7 +41,7 @@ export default function HoldingsCard({ wallet, cfg }: { wallet: WalletDoc; cfg: 
 
   async function saveAvg(symbol: string, value: number | null) {
     // updateDoc com caminho do campo: apagar ("limpar") remove so este token
-    await updateDoc(doc(db(), "config/main"), { [`costBasis.${symbol.toUpperCase()}`]: value && value > 0 ? value : deleteField() });
+    await updateDoc(doc(db(), P("config/main")), { [`costBasis.${symbol.toUpperCase()}`]: value && value > 0 ? value : deleteField() });
     setEditing(null);
   }
 

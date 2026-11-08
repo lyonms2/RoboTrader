@@ -2,6 +2,7 @@
 import { doc, setDoc } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebaseClient";
+import { P } from "@/lib/paths";
 import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
 import { INVEST_CAT, recvStatus, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type Gasto, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
@@ -88,7 +89,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost, acct?.value, investFlows(months));
 
   async function save(list: FinItem[], fetchQuotes: boolean) {
-    await setDoc(doc(db(), "config/main"), { finance: JSON.parse(JSON.stringify(list)) }, { merge: true });
+    await setDoc(doc(db(), P("config/main")), { finance: JSON.parse(JSON.stringify(list)) }, { merge: true });
     if (fetchQuotes) onChanged();
   }
   const upsert = async (it: FinItem) => {

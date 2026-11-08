@@ -1,6 +1,7 @@
 rules_version = '2';
 // Cole no Firebase > Firestore > Regras, trocando SEU_EMAIL@gmail.com pelo seu e-mail do Google.
-// O servidor (cron) usa a conta de servico e nao passa por estas regras.
+// O servidor (cron e rotas) usa a conta de servico e nao passa por estas regras.
+// Dono: le tudo na raiz (como sempre). Membro: e-mail em access/{email} com role "member"; so le e grava em users/{uid}/...
 service cloud.firestore {
   match /databases/{database}/documents {
     function isOwner() {
@@ -8,14 +9,33 @@ service cloud.firestore {
         && request.auth.token.email == "SEU_EMAIL@gmail.com"
         && request.auth.token.email_verified == true;
     }
-    match /{document=**} {
-      allow read: if isOwner();
+    function isMember() {
+      return request.auth != null && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/access/$(request.auth.token.email.lower()))
+        && get(/databases/$(database)/documents/access/$(request.auth.token.email.lower())).data.role == "member";
+    }
+    // O dono le os dados dele (raiz). O espaco dos membros (users/) fica fora: nem o dono le pelo site
+    match /{col}/{document=**} {
+      allow read: if isOwner() && col != "users";
     }
     match /config/{id} {
       allow write: if isOwner();
     }
     match /trades/{id} {
       allow create, update, delete: if isOwner();
+    }
+    // Lista de quem entra: o dono gerencia; cada um so le o proprio
+    match /access/{email} {
+      allow read: if request.auth != null && request.auth.token.email.lower() == email;
+      allow write: if isOwner();
+    }
+    // Espaco de cada membro
+    match /users/{uid}/{document=**} {
+      allow read, write: if isMember() && request.auth.uid == uid;
+    }
+    // Sinais do robo: membros veem como estudo
+    match /latest/{symbol} {
+      allow read: if isMember();
     }
   }
 }

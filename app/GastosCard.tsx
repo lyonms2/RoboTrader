@@ -2,6 +2,7 @@
 import { doc, setDoc } from "firebase/firestore";
 import { Fragment, useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
+import { P } from "@/lib/paths";
 import { CARD_PAY_CAT, GENERIC_CATS, INVEST_CAT, TRANSFER_CAT, customCats, setCustomCats, accNameFromDesc, looksDuplicate, suggestCard, suggestToAcc, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardPayForm } from "./CardsLoans";
@@ -24,8 +25,8 @@ function num(s: string) {
   return Number(t) || 0;
 }
 export const saveMonth = (m: string, items: Gasto[]) =>
-  setDoc(doc(db(), "config", `gastos-${m}`), { items: clean([...items].sort((a, b) => a.d.localeCompare(b.d))) });
-export const saveSetup = (s: Partial<GastosSetup>) => setDoc(doc(db(), "config", "gastos-setup"), clean(s), { merge: true });
+  setDoc(doc(db(), P("config"), `gastos-${m}`), { items: clean([...items].sort((a, b) => a.d.localeCompare(b.d))) });
+export const saveSetup = (s: Partial<GastosSetup>) => setDoc(doc(db(), P("config"), "gastos-setup"), clean(s), { merge: true });
 
 // Grava lancamentos que podem cair em meses diferentes (parcelas, importacao)
 async function addItems(months: Record<string, MonthDoc>, list: Gasto[]) {
@@ -508,7 +509,7 @@ async function createBox(invest: FinItem[], desc: string, d: string) {
   const name = await askText("Nome do cofrinho/investimento novo:", invNameFromDesc(desc));
   if (!name?.trim()) return undefined;
   const it: FinItem = { id: newId(), kind: "caixa", name: name.trim(), balance: 0, balanceAt: Date.parse(`${prevDay(d)}T12:00:00-03:00`), cdiPct: 100, reserva: true };
-  await setDoc(doc(db(), "config/main"), { finance: clean([...invest, it]) }, { merge: true });
+  await setDoc(doc(db(), P("config/main")), { finance: clean([...invest, it]) }, { merge: true });
   return it.id;
 }
 

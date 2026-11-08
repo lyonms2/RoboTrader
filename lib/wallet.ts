@@ -195,11 +195,12 @@ export async function readWallet(addresses: string[]): Promise<WalletDoc> {
 }
 
 // Le a carteira e grava wallet/main. Sem chave da Zerion ainda grava a parte da Lighter (com o aviso).
-export async function refreshWallet({ force }: { force: boolean }) {
+// base = espaco de quem atualiza ("" = dono, "users/{uid}/" = membro)
+export async function refreshWallet({ force, base = "" }: { force: boolean; base?: string }) {
   const db = adminDb();
-  const addresses = walletAddresses((await db.doc("config/main").get()).data() ?? {});
+  const addresses = walletAddresses((await db.doc(`${base}config/main`).get()).data() ?? {});
   if (!addresses.length) return { skipped: true, reason: "sem endereco de carteira na Configuracao" };
-  const ref = db.doc("wallet/main");
+  const ref = db.doc(`${base}wallet/main`);
   const prev = (await ref.get()).data() as WalletDoc | undefined;
   if (!force && prev?.address === walletKey(addresses) && Date.now() - prev.at < AUTO_INTERVAL_MS) return { skipped: true, reason: "atualizada ha menos de 30 min" };
   const doc = await readWallet(addresses);
@@ -228,7 +229,7 @@ export async function refreshWallet({ force }: { force: boolean }) {
   // Um retrato por dia (o ultimo do dia vale) para o grafico de evolucao; so com a leitura completa
   if (!doc.errors.length) {
     const day = new Date(doc.at).toISOString().slice(0, 10);
-    await db.doc(`wallet_history/${day}`).set({ t: doc.at, total: doc.total, byClass: walletTotals(doc).byClass });
+    await db.doc(`${base}wallet_history/${day}`).set({ t: doc.at, total: doc.total, byClass: walletTotals(doc).byClass });
   }
   return { skipped: false, total: doc.total, errors: doc.errors };
 }

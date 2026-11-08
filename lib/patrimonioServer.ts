@@ -5,11 +5,11 @@ import { netWorth } from "./patrimonio";
 import type { AppConfig, FinanceDoc, WalletDoc } from "./types";
 
 // Grava a foto do dia em patrimonio_history/{AAAA-MM-DD} (a ultima do dia vale). Chamado pelo "Atualizar tudo" e pelo agendador
-export async function snapshotNetWorth() {
+export async function snapshotNetWorth(base = "") {
   const db = adminDb();
   const [cfgS, finS, walS, gastosS] = await Promise.all([
-    db.doc("config/main").get(), db.doc("finance/main").get(), db.doc("wallet/main").get(),
-    db.collection("config").where(FieldPath.documentId(), ">=", "gastos-").where(FieldPath.documentId(), "<", "gastos-").get(),
+    db.doc(`${base}config/main`).get(), db.doc(`${base}finance/main`).get(), db.doc(`${base}wallet/main`).get(),
+    db.collection(`${base}config`).where(FieldPath.documentId(), ">=", "gastos-").where(FieldPath.documentId(), "<", "gastos-").get(),
   ]);
   const cfg = cfgS.data() as AppConfig | undefined;
   if (!cfg) return { skipped: true, reason: "sem configuracao" };
@@ -21,6 +21,6 @@ export async function snapshotNetWorth() {
   }
   const nw = netWorth(cfg, (finS.data() as FinanceDoc | undefined) ?? null, (walS.data() as WalletDoc | undefined) ?? null, months, setup);
   if (!(nw.bens > 0) && !(nw.dividas > 0)) return { skipped: true, reason: "nada cadastrado" };
-  await db.doc(`patrimonio_history/${nw.day}`).set(JSON.parse(JSON.stringify(nw)));
+  await db.doc(`${base}patrimonio_history/${nw.day}`).set(JSON.parse(JSON.stringify(nw)));
   return { skipped: false, net: nw.net };
 }

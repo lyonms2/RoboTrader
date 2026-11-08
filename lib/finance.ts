@@ -90,10 +90,10 @@ export async function tesouroToday() {
 }
 
 // Atualiza finance/main. force = botao (refaz cotacoes e indices); o Tesouro so e baixado de novo depois de 6 h
-export async function refreshFinance({ force }: { force: boolean }) {
+export async function refreshFinance({ force, base = "" }: { force: boolean; base?: string }) {
   const db = adminDb();
-  const ref = db.doc("finance/main");
-  const [prevSnap, cfgSnap] = await Promise.all([ref.get(), db.doc("config/main").get()]);
+  const ref = db.doc(`${base}finance/main`);
+  const [prevSnap, cfgSnap] = await Promise.all([ref.get(), db.doc(`${base}config/main`).get()]);
   const prev = prevSnap.data() as FinanceDoc | undefined;
   const items = ((cfgSnap.data() as AppConfig | undefined)?.finance ?? []);
   if (!items.length && !force) return { skipped: true, reason: "nenhum investimento cadastrado" };

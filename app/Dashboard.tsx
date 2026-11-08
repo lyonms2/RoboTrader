@@ -1,8 +1,9 @@
 "use client";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
-import { addDoc, collection, doc, documentId, getDocs, limitToLast, onSnapshot, orderBy, query, setDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, documentId, getDoc, getDocs, limitToLast, onSnapshot, orderBy, query, setDoc, where, writeBatch } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
+import { P, memberBase, setDataBase } from "@/lib/paths";
 import { applyTrade, rebuild } from "@/lib/ledger";
 import { performance } from "@/lib/performance";
 import { DEFAULT_ALLOC, allocOf, effectiveConfig } from "@/lib/positions";
@@ -80,6 +81,7 @@ export type Demo = {
   cfg: AppConfig; latest: LatestDoc[]; trades: (TradeDoc & { id: string })[]; wallet: WalletDoc | null;
   walletHistory: WalletHistoryDoc[]; fichas: FichaDoc | null; candidates?: CandidatesDoc | null; finance?: FinanceDoc | null;
   months?: Record<string, MonthDoc>; setup?: GastosSetup; nwHist?: NetWorthDoc[];
+  member?: boolean; // demo vista como membro
 };
 
 export default function Dashboard({ demo }: { demo?: Demo }) {
@@ -99,6 +101,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showCfg, setShowCfg] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
   const [busy, setBusy] = useState(false);
   // Aba aberta, lembrada neste navegador
   const [tab, setTabState] = useState<TabId>("geral");
@@ -121,23 +125,53 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const prices = usePrices(user ? Object.keys(cfg.weights) : []);
 
   useEffect(() => (demo ? undefined : firebaseConfigured ? onAuthStateChanged(auth(), setUser) : setUser(null)), [demo]);
+  // Quem entrou: dono (le a raiz, como sempre), membro (access/{email} -> users/{uid}/) ou sem acesso
+  const [role, setRole] = useState<"owner" | "member" | "none" | null>(demo ? (demo.member ? "member" : "owner") : null);
+  useEffect(() => {
+    if (demo || !user) return;
+    let alive = true;
+    (async () => {
+      const email = (user.email ?? "").toLowerCase();
+      try {
+        const a = await getDoc(doc(db(), "access", email));
+        if (a.exists() && (a.data() as { role?: string }).role === "member") {
+          setDataBase(memberBase(user.uid));
+          if (alive) setRole("member");
+          return;
+        }
+      } catch { /* sem regra de acesso ainda: segue para o teste de dono */ }
+      try {
+        await getDoc(doc(db(), "config/main"));
+        setDataBase("");
+        if (alive) setRole("owner");
+      } catch {
+        if (alive) setRole("none");
+      }
+    })();
+    return () => { alive = false; };
+  }, [user, demo]);
+  const member = role === "member";
+  // membro nao tem Tokens nem Operacoes: cai no Robo (estudo)
+  useEffect(() => { if (member && (tab === "tokens" || tab === "operacoes")) setTabState("sinais"); }, [member, tab]);
 
   useEffect(() => {
-    if (!user || demo) return;
+    if (!user || demo || (role !== "owner" && role !== "member")) return;
     const onErr = (e: Error) => setError(e.message.includes("permission") ? "Este e-mail nao tem acesso (veja firestore.rules)." : e.message);
-    const u1 = onSnapshot(doc(db(), "config/main"), (s) => s.exists() && setCfg({ ...DEFAULT_CONFIG, ...(s.data() as AppConfig) }), onErr);
+    const owner = role === "owner";
+    const none = () => undefined;
+    const u1 = onSnapshot(doc(db(), P("config/main")), (s) => s.exists() && setCfg({ ...DEFAULT_CONFIG, ...(s.data() as AppConfig) }), onErr);
     const u2 = onSnapshot(collection(db(), "latest"), (s) => setLatest(s.docs.map((d) => d.data() as LatestDoc)), onErr);
-    const u3 = onSnapshot(query(collection(db(), "trades"), orderBy("t", "desc")),
+    const u3 = !owner ? none : onSnapshot(query(collection(db(), "trades"), orderBy("t", "desc")),
       (s) => setTrades(s.docs.map((d) => ({ id: d.id, ...(d.data() as TradeDoc) }))), onErr);
-    const u4 = onSnapshot(doc(db(), "wallet/main"), (s) => setWallet(s.exists() ? (s.data() as WalletDoc) : null), onErr);
-    const u5 = onSnapshot(query(collection(db(), "wallet_history"), orderBy("t"), limitToLast(365)),
+    const u4 = onSnapshot(doc(db(), P("wallet/main")), (s) => setWallet(s.exists() ? (s.data() as WalletDoc) : null), onErr);
+    const u5 = onSnapshot(query(collection(db(), P("wallet_history")), orderBy("t"), limitToLast(365)),
       (s) => setWalletHistory(s.docs.map((d) => d.data() as WalletHistoryDoc)), onErr);
-    const u6 = onSnapshot(doc(db(), "sync/lighter"), (s) => setSync(s.exists() ? (s.data() as LighterSyncDoc) : null), onErr);
-    const u7 = onSnapshot(doc(db(), "fichas/main"), (s) => setFichas(s.exists() ? (s.data() as FichaDoc) : null), onErr);
-    const u8 = onSnapshot(doc(db(), "candidates/main"), (s) => setCandidates(s.exists() ? (s.data() as CandidatesDoc) : null), onErr);
-    const u9 = onSnapshot(doc(db(), "finance/main"), (s) => setFinance(s.exists() ? (s.data() as FinanceDoc) : null), onErr);
+    const u6 = !owner ? none : onSnapshot(doc(db(), "sync/lighter"), (s) => setSync(s.exists() ? (s.data() as LighterSyncDoc) : null), onErr);
+    const u7 = !owner ? none : onSnapshot(doc(db(), "fichas/main"), (s) => setFichas(s.exists() ? (s.data() as FichaDoc) : null), onErr);
+    const u8 = !owner ? none : onSnapshot(doc(db(), "candidates/main"), (s) => setCandidates(s.exists() ? (s.data() as CandidatesDoc) : null), onErr);
+    const u9 = onSnapshot(doc(db(), P("finance/main")), (s) => setFinance(s.exists() ? (s.data() as FinanceDoc) : null), onErr);
     // Gastos: config/gastos-AAAA-MM (um por mes) e config/gastos-setup
-    const u10 = onSnapshot(query(collection(db(), "config"), where(documentId(), ">=", "gastos-"), where(documentId(), "<", "gastos-\uf8ff")), (s) => {
+    const u10 = onSnapshot(query(collection(db(), P("config")), where(documentId(), ">=", "gastos-"), where(documentId(), "<", "gastos-\uf8ff")), (s) => {
       const ms: Record<string, MonthDoc> = {};
       let st: GastosSetup = EMPTY_SETUP;
       for (const d of s.docs) {
@@ -147,10 +181,10 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       setMonths(ms);
       setGSetup(st);
     }, onErr);
-    const u11 = onSnapshot(query(collection(db(), "patrimonio_history"), orderBy("t"), limitToLast(1500)),
+    const u11 = onSnapshot(query(collection(db(), P("patrimonio_history")), orderBy("t"), limitToLast(1500)),
       (s) => setNwHist(s.docs.map((d) => d.data() as NetWorthDoc)), onErr);
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); u11(); };
-  }, [user, demo]);
+  }, [user, demo, role]);
 
   // Financas (cotacoes, CDI, Tesouro) numa chamada separada: o arquivo do Tesouro e grande e nao pode atrasar os sinais
   async function refreshFinance() {
@@ -190,6 +224,15 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
           "Gere a chave da conta de servico (FIREBASE_SERVICE_ACCOUNT) no mesmo projeto do Firebase.");
         return;
       }
+      // Membro: o servidor so le a carteira dele e as cotacoes
+      if (member) {
+        const b = body as { wallet?: { error?: string; errors?: string[]; reason?: string; total?: number } | null };
+        const finProblems = await finJob;
+        const probs = [...finProblems, b.wallet?.error, ...(b.wallet?.errors ?? [])].filter(Boolean);
+        setNotice(`Atualizado as ${new Date().toLocaleTimeString("pt-BR")}` + (b.wallet?.total !== undefined ? `: carteira $${fmt(b.wallet.total)}` : b.wallet?.reason ? ` (carteira: ${b.wallet.reason})` : "") +
+          (probs.length ? `. Avisos: ${probs.join("; ")}` : "."));
+        return;
+      }
       // Le de novo os sinais (alem do tempo real), para mostrar erro de permissao se houver
       const snap = await getDocs(collection(db(), "latest"));
       setLatest(snap.docs.map((d) => d.data() as LatestDoc));
@@ -220,15 +263,25 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
 
   if (!firebaseConfigured && !demo)
     return <main className="wrap center"><h1>SeuBitico</h1><p className="error">Firebase nao configurado: cadastre as variaveis NEXT_PUBLIC_FIREBASE_* na Vercel e faca Redeploy.</p></main>;
-  if (user === undefined) return <main className="wrap"><p>Carregando...</p></main>;
+  if (user === undefined || (user && role === null)) return <main className="wrap"><p>Carregando...</p></main>;
   if (!user)
     return (
       <main className="wrap login">
-        <img className="brand-mark" src="/seubitico-96.png" alt="" width={34} height={34} />
+        <img className="brand-mark" src="/seubitico-256.png" alt="SeuBitico" width={96} height={96} />
         <h1 className="brand-name">Seu<span className="bb">Bitico</span></h1>
         <p className="muted">Financas pessoais e cripto num lugar so: contas, cartoes, investimentos e carteira.</p>
         <button onClick={() => signInWithPopup(auth(), new GoogleAuthProvider())}>Entrar com Google</button>
         <p className="muted small">Ferramenta educacional, nao e recomendacao de investimento.</p>
+      </main>
+    );
+  if (role === "none")
+    return (
+      <main className="wrap login">
+        <img className="brand-mark" src="/seubitico-256.png" alt="SeuBitico" width={96} height={96} />
+        <h1 className="brand-name">Seu<span className="bb">Bitico</span></h1>
+        <p>O e-mail <b>{user.email}</b> ainda nao tem acesso.</p>
+        <p className="muted small">A area e para membros do canal. Se voce e membro, envie este e-mail para o SeuBitico liberar o acesso.</p>
+        <button className="ghost" onClick={() => signOut(auth())}>Sair</button>
       </main>
     );
 
@@ -260,13 +313,15 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand-row">
-            <img className="brand-mark" src="/seubitico-256.png" alt="SeuBitico" width={96} height={96} />
+            <img className="brand-mark" src="/seubitico-96.png" alt="" width={34} height={34} />
             <div className="brand">
               <span className="brand-name">Seu<span className="bb">Bitico</span></span>
               <span className="muted small">financas e cripto{updatedAt ? ` - dados ${ago(updatedAt)}` : ""}</span>
             </div>
           </div>
           <div className="row">
+            {role === "owner" && !demo && <button className="ghost" onClick={() => setShowAdmin(true)}>Membros</button>}
+            {member && <button className="ghost" onClick={() => setShowAccount(true)}>Minha conta</button>}
             <button className="ghost" onClick={() => signOut(auth())}>Sair</button>
           </div>
         </div>
@@ -285,14 +340,14 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         {notice && <p className="banner">{notice}</p>}
 
         {tab === "geral" && (
-          <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} sync={cfg.lighter?.enabled ? sync : null} onTab={setTab}
+          <Overview member={member} cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} sync={cfg.lighter?.enabled ? sync : null} onTab={setTab}
             money={{ cfg, fin: finance, wallet: walletOk ? wallet : null, spend, debt, months, setup: gSetup, nwHist }}
             onFin={(s: FinSub | "loans" | "recv") => { try { localStorage.setItem("finSub", s); } catch { /* sem armazenamento */ } setTab("financas"); }} />
         )}
         {inCrypto && (
           <div className="toolbar">
             <nav className="subtabs" role="tablist" aria-label="Cripto">
-              {cryptoSubs.map((x) => (
+              {cryptoSubs.filter((x) => !member || x.id === "sinais" || x.id === "carteira").map((x) => (
                 <button key={x.id} role="tab" aria-selected={tab === x.id} className={tab === x.id ? "pill on" : "pill"} onClick={() => setTab(x.id)}>{x.label}</button>
               ))}
             </nav>
@@ -311,10 +366,12 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         )}
         {tab === "sinais" && (
           <>
+            {member && <p className="banner">Estudo educacional: mostra como a regra do robo (SMA 150 + HMA 100) se comportou e onde esta cada moeda em relacao a ela.
+              Nao e recomendacao de compra ou venda.</p>}
             {!latest.length && <p className="muted">Nenhum sinal ainda. Em Cripto, clique em &quot;Atualizar&quot;.</p>}
             <div className="grid">
               {[...latest].sort((a, b) => SYMBOLS.indexOf(a.symbol) - SYMBOLS.indexOf(b.symbol)).map((l) => (
-                <AssetCard key={l.symbol} l={l} cfg={eff} prices={prices} />
+                <AssetCard key={l.symbol} l={l} cfg={eff} prices={prices} study={member} />
               ))}
             </div>
             {/* Outras moedas para o robo: escondido ate dar para trocar as moedas do robo pela tela */}
@@ -325,8 +382,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
           onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }}
           onQuotes={async () => { const p = await refreshFinance(); if (p.length) setError(p.join("; ")); else setNotice(`Cotacoes atualizadas as ${new Date().toLocaleTimeString("pt-BR")}.`); }} />}
         {tab === "carteira" && <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} />}
-        {tab === "tokens" && <FichasCard fichas={fichas} />}
-        {tab === "operacoes" && (
+        {tab === "tokens" && !member && <FichasCard fichas={fichas} />}
+        {tab === "operacoes" && !member && (
           <>
             <TradeForm cfg={cfg} latest={latest} prices={prices} />
             <Performance cfg={eff} latest={latest} trades={trades} prices={prices} />
@@ -339,9 +396,11 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       </main>
       {showCfg && (
         <Modal onClose={() => setShowCfg(false)}>
-          <ConfigForm cfg={cfg} onClose={() => setShowCfg(false)} />
+          {member ? <MemberConfigForm cfg={cfg} onClose={() => setShowCfg(false)} /> : <ConfigForm cfg={cfg} onClose={() => setShowCfg(false)} />}
         </Modal>
       )}
+      {showAdmin && <Modal onClose={() => setShowAdmin(false)}><MembersAdmin onClose={() => setShowAdmin(false)} /></Modal>}
+      {showAccount && user && <Modal onClose={() => setShowAccount(false)}><MyAccount user={user} onClose={() => setShowAccount(false)} /></Modal>}
     </>
   );
 }
@@ -353,8 +412,8 @@ const CRYPTO_TABS: TabId[] = ["sinais", "carteira", "tokens", "operacoes"];
 // Visao geral: patrimonio, o que fazer hoje, alocacao e posicoes do robo
 type Money = Parameters<typeof PatrimonioCard>[0] extends infer P ? Omit<P, "onBens"> & { nwHist: NetWorthDoc[] } : never;
 // Visao geral: patrimonio, o que fazer hoje, o mes e os proximos pagamentos, evolucao e, depois, o robo e a cripto
-function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onFin }: {
-  cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null;
+function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, money, onFin }: {
+  member?: boolean; cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null;
   sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub | "loans" | "recv") => void;
 }) {
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
@@ -379,7 +438,7 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
   // O que fazer hoje: sinais do robo, acoes das fichas e avisos da carteira
   type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId; fin?: FinSub | "loans" | "recv" };
   const todo: Todo[] = [];
-  for (const l of [...latest].sort((a, b) => SYMBOLS.indexOf(a.symbol) - SYMBOLS.indexOf(b.symbol))) {
+  for (const l of member ? [] : [...latest].sort((a, b) => SYMBOLS.indexOf(a.symbol) - SYMBOLS.indexOf(b.symbol))) {
     const coin = l.symbol.replace("USDT", "");
     const capital = cfg.capitalUsdt * (cfg.weights[l.symbol] ?? 0);
     const d = decide(l.state, capital, cfg.positions[l.symbol] ?? 0, params);
@@ -401,7 +460,7 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
       todo.push({ tone: c === "saida" ? "sell" : c === "reduzir" || c === "sem_vaga" ? "warn" : "buy", who: f.symbol, text: `${f.situacao.label}${f.action ? `: ${f.action}` : ""}`, tab: "tokens" });
   }
   if (wallet) for (const n of walletNotices(wallet)) if (n.level !== "info") todo.push({ tone: "warn", who: "Carteira", text: n.text, tab: "carteira" });
-  if (unknown) todo.push({ tone: "info", who: "Robo", text: "ha posicao sem preco medio: informe-o em Carteira > Meus tokens para ver o lucro", tab: "sinais" });
+  if (unknown && !member) todo.push({ tone: "info", who: "Robo", text: "ha posicao sem preco medio: informe-o em Carteira > Meus tokens para ver o lucro", tab: "sinais" });
   if (sync?.shorts.length) todo.push({ tone: "warn", who: "Lighter", text: `posicao vendida (${sync.shorts.join(", ")}) fica fora da conta`, tab: "carteira" });
   // Financas: pagamentos vencidos e pontos para revisar
   for (const p of upcoming(money.months, money.setup).filter((x) => x.late))
@@ -444,7 +503,7 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
         ) : (
           <p className="muted">Nada a fazer: nenhum sinal novo, nenhum pagamento vencido e nenhum aviso.</p>
         )}
-        <p className="muted small">Sinais oficiais so no fechamento diario (21:00 de Brasilia). Clique num item para ver os detalhes.</p>
+        <p className="muted small">{member ? "Clique num item para ver os detalhes." : "Sinais oficiais so no fechamento diario (21:00 de Brasilia). Clique num item para ver os detalhes."}</p>
       </section>
 
       {hasMoney && <MonthAndUpcoming months={money.months} setup={money.setup} onLanc={() => onFin("lanc")} onBens={() => onFin("bens")} />}
@@ -454,16 +513,16 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
         <div className="card-head"><h2>Cripto</h2><button className="link" onClick={() => onTab("carteira")}>ver cripto &rsaquo;</button></div>
         <div className="kpis">
           <div><span>{hasMoney ? "Carteira cripto" : "Patrimonio"}</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
-            <small className="muted">{total === null ? "cadastre as carteiras" : `nucleo $${fmt(cfg.capitalUsdt)}`}</small></div>
-          <div><span>Lucro aberto (robo)</span><b className={pnlClass(open)}>{signed(open)}</b>
+            <small className="muted">{total === null ? "cadastre as carteiras" : member ? "suas carteiras" : `nucleo $${fmt(cfg.capitalUsdt)}`}</small></div>
+          {!member && <><div><span>Lucro aberto (robo)</span><b className={pnlClass(open)}>{signed(open)}</b>
             <small className="muted">{invested > 0 ? `${signed((open / invested) * 100, 1)}% sobre $${fmt(invested)}` : "sem posicao"}</small></div>
           <div><span>Realizado</span><b className={pnlClass(realized)}>{signed(realized)}</b><small className="muted">vendas registradas</small></div>
-          <div><span>Total</span><b className={pnlClass(open + realized)}>{signed(open + realized)}</b><small className="muted">sem taxas e funding</small></div>
+          <div><span>Total</span><b className={pnlClass(open + realized)}>{signed(open + realized)}</b><small className="muted">sem taxas e funding</small></div></>}
         </div>
       </section>
 
 
-      <div className="two-col">
+      {!member && <div className="two-col">
         <section className="card">
           <h2>Alocacao</h2>
           {blocks.length ? (
@@ -512,7 +571,7 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
           )}
           <p className="muted small">Preco {prices.at ? `ao vivo (${ago(prices.at)})` : "do ultimo calculo"}.</p>
         </section>
-      </div>
+      </div>}
     </>
   );
 }
@@ -556,7 +615,7 @@ const pctFmt = (v: number, d = 1) => `${v > 0 ? "+" : ""}${fmt(v * 100, d)}%`;
 const refPx = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: v >= 100 ? 2 : 4 });
 
 // Card de uma moeda do robo: sinal oficial, previa, regras de saida/entrada, grafico e resultados com a saude da estrategia
-function AssetCard({ l, cfg, prices }: { l: LatestDoc; cfg: AppConfig; prices: Prices }) {
+function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppConfig; prices: Prices; study?: boolean }) {
   const s = l.state;
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
   const cur = currentPrice(l, prices);
@@ -586,19 +645,26 @@ function AssetCard({ l, cfg, prices }: { l: LatestDoc; cfg: AppConfig; prices: P
         <div className="price-now"><b>{fmtPx(cur.price)}</b><span className="muted small">{cur.live ? "ao vivo" : `recalculo ${ago(cur.at)}`}</span></div>
       </div>
 
+      {study ? (
+        <div className="signal hold">
+          <span className="signal-tag">Estudo - fechamento de {when}</span>
+          <b>{inMarket ? "Pela regra, estaria comprado" : "Pela regra, estaria fora"}</b>
+        </div>
+      ) : (
       <div className={`signal ${tone}`}>
         <span className="signal-tag">Sinal oficial - fechamento de {when} - vale ate o proximo fechamento</span>
         <b>{d.label}</b>
         {d.qty > 0 && <span>{fmtQty(d.qty)} {coin} (~${fmt(d.qty * s.close)})</span>}
       </div>
-      {pd && ps && (
+      )}
+      {!study && pd && ps && (
         <div className={`preview-box ${pd.kind !== d.kind ? "changes" : ""}`}>
           <span className="signal-tag">Previa (nao e sinal) - se o candle de hoje fechasse agora a {fmtPx(ps.close)}</span>
           {pd.kind !== d.kind ? <b>{pd.label}</b> : <span className="muted">sem mudanca</span>}
         </div>
       )}
 
-      {pos > 0 && (
+      {!study && pos > 0 && (
         <div className="pos-row">
           <span>Sua posicao: <b>{fmtQty(pos)} {coin}</b> (~${fmt(pos * cur.price)})</span>
           <span className={pnlClass(pnl.usdt)}>{avg > 0 ? `${signed(pnl.usdt)} (${signed(pnl.pct, 1)}%)` : <span className="muted">sem preco medio</span>}</span>
@@ -1079,6 +1145,109 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+// ---------- membros ----------
+// Configuracao do membro: so as carteiras (o resto do robo e do dono)
+function MemberConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
+  const [walletText, setWalletText] = useState((cfg.wallets ?? []).join("\n"));
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    const wallets = [...new Set(walletText.split(/[\s,;]+/).map((a) => a.trim()).filter(Boolean))];
+    const bad = wallets.filter((a) => !isEvmAddress(a) && !isSolAddress(a));
+    if (bad.length) return setErr(`Endereco invalido: ${bad.join(", ")} (EVM = 0x + 40 caracteres; Solana = 32 a 44 caracteres).`);
+    setSaving(true);
+    try {
+      await setDoc(doc(db(), P("config/main")), { wallets, wallet: wallets.find(isEvmAddress) ?? "" }, { merge: true });
+      onClose();
+    } catch (e) { setSaving(false); setErr(`Nao salvou: ${String(e)}`); }
+  };
+  return (
+    <section className="cfg">
+      <div className="modal-head"><h2>Suas carteiras</h2><button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button></div>
+      <p className="muted small">Enderecos publicos das suas carteiras (Rabby, Phantom...), um por linha. So leitura: o site nunca pede frase secreta nem movimenta nada.</p>
+      <textarea className="wallets" rows={4} value={walletText} onChange={(e) => setWalletText(e.target.value)} placeholder="0x... ou endereco Solana" />
+      {err && <p className="error small">{err}</p>}
+      <div className="row"><button className="primary" disabled={saving} onClick={save}>{saving ? "Salvando..." : "Salvar"}</button>
+        <button className="ghost" onClick={onClose}>Cancelar</button></div>
+      <p className="muted small">Depois de salvar, clique em &quot;Atualizar&quot; (Cripto) para ler as carteiras.</p>
+    </section>
+  );
+}
+
+// Administracao (so o dono): quem pode entrar
+function MembersAdmin({ onClose }: { onClose: () => void }) {
+  const [list, setList] = useState<{ email: string; name?: string; at?: number }[] | null>(null);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [err, setErr] = useState("");
+  useEffect(() => onSnapshot(collection(db(), "access"), (s) => setList(s.docs.filter((d) => (d.data() as { role?: string }).role === "member")
+    .map((d) => ({ email: d.id, ...(d.data() as { name?: string; at?: number }) })).sort((a, b) => (b.at ?? 0) - (a.at ?? 0))),
+    (e) => setErr(e.message.includes("permission") ? "As regras do Firestore ainda nao foram atualizadas (veja firestore.rules)." : e.message)), []);
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const em = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return setErr("E-mail invalido.");
+    setErr("");
+    try {
+      await setDoc(doc(db(), "access", em), { role: "member", at: Date.now(), ...(name.trim() ? { name: name.trim() } : {}) });
+      setEmail(""); setName("");
+    } catch (x) { setErr(`Nao salvou: ${String(x)}`); }
+  };
+  const remove = async (em: string) => {
+    if (!(await ask(`Remover o acesso de ${em}? Os dados dele continuam guardados; ele so nao entra mais.`))) return;
+    await deleteDoc(doc(db(), "access", em));
+  };
+  return (
+    <section className="cfg">
+      <div className="modal-head"><h2>Membros</h2><button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button></div>
+      <p className="muted small">So entra quem estiver nesta lista (o e-mail da conta Google). Cada membro tem os proprios dados; ninguem ve os seus nem os de outro membro.</p>
+      <form className="row wrapline" onSubmit={add}>
+        <label className="grow">E-mail Google<input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="membro@gmail.com" /></label>
+        <label>Nome (opcional)<input value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <button className="primary" type="submit">Liberar acesso</button>
+      </form>
+      {err && <p className="error small">{err}</p>}
+      {list === null ? <p className="muted small">Carregando...</p> : list.length ? (
+        <ul className="pend small members">
+          {list.map((m) => (
+            <li key={m.email}><b>{m.email}</b>{m.name && <span className="muted">{m.name}</span>}
+              <span className="muted">{m.at ? `desde ${new Date(m.at).toLocaleDateString("pt-BR")}` : ""}</span>
+              <button className="link" onClick={() => remove(m.email)}>remover</button></li>
+          ))}
+        </ul>
+      ) : <p className="muted small">Nenhum membro liberado ainda.</p>}
+    </section>
+  );
+}
+
+// Minha conta (membro): privacidade e apagar os dados
+function MyAccount({ user, onClose }: { user: User; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const wipe = async () => {
+    if (!(await ask("Apagar todos os seus dados do site (lancamentos, cartoes, investimentos, carteiras)? Nao da para desfazer."))) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/account", { method: "DELETE", headers: { Authorization: `Bearer ${await user.getIdToken()}` } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await tell("Seus dados foram apagados.");
+      location.reload();
+    } catch (e) { setBusy(false); await tell(`Nao apagou: ${String(e)}`); }
+  };
+  return (
+    <section className="cfg">
+      <div className="modal-head"><h2>Minha conta</h2><button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button></div>
+      <p className="small">Entrou como <b>{user.email}</b>.</p>
+      <h3>Privacidade</h3>
+      <ul className="small privacy">
+        <li>Seus dados ficam guardados no banco do site (Google Firebase), num espaco so seu: pelo site, ninguem alem de voce consegue ver.</li>
+        <li>Carteiras cripto: so o endereco publico, lido em modo leitura. Nunca peca nem informe frase secreta ou chave privada.</li>
+        <li>Nada aqui e recomendacao de investimento: e uma ferramenta educacional de organizacao.</li>
+      </ul>
+      <div className="row"><button className="danger" disabled={busy} onClick={wipe}>{busy ? "Apagando..." : "Apagar meus dados"}</button></div>
     </section>
   );
 }

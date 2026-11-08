@@ -657,3 +657,9 @@ a { color: var(--accent); }
 .login .brand-mark { width: 96px; height: 96px; margin: 0 0 4px; box-shadow: 0 0 0 4px var(--brand-yellow), 0 10px 30px rgba(0,0,0,.35); }
 .login h1 { margin: 0; font-size: 28px; }
 .login button { padding: 10px 20px; font-weight: 700; }
+
+/* membros */
+textarea.wallets { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 8px; font: inherit; font-size: 13px; }
+.members li { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.members li button.link { margin-left: auto; }
+.privacy { padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }

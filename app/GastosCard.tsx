@@ -119,8 +119,10 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     if (!confirm(`Apagar "${g.desc}" (${brl(g.v)})?`)) return;
     await saveMonth(m, items.filter((x) => x.id !== g.id));
   };
-  const launch = async (p: (typeof pending)[number]) => {
-    await saveMonth(m, [...items, { id: newId(), d: p.d, desc: p.desc, v: p.v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...(p.card ? { card: p.card } : {}), ...(p.parc ? { parc: p.parc } : {}) }]);
+  // Pagou o fixo/parcela por fora do extrato: escolhe com qual conta (ou cartao) foi pago; o saldo dela baixa
+  const launch = async (p: (typeof pending)[number], src: string) => {
+    const where = src.startsWith("card:") ? { card: src.slice(5) } : src.startsWith("acc:") ? { acc: src.slice(4) } : p.card ? { card: p.card } : {};
+    await saveMonth(m, [...items, { id: newId(), d: p.d, desc: p.desc, v: p.v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...where, ...(p.parc ? { parc: p.parc } : {}) }]);
   };
 
   const accs = accountsOf(setup);
@@ -169,7 +171,12 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
               {pending.map((p) => (
                 <li key={p.ref}>
                   <span className="muted">{dm(p.d)}</span> <b>{p.desc}</b> <span>{brl(p.v)}</span>
-                  <button className="ghost small-btn" onClick={() => launch(p)} title="Use so se esse pagamento nao vai aparecer em nenhum extrato">paguei fora do extrato</button>
+                  <select className="pay-sel" value="" onChange={(e) => e.target.value && launch(p, e.target.value)}
+                    title="Use so se esse pagamento nao vai aparecer em nenhum extrato importado">
+                    <option value="">paguei com...</option>
+                    {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>{a.name}{a.noStatement ? " (sem extrato)" : ""}</option>)}
+                    {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>cartao {c.name}</option>)}
+                  </select>
                 </li>
               ))}
             </ul>

@@ -900,7 +900,7 @@ export function CardForm({ c, onSave, onCancel }: { c: Card; onSave: (c: Card) =
   );
 }
 
-export function Loans({ setup, onEdit }: { setup: GastosSetup; onEdit?: (id: string | null) => void }) {
+export function Loans({ setup, onEdit, onPrepay }: { setup: GastosSetup; onEdit?: (id: string | null) => void; onPrepay?: (id: string) => void }) {
   const [form, setForm] = useState<Loan | null>(null);
   const today = todayBR();
   const save = async (l: Loan) => {
@@ -922,13 +922,16 @@ export function Loans({ setup, onEdit }: { setup: GastosSetup; onEdit?: (id: str
         <div key={l.id} className="debt">
           <div className="row between">
             <b>{l.name}</b>
-            <span className="muted small">{onEdit ? <button className="link" onClick={() => onEdit(l.id)}>alterar</button>
+            <span className="muted small">{onPrepay && st.left > 0 && <button className="link" onClick={() => onPrepay(l.id)}>adiantar parcelas</button>}
+              {onEdit ? <button className="link" onClick={() => onEdit(l.id)}>alterar</button>
               : <><button className="link" onClick={() => setForm(l)}>editar</button><button className="link" onClick={() => remove(l)}>remover</button></>}</span>
           </div>
           <div className="limit">
             <span className="limit-fill paid" style={{ width: `${(st.paid / l.n) * 100}%` }} />
-            <small className="muted">{st.paid} de {l.n} parcelas pagas - {st.left > 0 ? `termina em ${monthLabel(st.end, true)}` : "quitado"}</small>
+            <small className="muted">{st.paid} de {l.n} parcelas pagas{st.prepaid ? ` (${st.prepaid} adiantadas)` : ""} - {st.left > 0 ? `termina em ${monthLabel(st.end, true)}` : "quitado"}
+              {st.prepaid > 0 && st.end !== st.originalEnd ? ` (era ${monthLabel(st.originalEnd, true)})` : ""}</small>
           </div>
+          {st.saved > 0.005 && <p className="small pos">Economizou {brl(st.saved)} adiantando parcelas</p>}
           {st.left > 0 && <p className="small">Parcela {brl(l.parcela)} (dia {l.dueDay}) - saldo devedor {l.rate ? "" : "~"}{brl(st.saldo)}
             {l.rate ? <span className="muted"> com juros de {fmt(l.rate)}% ao mes</span> : <span className="muted"> (soma das parcelas; informe os juros para o valor de quitacao)</span>}</p>}
         </div>

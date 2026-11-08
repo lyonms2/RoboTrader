@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import {
-  addMonths, cardStatus, commitments, debts, faturaItems, faturaMonth, monthLabel, monthOf, newId, tipoOfCat, todayBR,
+  addMonths, cardStatus, commitments, debts, faturaItems, faturaMonth, loanStatus, monthLabel, monthOf, newId, tipoOfCat, todayBR,
   type Card, type GastosSetup, type Loan, type MonthDoc,
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
@@ -11,9 +11,10 @@ const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDig
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
-export type CardsEntry = { type: "compra" | "import" | "card" | "loan"; id: string | null };
+export type CardsEntry = { type: "compra" | "import" | "card" | "loan" | "prepay"; id: string | null };
 const TYPES: { id: CardsEntry["type"]; label: string }[] = [
-  { id: "compra", label: "Compra no cartao" }, { id: "import", label: "Importar fatura" }, { id: "card", label: "Cartao" }, { id: "loan", label: "Emprestimo" },
+  { id: "compra", label: "Compra no cartao" }, { id: "import", label: "Importar fatura" }, { id: "card", label: "Cartao" },
+  { id: "loan", label: "Emprestimo" }, { id: "prepay", label: "Adiantar parcelas" },
 ];
 const STATUS: Record<string, string> = { aberta: "aberta (ainda recebendo compras)", fechada: "fechada, a pagar", paga: "paga", vencida: "vencida sem pagamento" };
 
@@ -82,7 +83,8 @@ export default function CardsLoans({ months, setup, invest, entry, setEntry }: {
 
       <CommitmentsChart data={com} />
 
-      <Loans setup={setup} onEdit={(id) => { setEntry({ type: "loan", id }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+      <Loans setup={setup} onEdit={(id) => { setEntry({ type: "loan", id }); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+        onPrepay={(id) => { setEntry({ type: "prepay", id }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
     </>
   );
 }
@@ -208,6 +210,7 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry }: {
   const saveCards = async (c: Card) => { await saveSetup({ cards: setup.cards.some((x) => x.id === c.id) ? setup.cards.map((x) => (x.id === c.id ? c : x)) : [...setup.cards, c] }); reset(); };
   const saveLoans = async (l: Loan) => { await saveSetup({ loans: setup.loans.some((x) => x.id === l.id) ? setup.loans.map((x) => (x.id === l.id ? l : x)) : [...setup.loans, l] }); reset(); };
   const opts = type === "card" ? setup.cards.map((c) => ({ id: c.id, label: c.name })) : type === "loan" ? setup.loans.map((l) => ({ id: l.id, label: l.name })) : null;
+  const noLoans = type === "prepay" && !setup.loans.length;
   return (
     <div className="entry">
       <p className="small entry-q">O que voce quer lancar?</p>
@@ -223,6 +226,8 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry }: {
         </label>
       )}
       {noCards && <p className="muted small">Cadastre um cartao primeiro (opcao &quot;Cartao&quot;).</p>}
+      {noLoans && <p className="muted small">Cadastre o emprestimo primeiro (opcao &quot;Emprestimo&quot;).</p>}
+      {type === "prepay" && !noLoans && <PrepayForm key={id ?? "p"} setup={setup} loanId={id ?? setup.loans[0].id} onPick={(lid) => setEntry({ type, id: lid })} />}
       {type === "compra" && !noCards && <QuickAdd key="compra" mode="cartao" months={months} setup={setup} invest={invest} defaultDate={todayBR()} />}
       {type === "import" && !noCards && <ImportPanel mode="cartao" months={months} setup={setup} invest={invest} onDone={() => setEntry({ type: "compra", id: null })} />}
       {type === "card" && (
@@ -238,5 +243,54 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry }: {
         </>
       )}
     </div>
+  );
+}
+
+// Adiantar parcelas: quantas, quando e quanto pagou (com desconto); lista e desfaz os adiantamentos
+function PrepayForm({ setup, loanId, onPick }: { setup: GastosSetup; loanId: string; onPick: (id: string) => void }) {
+  const loan = setup.loans.find((l) => l.id === loanId) ?? setup.loans[0];
+  const st = loanStatus(loan);
+  const [d, setD] = useState(todayBR());
+  const [n, setN] = useState("1");
+  const [v, setV] = useState("");
+  const num = (x: string) => Number(x.replace(/\./g, "").replace(",", ".")) || 0;
+  const qty = Math.max(1, Math.round(num(n)));
+  const paidV = num(v) > 0 ? num(v) : qty * loan.parcela;
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (qty > st.left) return alert(`So restam ${st.left} parcelas.`);
+    const prepay = [...(loan.prepay ?? []), { id: newId(), d, n: qty, v: Math.round(paidV * 100) / 100 }];
+    await saveSetup({ loans: setup.loans.map((l) => (l.id === loan.id ? { ...l, prepay } : l)) });
+    setN("1"); setV("");
+  };
+  const undo = async (pid: string) => {
+    if (!confirm("Desfazer este adiantamento?")) return;
+    await saveSetup({ loans: setup.loans.map((l) => (l.id === loan.id ? { ...l, prepay: (l.prepay ?? []).filter((p) => p.id !== pid) } : l)) });
+  };
+  return (
+    <form className="fin-form" onSubmit={save}>
+      <div className="row wrapline">
+        <label>Emprestimo
+          <select value={loan.id} onChange={(e) => onPick(e.target.value)}>{setup.loans.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+        </label>
+        <label>Data<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
+        <label>Quantas parcelas<input value={n} inputMode="numeric" onChange={(e) => setN(e.target.value)} style={{ width: 80 }} /></label>
+        <label>Quanto pagou (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder={fmt(qty * loan.parcela)} /></label>
+        <button className="primary" type="submit">Adiantar</button>
+      </div>
+      <p className="muted small">
+        {qty} x {brl(loan.parcela)} = {brl(qty * loan.parcela)}{num(v) > 0 && num(v) < qty * loan.parcela ? ` - desconto de ${brl(qty * loan.parcela - num(v))}` : ""}.
+        As adiantadas saem do fim do contrato: termina em {monthLabel(addMonths(st.end, -qty), true)} (hoje: {monthLabel(st.end, true)}).
+        O pagamento em si entra pelo extrato da conta (categoria Emprestimos).
+      </p>
+      {(loan.prepay ?? []).length > 0 && (
+        <ul className="pend small">
+          {loan.prepay!.map((p) => (
+            <li key={p.id}><span className="muted">{dm(p.d)}</span> <b>{p.n} {p.n > 1 ? "parcelas adiantadas" : "parcela adiantada"}</b>
+              <span>{brl(p.v)}</span><button className="link" type="button" onClick={() => undo(p.id)}>desfazer</button></li>
+          ))}
+        </ul>
+      )}
+    </form>
   );
 }

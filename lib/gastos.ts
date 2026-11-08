@@ -40,6 +40,8 @@ export type Loan = {
   first: string; // AAAA-MM da 1a parcela
   dueDay: number;
   rate?: number; // juros % ao mes (opcional: deixa o saldo devedor mais certo)
+  // Parcelas adiantadas (quitadas antes, as ultimas do contrato): data, quantas e quanto pagou
+  prepay?: { id: string; d: string; n: number; v: number }[];
 };
 export type Fixo = { id: string; desc: string; v: number; cat: string; dia: number; card?: string };
 export type GastosSetup = {
@@ -159,18 +161,33 @@ export function faturaMonth(card: Card, d: string) {
 
 // ---------- emprestimos ----------
 // Parcelas ja vencidas ate hoje, restantes, saldo devedor (valor presente com juros, ou soma simples) e quitacao
+// Parcelas adiantadas ate a data (saem do fim do contrato: o emprestimo termina antes)
+export const prepaidUntil = (l: Loan, today = todayBR()) =>
+  (l.prepay ?? []).filter((p) => p.d <= today).reduce((s, p) => s + p.n, 0);
+// Numero de parcelas que de fato vao vencer (contrato menos as adiantadas)
+const effN = (l: Loan) => Math.max(0, l.n - (l.prepay ?? []).reduce((s, p) => s + p.n, 0));
+
 export function loanStatus(l: Loan, today = todayBR()) {
-  let paid = 0;
-  for (let k = 0; k < l.n; k++) if (dayIn(addMonths(l.first, k), l.dueDay) <= today) paid++;
+  const pre = prepaidUntil(l, today);
+  const nEff = Math.max(0, l.n - pre);
+  let byDate = 0;
+  for (let k = 0; k < nEff; k++) if (dayIn(addMonths(l.first, k), l.dueDay) <= today) byDate++;
+  const paid = Math.min(l.n, byDate + pre);
   const left = l.n - paid;
   const r = (l.rate ?? 0) / 100;
   const saldo = r > 0 ? (l.parcela * (1 - (1 + r) ** -left)) / r : l.parcela * left;
-  return { paid, left, saldo, end: addMonths(l.first, l.n - 1), next: left > 0 ? dayIn(addMonths(l.first, paid), l.dueDay) : null };
+  const prepaidV = (l.prepay ?? []).filter((p) => p.d <= today).reduce((s, p) => s + p.v, 0);
+  return {
+    paid, left, saldo, byDate, prepaid: pre,
+    saved: Math.max(0, pre * l.parcela - prepaidV), // desconto por adiantar
+    end: addMonths(l.first, Math.max(0, nEff - 1)), originalEnd: addMonths(l.first, l.n - 1),
+    next: left > 0 ? dayIn(addMonths(l.first, byDate), l.dueDay) : null,
+  };
 }
 // Parcela do emprestimo que vence no mes m (null se fora do prazo)
 export function loanInstallment(l: Loan, m: string) {
   const k = monthDiff(l.first, m);
-  return k >= 0 && k < l.n ? k + 1 : null;
+  return k >= 0 && k < effN(l) ? k + 1 : null;
 }
 export const monthDiff = (a: string, b: string) =>
   (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7));

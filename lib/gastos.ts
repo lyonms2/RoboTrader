@@ -97,9 +97,10 @@ export function isOwn(desc: string, ownName?: string) {
 }
 
 export function categorize(desc: string, entrada: boolean, rules: Record<string, string>, ownName?: string): { cat: string; tipo: Tipo } {
-  if (isOwn(desc, ownName) && /pix|transf|\bted\b|\bdoc\b/i.test(desc)) return { cat: "Transferencia entre contas", tipo: "neutro" };
+  // 1) o que voce ja escolheu para essa descricao vale primeiro (ex.: Pix para voce mesmo = pagar o emprestimo)
   const learned = rules[descKey(desc)];
   if (learned && tipoOfCat(learned)) return { cat: learned, tipo: tipoOfCat(learned)! };
+  if (isOwn(desc, ownName) && /pix|transf|\bted\b|\bdoc\b/i.test(desc)) return { cat: "Transferencia entre contas", tipo: "neutro" };
   const low = desc.toLowerCase();
   for (const [re, cat] of KEYWORDS) {
     if (!re.test(low)) continue;

@@ -19,5 +19,6 @@ export function netWorth(cfg: AppConfig, fin: FinanceDoc | null, wallet: WalletD
   const s = financeSummary(cfg.finance ?? [], fin, okWallet, cfg.monthlyCost, accountBalance(months, setup)?.value, investFlows(months));
   const d = debts(months, setup);
   const partial = s.cryptoMissingFx ? ["cripto sem cotacao do dolar"] : [];
-  return { t: Date.now(), day: dayBR(Date.now()), bens: s.total, dividas: d.total, net: s.total - d.total, byGroup: s.byGroup, ...(partial.length ? { partial } : {}) };
+  // a receber (o que te devem) conta como bem
+  return { t: Date.now(), day: dayBR(Date.now()), bens: s.total + d.recv, dividas: d.total, net: s.total + d.recv - d.total, byGroup: s.byGroup, ...(partial.length ? { partial } : {}) };
 }

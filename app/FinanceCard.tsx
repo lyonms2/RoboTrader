@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
-import { INVEST_CAT, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type Gasto, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
+import { INVEST_CAT, recvStatus, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type Gasto, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
 import GastosCard, { AccountForm, AccountsPanel, CardForm, DebtsBlock, FixoForm, Fixos, ImportPanel, LoanForm, QuickAdd, monthSnapshot, saveSetup, upcoming } from "./GastosCard";
 import NetWorthChart from "./NetWorthChart";
 import CardsLoans, { type CardsEntry } from "./CardsLoans";
 import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
+import { ask, askText, tell } from "./Dialog";
 
 // Resumo = ver como esta; Lancamentos = unico lugar onde o dinheiro se move; Contas e bens = unico lugar com saldos e cadastros
 // O resumo (patrimonio, mes, proximos pagamentos, evolucao) fica na Visao geral
@@ -17,7 +18,7 @@ const SUBS: { id: Sub; label: string }[] = [
   { id: "bens", label: "Contas e bens" }, { id: "lanc", label: "Lancamentos" }, { id: "invest", label: "Investimentos" },
   { id: "cards", label: "Cartoes e emprestimos" },
 ];
-const OLD_SUB: Record<string, Sub> = { gastos: "lanc", dividas: "bens", resumo: "lanc", loans: "cards" };
+const OLD_SUB: Record<string, Sub> = { gastos: "lanc", dividas: "bens", resumo: "lanc", loans: "cards", recv: "cards" };
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
@@ -44,7 +45,7 @@ const KINDS: { key: FinKind; label: string; hint: string }[] = [
 export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, months, setup }: {
   cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; onChanged: () => void;
   spend: { value: number; months: number } | null; // media de gastos
-  debt: { total: number; loans: number; cards: number };
+  debt: { total: number; loans: number; cards: number; recv: number };
   months: Record<string, MonthDoc>; setup: GastosSetup;
 }) {
   // Sub-aba aberta, lembrada neste navegador
@@ -65,7 +66,11 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
   const [entry, setEntry] = useState<{ type: EntryType; id: string | null }>({ type: "mov", id: null });
   // "loans" (aviso de parcela atrasada na Visao geral) abre direto em Emprestimos
   const [cardsEntry, setCardsEntry] = useState<CardsEntry>(() => {
-    try { if (localStorage.getItem("finSub") === "loans") return { type: "loan", id: null }; } catch { /* sem armazenamento */ }
+    try {
+      const v = localStorage.getItem("finSub");
+      if (v === "loans") return { type: "loan", id: null };
+      if (v === "recv") return { type: "recv", id: null };
+    } catch { /* sem armazenamento */ }
     return { type: "compra", id: null };
   });
   // investimento aberto para incluir/alterar na sub-aba Investimentos (undefined = fechado, null = novo)
@@ -92,7 +97,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
     await save(list, it.kind === "acao" || it.kind === "tesouro");
   };
   const remove = async (it: FinItem) => {
-    if (!confirm(`Remover "${it.name}" da lista? (so tira do site, nao mexe no investimento)`)) return;
+    if (!await ask(`Remover "${it.name}" da lista? (so tira do site, nao mexe no investimento)`)) return;
     await save(items.filter((x) => x.id !== it.id), false);
     if (it.kind === "bem") setBemEdit(undefined); else setInvEdit(undefined);
   };
@@ -135,7 +140,8 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
           <div><span>Contas e investimentos</span><b>{brl(fin0)}</b><small className="muted">sem cripto e sem bens</small></div>
           <div><span>Bens</span><b>{brl(s.bens)}</b><small className="muted">imoveis, terrenos, veiculos</small></div>
           <div><span>O que voce deve</span><b className={debt.total > 0 ? "warn" : ""}>{brl(debt.total)}</b><small className="muted">cartoes {brl(debt.cards, 0)} - emprestimos {brl(debt.loans, 0)}</small></div>
-          <div><span>Liquido sem bens</span><b>{brl(fin0 - debt.total)}</b><small className="muted">{s.bens > 0 ? `com bens: ${brl(fin0 + s.bens - debt.total)}` : "tem - deve"}</small></div>
+          {debt.recv > 0 && <div><span>A receber</span><b className="pos">{brl(debt.recv)}</b><small className="muted">o que te devem</small></div>}
+          <div><span>Liquido sem bens</span><b>{brl(fin0 + debt.recv - debt.total)}</b><small className="muted">{s.bens > 0 ? `com bens: ${brl(fin0 + debt.recv + s.bens - debt.total)}` : debt.recv > 0 ? "tem + a receber - deve" : "tem - deve"}</small></div>
         </div>
         <p className="muted small">Aqui so se ve: para lancar ou alterar, use Lancamentos (contas e fixos), Investimentos (investimentos e bens),
           Cartoes e emprestimos, ou o link &quot;alterar&quot; de cada item.
@@ -182,6 +188,24 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
           </ul>
         ) : <p className="muted small">Nenhum bem cadastrado. Imoveis, terrenos e veiculos entram no patrimonio &quot;com bens&quot;, separados do financeiro.</p>}
       </section>
+
+      {(setup.recvs ?? []).length > 0 && (
+        <section className="card">
+          <div className="card-head"><h2>A receber</h2><span className="muted small">{brl(debt.recv)}
+            <button className="link" onClick={() => { setCardsEntry({ type: "recv", id: null }); setSub("cards"); }}>ver a receber &rsaquo;</button></span></div>
+          <ul className="pend small">
+            {(setup.recvs ?? []).map((r) => {
+              const st = recvStatus(r, months);
+              return (
+                <li key={r.id}><b>{r.name}</b> <span className="tag">{r.kind === "emprestei" ? "emprestimo" : "venda"}</span>
+                  <span className="muted">{st.got} de {r.n} recebidas{st.late ? "" : ""}</span>{st.late > 0 && <span className="warn">{st.late} atrasada{st.late > 1 ? "s" : ""}</span>}
+                  <span>{brl(st.leftV, 0)}</span>
+                  <button className="link" onClick={() => { setCardsEntry({ type: "recv", id: r.id }); setSub("cards"); }}>abrir</button></li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <h3 className="bal-title">O que voce deve</h3>
       <DebtsBlock months={months} setup={setup} onEdit={(t, id) => goEdit(t, id)} />
@@ -618,7 +642,7 @@ function Dividends({ rows, fin }: { rows: FinRow[]; fin: FinanceDoc | null }) {
 // ---------- blocos da Visao geral ----------
 type Ctx = {
   cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; spend: { value: number; months: number } | null;
-  debt: { total: number; loans: number; cards: number }; months: Record<string, MonthDoc>; setup: GastosSetup;
+  debt: { total: number; loans: number; cards: number; recv: number }; months: Record<string, MonthDoc>; setup: GastosSetup;
 };
 
 // Patrimonio: liquido, reserva, rendimento, lucro e onde esta o dinheiro
@@ -635,9 +659,9 @@ export function PatrimonioCard({ cfg, fin, wallet, spend, debt, months, setup, o
           <button className="link" onClick={onBens}>ver contas e bens &rsaquo;</button>
         </div>
         <div className="kpis">
-          <div><span>{s.bens > 0 ? "Patrimonio sem bens" : debt.total > 0 ? "Patrimonio liquido" : "Patrimonio total"}</span><b>{brl(s.totalNoBens - debt.total)}</b>
+          <div><span>{s.bens > 0 ? "Patrimonio sem bens" : debt.total > 0 ? "Patrimonio liquido" : "Patrimonio total"}</span><b>{brl(s.totalNoBens + debt.recv - debt.total)}</b>
             <small className="muted">{debt.total > 0 ? `${brl(s.totalNoBens, 0)} - ${brl(debt.total, 0)} de dividas` : s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluida` : wallet ? "falta o dolar: clique em Atualizar tudo" : "sem carteiras cripto"}</small></div>
-          {s.bens > 0 && <div><span>Patrimonio com bens</span><b>{brl(s.total - debt.total)}</b>
+          {s.bens > 0 && <div><span>Patrimonio com bens</span><b>{brl(s.total + debt.recv - debt.total)}</b>
             <small className="muted">+ {brl(s.bens, 0)} em imoveis, veiculos...</small></div>}
           <div><span>Reserva de emergencia</span><b>{brl(s.reserve)}</b>
             <small className="muted">{s.reserveMonths !== null ? `cobre ${fmt(s.reserveMonths, 1)} meses de gastos` : "a media de gastos aparece depois do 1o mes completo de lancamentos"}{spend ? ` (media de ${spend.months} ${spend.months > 1 ? "meses" : "mes"})` : ""}</small></div>
@@ -730,7 +754,7 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   const opts = existing[type];
   const saveAccounts = async (list: Account[], m: string) => {
     try { await saveSetup({ accounts: JSON.parse(JSON.stringify(list)), account: null } as Partial<GastosSetup>); done(m); }
-    catch { setMsg(""); alert("Nao salvou (sem conexao?). Tente de novo."); }
+    catch { setMsg(""); await tell("Nao salvou (sem conexao?). Tente de novo."); }
   };
   const usedAcc = new Set(Object.values(months).flatMap((md) => md.items.map((g) => g.acc ?? (g.card ? "" : accounts[0].id))));
   return (

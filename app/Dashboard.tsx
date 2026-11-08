@@ -20,10 +20,11 @@ import FinanceCard, { MonthAndUpcoming, NetWorthBlock, PatrimonioCard, type Sub 
 import { debts, reviewCount, upcoming } from "./GastosCard";
 import { budgetAlerts } from "./CardsLoans";
 import type { NetWorthDoc } from "@/lib/patrimonio";
-import { EMPTY_SETUP, accountBalance, avgMonthly, fixoActive, fixoReajPending, investFlows, setCustomCats, type GastosSetup, type MonthDoc } from "@/lib/gastos";
+import { EMPTY_SETUP, accountBalance, avgMonthly, fixoActive, recvStatus, fixoReajPending, investFlows, setCustomCats, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import { financeSummary } from "@/lib/financeMath";
 import type { CandidatesDoc } from "@/lib/candidates";
 import { usePrices, type Prices } from "./usePrices";
+import { ask, askText, tell } from "./Dialog";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 // Sem arredondar: quantidades com ate 8 casas (precisao da corretora) e precos com 2 a 8 casas
@@ -288,7 +289,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         {tab === "geral" && (
           <Overview cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} sync={cfg.lighter?.enabled ? sync : null} onTab={setTab}
             money={{ cfg, fin: finance, wallet: walletOk ? wallet : null, spend, debt, months, setup: gSetup, nwHist }}
-            onFin={(s: FinSub | "loans") => { try { localStorage.setItem("finSub", s); } catch { /* sem armazenamento */ } setTab("financas"); }} />
+            onFin={(s: FinSub | "loans" | "recv") => { try { localStorage.setItem("finSub", s); } catch { /* sem armazenamento */ } setTab("financas"); }} />
         )}
         {inCrypto && (
           <nav className="subtabs" role="tablist" aria-label="Cripto">
@@ -341,7 +342,7 @@ type Money = Parameters<typeof PatrimonioCard>[0] extends infer P ? Omit<P, "onB
 // Visao geral: patrimonio, o que fazer hoje, o mes e os proximos pagamentos, evolucao e, depois, o robo e a cripto
 function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onFin }: {
   cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null;
-  sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub | "loans") => void;
+  sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub | "loans" | "recv") => void;
 }) {
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
   // Posicoes do robo e lucro aberto
@@ -363,7 +364,7 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
   const realized = Object.values(cfg.realized ?? {}).reduce((a, b) => a + b, 0);
 
   // O que fazer hoje: sinais do robo, acoes das fichas e avisos da carteira
-  type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId; fin?: FinSub | "loans" };
+  type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId; fin?: FinSub | "loans" | "recv" };
   const todo: Todo[] = [];
   for (const l of [...latest].sort((a, b) => SYMBOLS.indexOf(a.symbol) - SYMBOLS.indexOf(b.symbol))) {
     const coin = l.symbol.replace("USDT", "");
@@ -392,6 +393,10 @@ function Overview({ cfg, latest, prices, wallet, fichas, sync, onTab, money, onF
   // Financas: pagamentos vencidos e pontos para revisar
   for (const p of upcoming(money.months, money.setup).filter((x) => x.late))
     todo.push({ tone: "warn", who: "Pagar", text: `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : p.card ? "cards" : "lanc" });
+  for (const r of money.setup.recvs ?? []) {
+    const st = recvStatus(r, money.months);
+    if (st.late) todo.push({ tone: "warn", who: "Receber", text: `${r.name}: ${st.late} ${st.late > 1 ? "parcelas atrasadas" : "parcela atrasada"} (R$ ${fmt(st.lateV)})`, tab: "financas", fin: "recv" });
+  }
   for (const b of budgetAlerts(money.months, money.setup))
     todo.push({ tone: "warn", who: "Cartao", text: `${b.c.name}: R$ ${fmt(b.used, 0)} na fatura aberta, ${fmt(b.pct * 100, 0)}% do planejado (R$ ${fmt(b.c.budget!, 0)})`, tab: "financas", fin: "cards" });
   {
@@ -955,7 +960,7 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
     const p = Number(editing.price.replace(",", "."));
     const t = new Date(editing.when).getTime();
     if (!(q > 0) || !(p > 0) || !Number.isFinite(t)) return setMsg("Quantidade, preco e data precisam ser validos.");
-    if (!window.confirm(`Salvar a alteracao?\n\n${RECALC_NOTE}`)) return;
+    if (!await ask(`Salvar a alteracao?\n\n${RECALC_NOTE}`)) return;
     try {
       const books = await saveTradeChange(trades, {
         id: editing.id, next: { symbol: editing.symbol, side: editing.side, qty: round8(q), price: round8(p), t },
@@ -969,7 +974,7 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
 
   async function remove(t: TradeRow) {
     const what = `${t.side} de ${fmtQty(t.qty)} ${t.symbol.replace("USDT", "")} a ${fmtPx(t.price)} em ${new Date(t.t).toLocaleString("pt-BR")}`;
-    if (!window.confirm(`Excluir a ${what}?\n\n${RECALC_NOTE}`)) return;
+    if (!await ask(`Excluir a ${what}?\n\n${RECALC_NOTE}`)) return;
     try {
       const books = await saveTradeChange(trades, { id: t.id, next: null });
       setMsg(`Operacao excluida. Posicao agora: ${summary(books)}.`);

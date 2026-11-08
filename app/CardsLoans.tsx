@@ -6,12 +6,14 @@ import {
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardForm, CatSelect, LoanForm, QuickAdd, saveMonth, saveSetup } from "./GastosCard";
+import ReceivablesPart from "./Receivables";
+import { ask, askText, tell } from "./Dialog";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
-export type CardsEntry = { type: "compra" | "card" | "loan" | "prepay"; id: string | null };
+export type CardsEntry = { type: "compra" | "card" | "loan" | "prepay" | "recv"; id: string | null };
 const TYPES: { id: CardsEntry["type"]; label: string }[] = [
   { id: "compra", label: "Compra no cartao" }, { id: "card", label: "Cadastrar cartao" },
 ];
@@ -38,7 +40,7 @@ const LOAN_TYPES: CardsEntry["type"][] = ["loan", "prepay"];
 export default function CardsLoans({ months, setup, invest, entry, setEntry }: {
   months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; entry: CardsEntry; setEntry: (e: CardsEntry) => void;
 }) {
-  const part: "cards" | "loans" = LOAN_TYPES.includes(entry.type) ? "loans" : "cards";
+  const part: "cards" | "loans" | "recv" = entry.type === "recv" ? "recv" : LOAN_TYPES.includes(entry.type) ? "loans" : "cards";
   const d = debts(months, setup);
   const com = commitments(months, setup);
   const nav = (
@@ -47,6 +49,8 @@ export default function CardsLoans({ months, setup, invest, entry, setEntry }: {
         Cartoes <span className="muted">{brl(d.cards, 0)}</span></button>
       <button role="tab" aria-selected={part === "loans"} className={part === "loans" ? "pill on" : "pill"} onClick={() => setEntry({ type: "loan", id: null })}>
         Emprestimos <span className="muted">{brl(d.loans, 0)}</span></button>
+      <button role="tab" aria-selected={part === "recv"} className={part === "recv" ? "pill on" : "pill"} onClick={() => setEntry({ type: "recv", id: null })}>
+        A receber <span className="pos">{brl(d.recv, 0)}</span></button>
     </nav>
   );
   return (
@@ -54,7 +58,8 @@ export default function CardsLoans({ months, setup, invest, entry, setEntry }: {
       {nav}
       {part === "cards"
         ? <CardsPart months={months} setup={setup} invest={invest} entry={entry} setEntry={setEntry} owed={d.cards} com={com} />
-        : <LoansPart months={months} setup={setup} entry={entry} owed={d.loans} com={com} />}
+        : part === "loans" ? <LoansPart months={months} setup={setup} entry={entry} owed={d.loans} com={com} />
+        : <ReceivablesPart months={months} setup={setup} openId={entry.id} />}
     </>
   );
 }
@@ -186,17 +191,17 @@ function LoanItem({ l, st, months, setup, single, initial }: {
   const toggle = (m: string) => setMode(mode === m ? null : m);
   const undoPay = async (k: number) => {
     const p = (l.pays ?? []).find((x) => x.k === k);
-    if (!p || !confirm(`Desfazer o pagamento da parcela ${k + 1}?`)) return;
+    if (!p || !await ask(`Desfazer o pagamento da parcela ${k + 1}?`)) return;
     if (p.gid && p.gm && months[p.gm]) await saveMonth(p.gm, months[p.gm].items.filter((g) => g.id !== p.gid));
     await saveSetup({ loans: setup.loans.map((x) => (x.id === l.id ? { ...x, pays: (x.pays ?? []).filter((y) => y.k !== k) } : x)) });
   };
   const remove = async () => {
-    if (confirm(`Remover ${l.name}? (os lancamentos na conta continuam)`)) await saveSetup({ loans: setup.loans.filter((x) => x.id !== l.id) });
+    if (await ask(`Remover ${l.name}? (os lancamentos na conta continuam)`)) await saveSetup({ loans: setup.loans.filter((x) => x.id !== l.id) });
   };
   // marca de uma vez as atrasadas como pagas (sem lancar saida): para quem cadastra um emprestimo antigo
   const markLate = async () => {
     const late = st.rows.filter((r) => r.status === "atrasada");
-    if (!confirm(`Marcar as ${late.length} parcelas atrasadas como pagas? Nao lanca saida em nenhuma conta.`)) return;
+    if (!await ask(`Marcar as ${late.length} parcelas atrasadas como pagas? Nao lanca saida em nenhuma conta.`)) return;
     const add = late.map((r) => ({ k: r.k, d: r.due, v: l.parcela }));
     await saveSetup({ loans: setup.loans.map((x) => (x.id === l.id ? { ...x, pays: [...(x.pays ?? []), ...add] } : x)) });
   };
@@ -323,7 +328,7 @@ function FaturaView({ card, st, fm, months, setup }: {
   };
   const [editId, setEditId] = useState<string | null>(null);
   const remove = async (m: string, id: string, desc: string) => {
-    if (!confirm(`Apagar "${desc}"?`)) return;
+    if (!await ask(`Apagar "${desc}"?`)) return;
     await saveMonth(m, months[m].items.filter((x) => x.id !== id));
   };
   return (
@@ -449,13 +454,13 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry, onAdded }: {
       {type === "card" && (
         <>
           <CardForm key={id ?? "novo"} c={setup.cards.find((c) => c.id === id) ?? { id: newId(), name: "", closeDay: 1, dueDay: 8 }} onSave={saveCards} onCancel={reset} />
-          {id && <button className="ghost small-btn" onClick={async () => { if (confirm("Remover este cartao? (as compras continuam lancadas)")) { await saveSetup({ cards: setup.cards.filter((c) => c.id !== id) }); reset(); } }}>remover este cartao</button>}
+          {id && <button className="ghost small-btn" onClick={async () => { if (await ask("Remover este cartao? (as compras continuam lancadas)")) { await saveSetup({ cards: setup.cards.filter((c) => c.id !== id) }); reset(); } }}>remover este cartao</button>}
         </>
       )}
       {type === "loan" && (
         <>
           <LoanForm key={id ?? "novo"} l={setup.loans.find((l) => l.id === id) ?? { id: newId(), name: "", parcela: 0, n: 12, first: monthOf(todayBR()), dueDay: 10, paidBefore: 0 }} onSave={saveLoans} onCancel={reset} />
-          {id && <button className="ghost small-btn" onClick={async () => { if (confirm("Remover este emprestimo?")) { await saveSetup({ loans: setup.loans.filter((l) => l.id !== id) }); reset(); } }}>remover este emprestimo</button>}
+          {id && <button className="ghost small-btn" onClick={async () => { if (await ask("Remover este emprestimo?")) { await saveSetup({ loans: setup.loans.filter((l) => l.id !== id) }); reset(); } }}>remover este emprestimo</button>}
         </>
       )}
     </div>
@@ -476,7 +481,7 @@ function PrepayForm({ setup, loanId, onPick }: { setup: GastosSetup; loanId: str
   const paidV = num(v) > 0 ? num(v) : qty * loan.parcela;
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (qty > st.left) return alert(`So restam ${st.left} parcelas.`);
+    if (qty > st.left) return await tell(`So restam ${st.left} parcelas.`);
     const prepay = [...(loan.prepay ?? []), { id: newId(), d, n: qty, v: Math.round(paidV * 100) / 100, from: from === "next" ? nextM : from }];
     await saveSetup({ loans: setup.loans.map((l) => (l.id === loan.id ? { ...l, prepay } : l)) });
     setN("1"); setV(""); setFrom("fim");
@@ -490,7 +495,7 @@ function PrepayForm({ setup, loanId, onPick }: { setup: GastosSetup; loanId: str
   const covered = (pid: string) => [...slots].filter(([, id]) => id === pid).map(([k]) => k).sort((a, b) => a - b);
   const range = (ks: number[]) => ks.length ? `${monthLabel(addMonths(loan.first, ks[0]))}${ks.length > 1 ? ` a ${monthLabel(addMonths(loan.first, ks[ks.length - 1]))}` : ""}` : "-";
   const undo = async (pid: string) => {
-    if (!confirm("Desfazer este adiantamento?")) return;
+    if (!await ask("Desfazer este adiantamento?")) return;
     await saveSetup({ loans: setup.loans.map((l) => (l.id === loan.id ? { ...l, prepay: (l.prepay ?? []).filter((p) => p.id !== pid) } : l)) });
   };
   return (
@@ -553,7 +558,7 @@ function FaturasList({ card, st, fm, setFm, months, setup }: {
   const pays = card.pays ?? [];
   const undo = async (fmx: string) => {
     const mine = pays.filter((p) => p.fm === fmx);
-    if (!mine.length || !confirm(`Desfazer o pagamento da fatura de ${monthLabel(fmx)}?`)) return;
+    if (!mine.length || !await ask(`Desfazer o pagamento da fatura de ${monthLabel(fmx)}?`)) return;
     for (const p of mine) if (p.gid && p.gm && months[p.gm]) await saveMonth(p.gm, months[p.gm].items.filter((g) => g.id !== p.gid));
     await saveSetup({ cards: setup.cards.map((c) => (c.id === card.id ? { ...c, pays: (c.pays ?? []).filter((p) => p.fm !== fmx) } : c)) });
   };
@@ -681,7 +686,7 @@ function EditBuy({ g, months, setup, onDone }: { g: Gasto; months: Record<string
     onDone();
   };
   const removeAll = async () => {
-    if (!confirm(`Apagar as ${siblings.length} parcelas de "${g.desc}"?`)) return;
+    if (!await ask(`Apagar as ${siblings.length} parcelas de "${g.desc}"?`)) return;
     setAll(true);
     const work: Record<string, Gasto[]> = {};
     for (const { m, x } of siblings) work[m] = (work[m] ?? [...(months[m]?.items ?? [])]).filter((y) => y.id !== x.id);

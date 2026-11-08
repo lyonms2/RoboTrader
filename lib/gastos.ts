@@ -37,6 +37,18 @@ export type Card = {
   // Pagamentos feitos pelo botao "pagar": fatura (mes de vencimento), data, valor e o lancamento criado na conta
   pays?: { id: string; fm: string; d: string; v: number; gid?: string; gm?: string }[];
 };
+// A receber: alguem te deve e paga em parcelas (voce emprestou, ou vendeu/prestou servico parcelado)
+export type Recv = {
+  id: string; name: string; // quem deve (o nome ajuda a achar o Pix no extrato)
+  kind: "emprestei" | "venda"; // emprestei: receber nao e renda (dinheiro seu voltando); venda: cada parcela e renda
+  parcela: number; n: number; first: string; dueDay: number; // R$ por parcela, quantas, AAAA-MM da 1a, dia combinado
+  gotBefore?: number; // parcelas ja recebidas antes de cadastrar (as primeiras)
+  gets?: { k: number; d: string; v: number; gid?: string; gm?: string }[]; // marcadas no botao "recebi"
+  keys?: string[]; // descricoes do extrato ja ligadas (aprende quando voce liga um lancamento)
+  notIds?: string[]; // lancamentos que voce disse "nao e este"
+  note?: string;
+};
+
 export type Loan = {
   id: string; name: string;
   parcela: number; // R$ por mes
@@ -71,6 +83,7 @@ export type GastosSetup = {
   accounts?: Account[];
   invRules?: Record<string, string>; // descricao -> investimento escolhido (lembrado para as proximas)
   accRules?: Record<string, string>; // descricao -> conta de destino de transferencias
+  recvs?: Recv[]; // a receber (alguem te deve em parcelas)
 };
 export const EMPTY_SETUP: GastosSetup = { cards: [], loans: [], fixos: [], rules: {} };
 
@@ -80,7 +93,11 @@ export const CATS_GASTO = [
 ];
 export const CATS_RECEITA = ["Salario", "Renda extra", "Rendimentos", "Pix recebido", "Outras entradas"];
 // Neutros: o dinheiro so muda de lugar (nao e gasto nem renda). A conta sobe/desce, mas o patrimonio nao muda
-export const CATS_NEUTRO = ["Fatura do cartao", "Investimento", "Compra de cripto", "Venda de cripto", "Transferencia entre contas", "Emprestimo recebido"];
+export const CATS_NEUTRO = ["Fatura do cartao", "Investimento", "Compra de cripto", "Venda de cripto", "Transferencia entre contas", "Emprestimo recebido",
+  "Emprestei dinheiro", "Devolucao de emprestimo"];
+export const RECV_OUT_CAT = "Emprestei dinheiro"; // saiu da conta para alguem que vai te pagar (vira "a receber")
+export const RECV_BACK_CAT = "Devolucao de emprestimo"; // parcela de quem te deve entrando (nao e renda)
+export const RECV_SALE_CAT = "Renda extra"; // parcela de venda/servico (e renda)
 export const CARD_PAY_CAT = "Fatura do cartao";
 export const TRANSFER_CAT = "Transferencia entre contas";
 // Categorias suas (gasto ou entrada). Ficam num registro do modulo, atualizado quando o setup carrega
@@ -568,7 +585,83 @@ export function debts(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const today = todayBR();
   const loans = setup.loans.reduce((s, l) => s + loanStatus(l, today, { months, setup }).saldo, 0);
   const cards = setup.cards.map((c) => cardStatus(c, months, today));
-  return { loans, cards: cards.reduce((s, c) => s + c.open, 0), total: loans + cards.reduce((s, c) => s + c.open, 0) };
+  // recv = o que te devem (entra no patrimonio como bem; nao abate o que voce deve)
+  const recv = (setup.recvs ?? []).reduce((s, r) => s + recvStatus(r, months, today).leftV, 0);
+  return { loans, cards: cards.reduce((s, c) => s + c.open, 0), total: loans + cards.reduce((s, c) => s + c.open, 0), recv };
+}
+
+// ---------- a receber ----------
+export const recvDue = (r: Recv, k: number) => dayIn(addMonths(r.first, k), r.dueDay);
+export type RecvRow = { k: number; due: string; m: string; status: "recebida" | "atrasada" | "aberta"; via?: "antes" | "voce" | "extrato"; d?: string; v?: number; g?: Gasto };
+// Lancamento do extrato que parece pagamento desta divida: ligado a ela, descricao aprendida, ou o nome da pessoa no texto (valor ate 10% longe)
+export function recvMatches(r: Recv, g: Gasto) {
+  if (g.card || dirOf(g) < 0 || g.tipo === "gasto" || (r.notIds ?? []).includes(g.id)) return false;
+  if (g.ref) return g.ref === r.id;
+  if ((r.keys ?? []).includes(descKey(g.desc))) return true;
+  const words = plain(r.name).split(" ").filter((w) => w.length > 2 && !/^(de|da|do|dos|das)$/.test(w));
+  const d = plain(g.desc);
+  return words.length > 0 && words.every((w) => d.includes(w)) && Math.abs(g.v - r.parcela) <= r.parcela * 0.1;
+}
+export function recvStatus(r: Recv, months: Record<string, MonthDoc>, today = todayBR()) {
+  const rows: RecvRow[] = Array.from({ length: r.n }, (_, k) => ({ k, due: recvDue(r, k), m: addMonths(r.first, k), status: "aberta" as const }));
+  const gb = r.gotBefore ?? 0;
+  for (const row of rows) if (row.k < gb) Object.assign(row, { status: "recebida", via: "antes" });
+  const gets = r.gets ?? [];
+  for (const x of gets) { const row = rows[x.k]; if (row && row.status !== "recebida") Object.assign(row, { status: "recebida", via: "voce", d: x.d, v: x.v }); }
+  const gids = new Set(gets.map((x) => x.gid).filter(Boolean));
+  // "recebi" sem lancar entrada: o mesmo valor que vier no extrato perto da data e esse recebimento (nao conta duas vezes)
+  const marked = gets.filter((x) => !x.gid);
+  const near = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) <= 5 * 86_400_000;
+  const cands: Gasto[] = [];
+  for (const md of Object.values(months))
+    for (const g of md.items) {
+      if (gids.has(g.id) || !recvMatches(r, g)) continue;
+      const mi = marked.findIndex((x) => Math.abs(x.v - g.v) <= 0.01 * g.v + 0.01 && near(x.d, g.d));
+      if (mi >= 0) { marked.splice(mi, 1); continue; }
+      cands.push(g);
+    }
+  cands.sort((a, b) => a.d.localeCompare(b.d));
+  // ligado a uma parcela certa primeiro; o resto vai para a parcela em aberto mais antiga
+  const rest: Gasto[] = [];
+  for (const g of cands) {
+    const row = g.ref === r.id && g.parc ? rows[g.parc[0] - 1] : undefined;
+    if (row && row.status !== "recebida") Object.assign(row, { status: "recebida", via: "extrato", d: g.d, v: g.v, g });
+    else rest.push(g);
+  }
+  for (const g of rest) {
+    const row = rows.find((x) => x.status !== "recebida");
+    if (!row) break;
+    Object.assign(row, { status: "recebida", via: "extrato", d: g.d, v: g.v, g });
+  }
+  for (const row of rows) if (row.status !== "recebida" && row.due < today) row.status = "atrasada";
+  const open = rows.filter((x) => x.status !== "recebida");
+  const late = rows.filter((x) => x.status === "atrasada");
+  const gotRows = rows.filter((x) => x.status === "recebida");
+  return {
+    rows, got: gotRows.length, gotV: gotRows.reduce((t, x) => t + (x.v ?? r.parcela), 0),
+    left: open.length, leftV: open.length * r.parcela, late: late.length, lateV: late.length * r.parcela,
+    next: open[0]?.due ?? null, nextK: open[0]?.k ?? null, end: rows[rows.length - 1]?.m ?? r.first,
+  };
+}
+// Parcelas a receber com vencimento no mes m (para o "Contas do mes")
+export function monthReceipts(m: string, months: Record<string, MonthDoc>, setup: GastosSetup, today = todayBR()) {
+  const out: { r: Recv; row: RecvRow }[] = [];
+  for (const r of setup.recvs ?? []) for (const row of recvStatus(r, months, today).rows) if (row.m === m) out.push({ r, row });
+  return out.sort((a, b) => a.row.due.localeCompare(b.row.due));
+}
+// Recebimento achado no extrato mas com a categoria errada (Pix recebido = renda) ou sem ligacao: o conserto
+export function recvFixes(months: Record<string, MonthDoc>, setup: GastosSetup) {
+  const out: { m: string; id: string; patch: Partial<Gasto>; who: string }[] = [];
+  for (const r of setup.recvs ?? []) {
+    for (const row of recvStatus(r, months).rows) {
+      const g = row.g;
+      if (!g) continue;
+      const want: Partial<Gasto> = r.kind === "emprestei" ? { cat: RECV_BACK_CAT, tipo: "neutro", io: "in" } : { cat: g.tipo === "receita" ? g.cat : RECV_SALE_CAT, tipo: "receita" };
+      const ok = g.ref === r.id && g.parc?.[0] === row.k + 1 && g.cat === want.cat && g.tipo === want.tipo;
+      if (!ok) out.push({ m: monthOf(g.d), id: g.id, patch: { ...want, ref: r.id, parc: [row.k + 1, r.n] }, who: r.name });
+    }
+  }
+  return out;
 }
 
 // Fatura por mes de vencimento + parcelas futuras (que ainda nao apareceram em nenhum extrato)

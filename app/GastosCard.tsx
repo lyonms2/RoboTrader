@@ -5,11 +5,13 @@ import { db } from "@/lib/firebaseClient";
 import { CARD_PAY_CAT, GENERIC_CATS, INVEST_CAT, TRANSFER_CAT, customCats, setCustomCats, accNameFromDesc, looksDuplicate, suggestCard, suggestToAcc, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardPayForm } from "./CardsLoans";
+import { linkRecv, receive } from "./Receivables";
 import {
   CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, monthBills, monthOf, newId, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
   type Bill, type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
+import { ask, askText, tell } from "./Dialog";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
@@ -90,6 +92,13 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
   const s = summarize(items);
   const avg = avgMonthly(months);
   const bills = monthBills(m, items, setup, months);
+  const recs = monthReceipts(m, months, setup);
+  const recLeft = recs.filter((x) => x.row.status !== "recebida");
+  const onRecv = async (x: (typeof recs)[number], v: string) => {
+    if (v.startsWith("item:")) { const g = items.find((y) => y.id === v.slice(5)); if (g) await linkRecv(x.r, x.row.k, g, months, setup); }
+    else if (v.startsWith("acc:")) await receive(x.r, x.row.k, x.r.parcela, x.row.due < todayBR() ? todayBR() : x.row.due, v.slice(4), months, setup);
+    else if (v === "mark") await receive(x.r, x.row.k, x.r.parcela, todayBR(), null, months, setup);
+  };
   const pending = bills.filter((b) => !b.paid);
   const pendingTotal = pending.reduce((a, p) => a + p.v, 0);
   const prevAvg = useMemo(() => {
@@ -127,7 +136,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     if (key && target) await saveSetup({ invRules: { ...(setup.invRules ?? {}), [key]: target } });
   };
   const removeItem = async (g: Gasto) => {
-    if (!confirm(`Apagar "${g.desc}" (${brl(g.v)})?`)) return;
+    if (!await ask(`Apagar "${g.desc}" (${brl(g.v)})?`)) return;
     await saveMonth(m, items.filter((x) => x.id !== g.id));
   };
   // Pagou o fixo/parcela por fora do extrato: escolhe com qual conta (ou cartao) foi pago; o saldo dela baixa
@@ -144,7 +153,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     }
     let v = p.v;
     if (p.varia) {
-      const ans = prompt(`Quanto veio ${p.desc} este mes? (R$)`, fmt(p.v));
+      const ans = await askText(`Quanto veio ${p.desc} este mes? (R$)`, fmt(p.v));
       if (ans === null) return;
       v = num(ans);
       if (!(v > 0)) return;
@@ -198,8 +207,9 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
           <div><span>Ainda a pagar</span><b className={pendingTotal > 0 ? "warn" : ""}>{brl(pendingTotal)}</b>
             <small className="muted">{pending.length ? `${pending.length} fixos/parcelas - previsto ${brl(s.gastos + pendingTotal, 0)}` : "fixos e parcelas em dia"}</small></div>
         </div>
-        {bills.length > 0 && (
+        {(bills.length > 0 || recs.length > 0) && (
           <div className="bills">
+            {bills.length > 0 && <>
             <div className="bills-head">
               <b>Contas do mes</b>
               <span className="small muted">{bills.length - pending.length} de {bills.length} pagas{pendingTotal > 0 ? ` - falta ${brl(pendingTotal)}` : " - tudo pago"}</span>
@@ -239,6 +249,46 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                 );
               })}
             </ul>
+            </>}
+            {recs.length > 0 && (
+              <>
+                <div className={bills.length ? "bills-head bills-sub" : "bills-head"}>
+                  <b>A receber</b>
+                  <span className="small muted">{recs.length - recLeft.length} de {recs.length} recebidas{recLeft.length ? ` - falta ${brl(recLeft.reduce((t, x) => t + x.r.parcela, 0))}` : ""}</span>
+                </div>
+                <ul>
+                  {recs.map((x) => {
+                    const got = x.row.status === "recebida";
+                    return (
+                      <li key={x.r.id + x.row.k} className={got ? "paid" : x.row.status === "atrasada" ? "late" : ""}>
+                        <span className="b-day">{dm(x.row.due)}</span>
+                        <span className="b-desc"><b>{x.r.name} (parcela {x.row.k + 1}/{x.r.n})</b>
+                          {got && <small className="muted">{x.row.via === "extrato" && x.row.g ? `recebido: ${x.row.g.desc.slice(0, 40)} (${dm(x.row.g.d)})` : x.row.via === "antes" ? "recebido antes do cadastro" : `marcado como recebido${x.row.d ? ` em ${dm(x.row.d)}` : ""}`}</small>}
+                        </span>
+                        <span className="b-v pos">+{brl(x.row.v ?? x.r.parcela)}</span>
+                        {got ? <span className="sit sit-paga">recebido</span> : (
+                          <>
+                            <span className={x.row.status === "atrasada" ? "sit sit-atrasada" : "sit sit-aberta"}>{x.row.status === "atrasada" ? "atrasado" : "a receber"}</span>
+                            <select className="pay-sel" value="" onChange={(e) => e.target.value && onRecv(x, e.target.value)}>
+                              <option value="">recebi / ligar...</option>
+                              <optgroup label="ja veio no extrato">
+                                {items.filter((g) => !g.card && !g.ref && dirOf(g) > 0)
+                                  .sort((a, b) => Math.abs(a.v - x.r.parcela) - Math.abs(b.v - x.r.parcela)).slice(0, 8)
+                                  .map((g) => <option key={g.id} value={`item:${g.id}`}>{dm(g.d)} {g.desc.slice(0, 28)} {brl(g.v)}</option>)}
+                              </optgroup>
+                              <optgroup label="recebi (nao vem em extrato)">
+                                {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>caiu na {a.name}</option>)}
+                                <option value="mark">so marcar (em dinheiro)</option>
+                              </optgroup>
+                            </select>
+                          </>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
           </div>
         )}
         {acSt.rows.some((r) => r.used || r.informed) && (
@@ -349,7 +399,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
 export function CatSelect({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   const mine = customCats();
   const create = async (tipo: "gasto" | "receita", suggestion = "") => {
-    const raw = window.prompt(tipo === "gasto" ? "O que e esse gasto? (vira uma categoria sua, ex.: Presentes, Pet, Academia)"
+    const raw = await askText(tipo === "gasto" ? "O que e esse gasto? (vira uma categoria sua, ex.: Presentes, Pet, Academia)"
       : "O que e essa entrada? (vira uma categoria sua, ex.: Freela, Venda, Reembolso)", suggestion);
     const name = raw?.trim().replace(/^./, (c) => c.toUpperCase());
     if (!name) return null;
@@ -389,7 +439,7 @@ export function CatSelect({ value, onChange }: { value: string; onChange: (c: st
 
 // Cria um cofrinho (saldo 0 no dia anterior ao movimento) na aba Investimentos; os movimentos ligados formam o saldo
 async function createBox(invest: FinItem[], desc: string, d: string) {
-  const name = window.prompt("Nome do cofrinho/investimento novo:", invNameFromDesc(desc));
+  const name = await askText("Nome do cofrinho/investimento novo:", invNameFromDesc(desc));
   if (!name?.trim()) return undefined;
   const it: FinItem = { id: newId(), kind: "caixa", name: name.trim(), balance: 0, balanceAt: Date.parse(`${prevDay(d)}T12:00:00-03:00`), cdiPct: 100, reserva: true };
   await setDoc(doc(db(), "config/main"), { finance: clean([...invest, it]) }, { merge: true });
@@ -398,7 +448,7 @@ async function createBox(invest: FinItem[], desc: string, d: string) {
 
 // Cria uma conta sem extrato (ex.: conta da esposa) a partir do texto do lancamento
 async function createEnvelope(setup: GastosSetup, desc: string) {
-  const name = window.prompt("Nome da conta (sem extrato: comeca do zero, recebe as transferencias e voce lanca nela o que foi pago):", accNameFromDesc(desc));
+  const name = await askText("Nome da conta (sem extrato: comeca do zero, recebe as transferencias e voce lanca nela o que foi pago):", accNameFromDesc(desc));
   if (!name?.trim()) return undefined;
   const id = newId();
   await saveSetup({ accounts: clean([...accountsOf(setup), { id, name: name.trim(), noStatement: true }]), account: null } as Partial<GastosSetup>);
@@ -473,6 +523,8 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
   let invMissing = 0;
   let payMissing = 0;
   let recat = 0;
+  const rf = recvFixes(months, setup);
+  for (const f of rf) fixes.push({ m: f.m, id: f.id, patch: f.patch });
   for (const [m, md] of Object.entries(months))
     for (const g of md.items) {
       // em Outros/Outras entradas mas o texto diz o que e (ex.: "Dinheiro resgatado do cofrinho" = Investimento)
@@ -507,9 +559,9 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
   const st = accountsStatus(months, setup);
   const noBalance = st.rows.filter((r) => r.used && !r.informed);
   const generic = genericCount(months);
-  if (!invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length && !generic && !oldMarks.length) return null;
+  if (!invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length && !generic && !oldMarks.length && !rf.length) return null;
   const removeOldMarks = async () => {
-    if (!confirm(`Apagar ${oldMarks.length} ${oldMarks.length > 1 ? "marcacoes" : "marcacao"} do "ja paguei" antigo? Depois marque o pagamento de novo pelo botao novo.`)) return;
+    if (!await ask(`Apagar ${oldMarks.length} ${oldMarks.length > 1 ? "marcacoes" : "marcacao"} do "ja paguei" antigo? Depois marque o pagamento de novo pelo botao novo.`)) return;
     const by: Record<string, Set<string>> = {};
     for (const { m, g } of oldMarks) (by[m] ??= new Set()).add(g.id);
     await Promise.all(Object.entries(by).map(([m, ids]) => saveMonth(m, months[m].items.filter((x) => !ids.has(x.id)))));
@@ -527,9 +579,11 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
       <ul>
         {invMissing > 0 && <li>{invMissing} {invMissing > 1 ? "movimentos" : "movimento"} de investimento sem destino: o dinheiro sai da conta e nao entra em nenhum investimento.</li>}
         {payMissing > 0 && <li>{payMissing} {payMissing > 1 ? "pagamentos" : "pagamento"} de fatura sem cartao: a fatura continua aparecendo como divida.</li>}
+        {rf.length > 0 && <li>{rf.length} {rf.length > 1 ? "recebimentos" : "recebimento"} de quem te deve ({[...new Set(rf.map((x) => x.who))].join(", ")}) achados no extrato: ligar a parcela
+          {rf.some((x) => x.patch.tipo === "neutro") ? " e tirar da renda (e dinheiro seu voltando)" : ""}.</li>}
         {recat > 0 && <li>{recat} {recat > 1 ? "lancamentos" : "lancamento"} em Outros/Outras entradas que o texto ja diz o que e (ex.: resgate de cofrinho = Investimento).</li>}
         {fixes.length > 0 && <li><button className="primary small-btn" disabled={busy} onClick={applyFixes}>{busy ? "Arrumando..." : `Arrumar ${fixes.length} automaticamente`}</button>
-          {fixes.length < invMissing + payMissing + recat && <span className="muted"> os outros: escolha na lista de lancamentos</span>}</li>}
+          {fixes.length < invMissing + payMissing + recat + rf.length && <span className="muted"> os outros: escolha na lista de lancamentos</span>}</li>}
         {oldMarks.length > 0 && (
           <li className="warn">{oldMarks.length} {oldMarks.length > 1 ? "marcacoes" : "marcacao"} do &quot;ja paguei&quot; antigo ({brl(oldMarks.reduce((t, x) => t + x.g.v, 0))}) {oldMarks.length > 1 ? "estao" : "esta"}
             somando como compra na fatura seguinte, em vez de pagar. <button className="ghost small-btn" onClick={removeOldMarks}>apagar e marcar de novo</button></li>
@@ -950,7 +1004,7 @@ export function Cards({ cards, setup, onEdit }: { cards: { c: Card; st: ReturnTy
     setForm(null);
   };
   const remove = async (c: Card) => {
-    if (confirm(`Remover o cartao ${c.name}? (os lancamentos continuam)`)) await saveSetup({ cards: setup.cards.filter((x) => x.id !== c.id) });
+    if (await ask(`Remover o cartao ${c.name}? (os lancamentos continuam)`)) await saveSetup({ cards: setup.cards.filter((x) => x.id !== c.id) });
   };
   return (
     <section className="card">
@@ -1019,7 +1073,7 @@ export function Loans({ setup, months, onEdit, onPrepay }: { setup: GastosSetup;
     setForm(null);
   };
   const remove = async (l: Loan) => {
-    if (confirm(`Remover ${l.name}?`)) await saveSetup({ loans: setup.loans.filter((x) => x.id !== l.id) });
+    if (await ask(`Remover ${l.name}?`)) await saveSetup({ loans: setup.loans.filter((x) => x.id !== l.id) });
   };
   const list = setup.loans.map((l) => ({ l, st: loanStatus(l, today, months ? { months, setup } : undefined) }));
   const total = list.reduce((s, x) => s + x.st.saldo, 0);
@@ -1163,7 +1217,7 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
     onDone(`${fixo ? "Salvo" : "Adicionado"}: ${f.desc}, ${f.varia ? "~" : ""}${brl(fixoValue(f, cur))} todo dia ${f.dia}${f.start ? `, a partir de ${monthLabel(f.start)}` : ""}${f.end ? ` ate ${monthLabel(f.end)}` : ""}. Ele aparece em Contas e bens > Gastos fixos e nos previstos do mes.`);
   };
   const remove = async () => {
-    if (fixo && confirm(`Remover o fixo "${fixo.desc}"?`)) { await saveSetup({ fixos: setup.fixos.filter((x) => x.id !== fixo.id) }); onDone(`Removido: ${fixo.desc}.`); }
+    if (fixo && await ask(`Remover o fixo "${fixo.desc}"?`)) { await saveSetup({ fixos: setup.fixos.filter((x) => x.id !== fixo.id) }); onDone(`Removido: ${fixo.desc}.`); }
   };
   // historico: valor inicial e cada mudanca
   const hist = fixo ? [{ from: "", v: fixo.v }, ...steps] : [];

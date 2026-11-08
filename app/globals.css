@@ -455,3 +455,8 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 .entry label.entry-pick { flex-direction: row; justify-content: flex-start; align-items: center; text-align: left; }
 .fin-form label.check { flex: 1 1 100%; flex-direction: row; justify-content: flex-start; align-items: center; text-align: left; }
 .pay-sel { max-width: 170px; padding: 3px 6px; font-size: 12.5px; margin-left: 4px; }
+
+/* Bens: fora da paleta categorica (ficam separados do patrimonio financeiro) */
+.g-bens { fill: var(--muted); background: var(--muted); }
+.ranges .sep { width: 1px; background: var(--line); margin: 0 4px; }
+.ranges { flex-wrap: wrap; justify-content: flex-end; }

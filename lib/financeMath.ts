@@ -2,11 +2,11 @@ import { walletTotals } from "./walletMath";
 import type { FinanceDoc, FinItem, WalletDoc } from "./types";
 
 // Contas das financas (roda no navegador): valor de cada investimento em R$, rendimento estimado e composicao
-export type FinGroup = "reserva" | "conta" | "rendafixa" | "acoes" | "fiis" | "outro" | "cripto" | "dolar";
+export type FinGroup = "reserva" | "conta" | "rendafixa" | "acoes" | "fiis" | "outro" | "cripto" | "dolar" | "bens";
 export const GROUPS: { key: FinGroup; label: string }[] = [
   { key: "reserva", label: "Reserva" }, { key: "conta", label: "Conta corrente" }, { key: "rendafixa", label: "Renda fixa" }, { key: "acoes", label: "Acoes e ETFs" },
   { key: "fiis", label: "FIIs" }, { key: "cripto", label: "Cripto" }, { key: "dolar", label: "Dolar (cripto)" },
-  { key: "outro", label: "Outros" },
+  { key: "outro", label: "Outros" }, { key: "bens", label: "Bens (imoveis, veiculos)" },
 ];
 
 export type FinRow = {
@@ -114,6 +114,19 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
         : "sem proventos nos ultimos 12 meses",
     };
   }
+  if (item.kind === "bem") {
+    // Valor informado numa data, corrigido pela valorizacao/depreciacao anual (se informada)
+    const years = item.valueAt ? (Date.now() - item.valueAt) / (365.25 * DAY) : 0;
+    const rate = (item.rate ?? 0) / 100;
+    const value = (item.value ?? 0) * (1 + rate) ** years;
+    const label = { imovel: "Imovel", terreno: "Terreno", veiculo: "Veiculo", outro: "Bem" }[item.bemType ?? "outro"];
+    const age = item.valueAt ? Math.floor((Date.now() - item.valueAt) / DAY) : null;
+    return {
+      ...base, group: "bens", kindLabel: label, value, cost: item.paid ?? null,
+      note: `valor estimado em ${item.valueAt ? fmtD(item.valueAt) : "-"}${rate ? ` (${rate > 0 ? "+" : ""}${(rate * 100).toLocaleString("pt-BR")}% ao ano)` : ""}${item.ignore ? " - nao conta no patrimonio" : ""}`,
+      stale: age !== null && age > 365 && !rate ? `valor de ${age} dias atras: atualize a estimativa` : null,
+    };
+  }
   const days = item.valueAt ? Math.floor((Date.now() - item.valueAt) / DAY) : null;
   const fl = flows.filter((x) => !item.valueAt || x.d > dayBR(item.valueAt));
   const net = fl.reduce((s, x) => s + x.v, 0);
@@ -130,7 +143,7 @@ export function financeSummary(items: FinItem[], f: FinanceDoc | null, wallet: W
   flows: Record<string, Flow[]> = {}) {
   const rows = items.map((i) => financeRow(i, f, flows[i.id]));
   const byGroup = Object.fromEntries(GROUPS.map((g) => [g.key, 0])) as Record<FinGroup, number>;
-  for (const r of rows) byGroup[r.group] += r.value ?? 0;
+  for (const r of rows) if (!r.item.ignore) byGroup[r.group] += r.value ?? 0;
   const usd = f?.usdbrl ?? null;
   if (wallet && usd) {
     const { byClass } = walletTotals(wallet);
@@ -139,7 +152,8 @@ export function financeSummary(items: FinItem[], f: FinanceDoc | null, wallet: W
   }
   if (cash) byGroup.conta += cash;
   const total = Object.values(byGroup).reduce((s, v) => s + v, 0);
-  const withCost = rows.filter((r) => r.cost !== null && r.value !== null);
+  // Lucro/prejuizo: so dos investimentos (bens ficam fora)
+  const withCost = rows.filter((r) => r.cost !== null && r.value !== null && r.item.kind !== "bem");
   const cost = withCost.reduce((s, r) => s + r.cost!, 0);
   const gain = withCost.reduce((s, r) => s + r.value! - r.cost!, 0);
   const monthly = rows.reduce((s, r) => s + (r.monthly ?? 0), 0);
@@ -147,6 +161,7 @@ export function financeSummary(items: FinItem[], f: FinanceDoc | null, wallet: W
   const reserve = byGroup.reserva;
   return {
     rows, byGroup, total, usd, cost, gain, monthly, dividends, reserve,
+    bens: byGroup.bens, totalNoBens: total - byGroup.bens,
     reserveMonths: monthlyCost && monthlyCost > 0 ? reserve / monthlyCost : null,
     cryptoMissingFx: !!wallet && !usd,
   };

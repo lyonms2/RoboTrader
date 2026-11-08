@@ -15,6 +15,7 @@ type RangeId = (typeof RANGES)[number]["id"];
 // Evolucao do patrimonio liquido: 1 ponto por dia (foto gravada no Atualizar tudo / agendador) + o valor de agora
 export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; live: NetWorthDoc | null }) {
   const [range, setRange] = useState<RangeId>("tudo");
+  const [withBens, setWithBens] = useState(false);
   const [idx, setIdx] = useState<number | null>(null);
   // Largura real do grafico (para o texto nao encolher no celular)
   const box = useRef<HTMLElement>(null);
@@ -26,8 +27,15 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
     ro.observe(el);
     return () => ro.disconnect();
   }, [hist.length, range]); // o grafico so aparece com 2+ pontos
+  // Sem bens: tira imoveis/veiculos do liquido e dos bens (byGroup.bens; fotos antigas nao tem e contam 0)
+  const adj = (p: NetWorthDoc): NetWorthDoc => {
+    const b = withBens ? 0 : p.byGroup?.bens ?? 0;
+    return { ...p, net: p.net - b, bens: p.bens - b };
+  };
+  const hasBens = [...hist, ...(live ? [live] : [])].some((p) => (p.byGroup?.bens ?? 0) > 0);
   // Hoje: o valor calculado agora substitui a foto do dia
-  const all = [...hist.filter((h) => !live || h.day !== live.day), ...(live && (live.bens > 0 || live.dividas > 0) ? [live] : [])].sort((a, b) => a.t - b.t);
+  const all0 = [...hist.filter((h) => !live || h.day !== live.day), ...(live && (live.bens > 0 || live.dividas > 0) ? [live] : [])].sort((a, b) => a.t - b.t);
+  const all = all0.map(adj);
   const span = all.length ? (all[all.length - 1].t - all[0].t) / 86_400_000 : 0;
   const avail = RANGES.filter((r) => r.days === Infinity || span > r.days * 0.6);
   const days = RANGES.find((r) => r.id === range)!.days;
@@ -78,6 +86,13 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
       <div className="card-head">
         <h2>Evolucao do patrimonio</h2>
         <div className="ranges" role="group" aria-label="Periodo">
+          {hasBens && (
+            <>
+              <button className={!withBens ? "pill on" : "pill"} onClick={() => setWithBens(false)}>sem bens</button>
+              <button className={withBens ? "pill on" : "pill"} onClick={() => setWithBens(true)}>com bens</button>
+              <span className="sep" />
+            </>
+          )}
           {avail.map((r) => (
             <button key={r.id} className={range === r.id ? "pill on" : "pill"} onClick={() => { setRange(r.id); setIdx(null); }}>{r.label}</button>
           ))}
@@ -85,7 +100,7 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
       </div>
       <div className="nw-head">
         <div>
-          <span className="muted small">{idx !== null ? date(cur.t) : "Patrimonio liquido agora"}</span>
+          <span className="muted small">{idx !== null ? date(cur.t) : `Patrimonio liquido${hasBens ? (withBens ? " com bens" : " sem bens") : ""} agora`}</span>
           <b>{brl(cur.net)}</b>
         </div>
         {idx === null ? (

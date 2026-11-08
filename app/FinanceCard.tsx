@@ -85,6 +85,9 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
   // Contas e bens nao inclui a cripto (ela tem a aba Carteira); a Visao geral soma tudo
   const crypto = s.byGroup.cripto + s.byGroup.dolar;
   const noCrypto = s.total - crypto;
+  const fin0 = noCrypto - s.bens; // contas + investimentos (sem cripto e sem bens)
+  const invRows = rows.filter((r) => r.item.kind !== "bem");
+  const bemRows = rows.filter((r) => r.item.kind === "bem");
 
   const nav = (
     <nav className="subtabs" role="tablist" aria-label="Financas">
@@ -106,9 +109,10 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       <section className="card">
         <h2>Balanco</h2>
         <div className="kpis">
-          <div><span>O que voce tem</span><b>{brl(noCrypto)}</b><small className="muted">contas e investimentos (sem cripto)</small></div>
+          <div><span>Contas e investimentos</span><b>{brl(fin0)}</b><small className="muted">sem cripto e sem bens</small></div>
+          <div><span>Bens</span><b>{brl(s.bens)}</b><small className="muted">imoveis, terrenos, veiculos</small></div>
           <div><span>O que voce deve</span><b className={debt.total > 0 ? "warn" : ""}>{brl(debt.total)}</b><small className="muted">cartoes {brl(debt.cards, 0)} - emprestimos {brl(debt.loans, 0)}</small></div>
-          <div><span>Liquido sem cripto</span><b>{brl(noCrypto - debt.total)}</b><small className="muted">tem - deve</small></div>
+          <div><span>Liquido sem bens</span><b>{brl(fin0 - debt.total)}</b><small className="muted">{s.bens > 0 ? `com bens: ${brl(fin0 + s.bens - debt.total)}` : "tem - deve"}</small></div>
         </div>
         <p className="muted small">Aqui so se ve: para lancar ou alterar qualquer coisa (conta, investimento, cartao, emprestimo, fixo), use Lancamentos
           ou o link &quot;alterar&quot; de cada item.
@@ -126,12 +130,12 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
           <h2>Investimentos</h2>
           <button className="link" onClick={() => goEdit("inv", null)}>+ investimento</button>
         </div>
-        {rows.length ? (
+        {invRows.length ? (
           <div className="table-scroll">
             <table className="stack fin">
               <thead><tr><th>Investimento</th><th>Quantidade</th><th>Preco</th><th>Valor</th><th>Lucro</th><th>Rende/mes</th><th /></tr></thead>
               <tbody>
-                {rows.map((r) => <ItemRow key={r.item.id} r={r} onEdit={() => goEdit("inv", r.item.id)} />)}
+                {invRows.map((r) => <ItemRow key={r.item.id} r={r} onEdit={() => goEdit("inv", r.item.id)} />)}
               </tbody>
             </table>
           </div>
@@ -146,6 +150,22 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, spend, debt, 
       </section>
 
       <Dividends rows={s.rows} fin={fin} />
+
+      <section className="card">
+        <div className="card-head"><h2>Bens</h2><span className="muted small">{brl(s.bens)}<button className="link" onClick={() => goEdit("bem", null)}>+ bem</button></span></div>
+        {bemRows.length ? (
+          <ul className="pend small">
+            {bemRows.map((r) => (
+              <li key={r.item.id}>
+                <b>{r.item.name}</b> <span className="tag">{r.kindLabel}</span>
+                <span className="muted">{r.note}{r.cost !== null && r.value !== null ? ` - pagou ${brl(r.cost, 0)}` : ""}</span>
+                <span className={r.item.ignore ? "muted" : ""}>{r.value !== null ? brl(r.value, 0) : "-"}</span>
+                <button className="link" onClick={() => goEdit("bem", r.item.id)}>alterar</button>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="muted small">Nenhum bem cadastrado. Imoveis, terrenos e veiculos entram no patrimonio &quot;com bens&quot;, separados do financeiro.</p>}
+      </section>
 
       <h3 className="bal-title">O que voce deve</h3>
       <DebtsBlock months={months} setup={setup} onEdit={(t, id) => goEdit(t, id)} />
@@ -184,10 +204,14 @@ function ItemRow({ r, onEdit }: { r: FinRow; onEdit: () => void }) {
 }
 
 // Formulario de inclusao/edicao: os campos mudam com o tipo
-function ItemForm({ initial, fin, onSave, onCancel }: {
-  initial: FinItem | null; fin: FinanceDoc | null; onSave: (it: FinItem) => void; onCancel: () => void;
+function ItemForm({ initial, fin, onSave, onCancel, only }: {
+  initial: FinItem | null; fin: FinanceDoc | null; onSave: (it: FinItem) => void; onCancel: () => void; only?: FinKind;
 }) {
-  const [kind, setKind] = useState<FinKind>(initial?.kind ?? "caixa");
+  const [kind, setKind] = useState<FinKind>(only ?? initial?.kind ?? "caixa");
+  const [bemType, setBemType] = useState<NonNullable<FinItem["bemType"]>>(initial?.bemType ?? "imovel");
+  const [paid, setPaid] = useState(initial?.paid !== undefined ? String(initial.paid).replace(".", ",") : "");
+  const [rate, setRate] = useState(initial?.rate !== undefined ? String(initial.rate).replace(".", ",") : "");
+  const [counts, setCounts] = useState(!initial?.ignore);
   const [name, setName] = useState(initial?.name ?? "");
   const [ticker, setTicker] = useState(initial?.ticker ?? "");
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -225,6 +249,14 @@ function ItemForm({ initial, fin, onSave, onCancel }: {
       if (!/^[A-Z0-9]{4,7}$/.test(tk)) return setErr("Codigo invalido (ex.: TAEE11, ITSA4, MXRF11, IVVB11).");
       if (!(parse(qty) > 0)) return setErr("Informe a quantidade.");
       it = { ...base, name: tk, ticker: tk, qty: parse(qty), ...(parse(avg) > 0 ? { avg: parse(avg) } : {}) };
+    } else if (kind === "bem") {
+      if (!name.trim()) return setErr("De um nome (ex.: Apartamento, Terreno Criciuma, Carro).");
+      if (!(parse(value) > 0)) return setErr("Informe o valor estimado de hoje.");
+      const r = rate.trim() ? Number(rate.replace(/\s/g, "").replace(",", ".").replace(/[\u2212]/g, "-")) : NaN;
+      // mantem a data do valor se ele nao mudou (para a depreciacao seguir contando)
+      const valueAt = initial?.kind === "bem" && initial.value === parse(value) && initial.valueAt ? initial.valueAt : Date.now();
+      it = { ...base, name: name.trim(), bemType, value: parse(value), valueAt, ...(parse(paid) > 0 ? { paid: parse(paid) } : {}),
+        ...(Number.isFinite(r) && r !== 0 ? { rate: r } : {}), ...(counts ? {} : { ignore: true }) };
     } else {
       if (!name.trim()) return setErr("De um nome (ex.: Previdencia, Poupanca).");
       it = { ...base, name: name.trim(), value: parse(value), valueAt: Date.now(), reserva };
@@ -234,13 +266,14 @@ function ItemForm({ initial, fin, onSave, onCancel }: {
 
   return (
     <form className="fin-form" onSubmit={submit}>
-      <div className="kind-pick" role="radiogroup" aria-label="Tipo">
+      {!only && <div className="kind-pick" role="radiogroup" aria-label="Tipo">
         {KINDS.map((k) => (
           <button type="button" key={k.key} role="radio" aria-checked={kind === k.key} className={kind === k.key ? "pill on" : "pill"}
             onClick={() => { setKind(k.key); setErr(""); }} disabled={!!initial && initial.kind !== k.key}>{k.label}</button>
         ))}
-      </div>
-      <p className="muted small">{KINDS.find((k) => k.key === kind)!.hint}</p>
+      </div>}
+      {kind !== "bem" && <p className="muted small">{KINDS.find((k) => k.key === kind)?.hint}</p>}
+      {kind === "bem" && <p className="muted small">Imovel, terreno, veiculo: entra no patrimonio &quot;com bens&quot;, separado do patrimonio financeiro.</p>}
       <div className="row wrapline">
         {(kind === "caixa" || kind === "outro") && (
           <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "caixa" ? "Cofrinho do banco" : "Previdencia"} /></label>
@@ -281,8 +314,26 @@ function ItemForm({ initial, fin, onSave, onCancel }: {
         {kind === "outro" && (
           <label>Valor hoje (R$)<input value={value} inputMode="decimal" onChange={(e) => setValue(e.target.value)} /></label>
         )}
+        {kind === "bem" && (
+          <>
+            <label>Tipo
+              <select value={bemType} onChange={(e) => setBemType(e.target.value as NonNullable<FinItem["bemType"]>)}>
+                <option value="imovel">Imovel</option><option value="terreno">Terreno</option><option value="veiculo">Veiculo</option><option value="outro">Outro bem</option>
+              </select>
+            </label>
+            <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} placeholder={bemType === "veiculo" ? "Carro, moto..." : "Apartamento, casa..."} /></label>
+            <label>{initial?.kind === "bem" && initial.valueAt && parse(value) === initial.value
+              ? `Valor estimado em ${new Date(initial.valueAt).toLocaleDateString("pt-BR")} (R$; mude para atualizar hoje)`
+              : "Valor estimado hoje (R$)"}<input value={value} inputMode="decimal" onChange={(e) => setValue(e.target.value)} placeholder="ex.: 250.000" /></label>
+            <label>Quanto pagou (R$, opcional)<input value={paid} inputMode="decimal" onChange={(e) => setPaid(e.target.value)} /></label>
+            <label>Valoriza/deprecia % ao ano (opcional)<input value={rate} inputMode="decimal" onChange={(e) => setRate(e.target.value)} placeholder={bemType === "veiculo" ? "ex.: -10" : "ex.: 4"} /></label>
+          </>
+        )}
       </div>
-      {kind !== "acao" && (
+      {kind === "bem" && (
+        <label className="check"><input type="checkbox" checked={counts} onChange={(e) => setCounts(e.target.checked)} /> Contar no patrimonio (desmarque para so registrar)</label>
+      )}
+      {kind !== "acao" && kind !== "bem" && (
         <label className="check"><input type="checkbox" checked={reserva} onChange={(e) => setReserva(e.target.checked)} />
           Faz parte da reserva de emergencia (dinheiro que pode sacar a qualquer hora)</label>
       )}
@@ -299,7 +350,8 @@ function ItemForm({ initial, fin, onSave, onCancel }: {
 // Barra 100%: patrimonio por grupo (cor fixa por grupo)
 function FinBar({ byGroup }: { byGroup: Record<FinGroup, number> }) {
   const [hover, setHover] = useState<FinGroup | null>(null);
-  const parts = GROUPS.map((g) => ({ ...g, value: Math.max(0, byGroup[g.key]) })).filter((g) => g.value > 0.005);
+  // Bens ficam fora da barra (aparecem numa linha separada)
+  const parts = GROUPS.filter((g) => g.key !== "bens").map((g) => ({ ...g, value: Math.max(0, byGroup[g.key]) })).filter((g) => g.value > 0.005);
   const total = parts.reduce((s, p) => s + p.value, 0);
   if (!(total > 0)) return null;
   const W = 640;
@@ -427,8 +479,10 @@ export function PatrimonioCard({ cfg, fin, wallet, spend, debt, months, setup, o
           <button className="link" onClick={onBens}>ver contas e bens &rsaquo;</button>
         </div>
         <div className="kpis">
-          <div><span>{debt.total > 0 ? "Patrimonio liquido" : "Patrimonio total"}</span><b>{brl(s.total - debt.total)}</b>
-            <small className="muted">{debt.total > 0 ? `${brl(s.total, 0)} em bens - ${brl(debt.total, 0)} de dividas` : s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluida` : wallet ? "falta o dolar: clique em Atualizar tudo" : "sem carteiras cripto"}</small></div>
+          <div><span>{s.bens > 0 ? "Patrimonio sem bens" : debt.total > 0 ? "Patrimonio liquido" : "Patrimonio total"}</span><b>{brl(s.totalNoBens - debt.total)}</b>
+            <small className="muted">{debt.total > 0 ? `${brl(s.totalNoBens, 0)} - ${brl(debt.total, 0)} de dividas` : s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluida` : wallet ? "falta o dolar: clique em Atualizar tudo" : "sem carteiras cripto"}</small></div>
+          {s.bens > 0 && <div><span>Patrimonio com bens</span><b>{brl(s.total - debt.total)}</b>
+            <small className="muted">+ {brl(s.bens, 0)} em imoveis, veiculos...</small></div>}
           <div><span>Reserva de emergencia</span><b>{brl(s.reserve)}</b>
             <small className="muted">{s.reserveMonths !== null ? `cobre ${fmt(s.reserveMonths, 1)} meses de gastos` : "a media de gastos aparece depois do 1o mes completo de lancamentos"}{spend ? ` (media de ${spend.months} ${spend.months > 1 ? "meses" : "mes"})` : ""}</small></div>
           <div><span>Rende por mes (estimado)</span><b>{brl(s.monthly)}</b>
@@ -444,6 +498,7 @@ export function PatrimonioCard({ cfg, fin, wallet, spend, debt, months, setup, o
           {fin && <span>dados de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>}
         </p>
         <FinBar byGroup={s.byGroup} />
+        {s.bens > 0 && <p className="small muted">Fora da barra: bens {brl(s.bens, 0)} ({s.rows.filter((r) => r.item.kind === "bem" && !r.item.ignore).map((r) => r.item.name).join(", ")}).</p>}
         {(notices.length > 0 || (fin?.errors.length ?? 0) > 0) && (
           <ul className="alerts small">
             {notices.map((n) => <li key={n} className="warn">{n}</li>)}
@@ -493,9 +548,9 @@ export function NetWorthBlock({ cfg, fin, wallet, months, setup, nwHist }: Ctx &
 }
 
 // ---------- "O que voce quer lancar?" (unico lugar de entrada) ----------
-export type EntryType = "mov" | "import" | "inv" | "card" | "loan" | "fixo" | "conta";
+export type EntryType = "mov" | "import" | "inv" | "bem" | "card" | "loan" | "fixo" | "conta";
 const ENTRY_TYPES: { id: EntryType; label: string }[] = [
-  { id: "mov", label: "Gasto ou entrada" }, { id: "import", label: "Importar extrato" }, { id: "inv", label: "Investimento" },
+  { id: "mov", label: "Gasto ou entrada" }, { id: "import", label: "Importar extrato" }, { id: "inv", label: "Investimento" }, { id: "bem", label: "Bem (imovel, veiculo)" },
   { id: "card", label: "Cartao" }, { id: "loan", label: "Emprestimo" }, { id: "fixo", label: "Gasto fixo" }, { id: "conta", label: "Conta / saldo" },
 ];
 
@@ -509,7 +564,8 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   const accounts = accountsOf(setup);
   // Itens existentes de cada tipo (para alterar ou remover)
   const existing: Record<string, { id: string; label: string }[]> = {
-    inv: invest.map((i) => ({ id: i.id, label: i.name })),
+    inv: invest.filter((i) => i.kind !== "bem").map((i) => ({ id: i.id, label: i.name })),
+    bem: invest.filter((i) => i.kind === "bem").map((i) => ({ id: i.id, label: i.name })),
     card: setup.cards.map((c) => ({ id: c.id, label: c.name })),
     loan: setup.loans.map((l) => ({ id: l.id, label: l.name })),
     fixo: setup.fixos.map((f) => ({ id: f.id, label: f.desc })),
@@ -542,6 +598,12 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
         <>
           <ItemForm key={id ?? "novo"} initial={invest.find((i) => i.id === id) ?? null} fin={fin} onSave={onSaveInv} onCancel={reset} />
           {id && <button className="ghost small-btn" onClick={() => { const it = invest.find((i) => i.id === id); if (it) onRemoveInv(it); }}>remover este investimento</button>}
+        </>
+      )}
+      {type === "bem" && (
+        <>
+          <ItemForm key={id ?? "novo-bem"} only="bem" initial={invest.find((i) => i.id === id) ?? null} fin={fin} onSave={(it) => { onSaveInv(it); setEntry({ type: "bem", id: null }); }} onCancel={reset} />
+          {id && <button className="ghost small-btn" onClick={() => { const it = invest.find((i) => i.id === id); if (it) { onRemoveInv(it); setEntry({ type: "bem", id: null }); } }}>remover este bem</button>}
         </>
       )}
       {type === "card" && (

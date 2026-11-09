@@ -149,7 +149,7 @@ function RecvItem({ r, st, months, setup, single, initial }: { r: Recv; st: RSta
                     <td className="actions">
                       {x.status !== "recebida" && <button className="link" onClick={() => toggle(`get:${x.k}`)}>recebi</button>}
                       {x.via === "voce" && <button className="link" onClick={() => undo(x)}>desfazer</button>}
-                      {x.via === "extrato" && <button className="link" onClick={() => undo(x)}>não é este</button>}
+                      {x.via === "extrato" && <button className="link" title="Desliga este lançamento da parcela: ela volta para a receber" onClick={() => undo(x)}>alterar</button>}
                     </td>
                   </tr>
                 ))}

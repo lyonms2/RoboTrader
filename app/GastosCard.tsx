@@ -331,7 +331,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                       {p.reaj && <span className="tag warn">reajuste: confira o valor</span>}
                       {p.paid && <small className="muted">{p.paid.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === p.paid!.by)?.name ?? "outra pessoa"} (abatido do que te deve) ${brl(p.paid.v)} (${dm(p.paid.d)})`
                         : `pago por: ${p.paid.desc.slice(0, 40)} ${brl(p.paid.v)} (${dm(p.paid.d)}) - ${HOW[p.how ?? ""] ?? ""}`}
-                        {p.fixo && <button className="link" onClick={() => notThis(p)}>não é este</button>}</small>}
+                        {p.fixo && <button className="link" title="Desfaz este pagamento: a conta volta para a pagar e você escolhe de novo" onClick={() => notThis(p)}>alterar</button>}</small>}
                     </span>
                     <span className="b-v">{p.varia && !p.paid ? "~" : ""}{brl(p.paid ? p.paid.v : p.v)}</span>
                     {p.paid ? <span className="sit sit-paga">pago</span> : (

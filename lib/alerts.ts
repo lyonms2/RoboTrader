@@ -88,8 +88,11 @@ export function buildAlerts(a: {
   // 6) categoria fora do padrao (a que mais passou da media)
   const keys = [1, 2, 3].map((k) => addMonths(m, -k)).filter((k) => months[k]?.items.length);
   if (keys.length >= 2) {
+    // media so dos meses em que a categoria apareceu, e com pelo menos 2 meses (senao o comeco do historico vira alarme falso)
+    const seen: Record<string, number[]> = {};
+    for (const k of keys) for (const [c, v] of Object.entries(summarize(months[k].items, { m: k, months }).byCat)) if (v > 0) (seen[c] ??= []).push(v);
     const mean: Record<string, number> = {};
-    for (const k of keys) for (const [c, v] of Object.entries(summarize(months[k].items, { m: k, months }).byCat)) mean[c] = (mean[c] ?? 0) + v / keys.length;
+    for (const [c, l] of Object.entries(seen)) if (l.length >= 2) mean[c] = l.reduce((t, v) => t + v, 0) / l.length;
     const over = Object.entries(s.byCat).filter(([c, v]) => c !== CARD_PAY_CAT && c !== "Emprestimos" && !GENERIC_CATS.includes(c) && (mean[c] ?? 0) >= 100 && v >= mean[c] * 1.6 && v - mean[c] >= 50)
       .sort((x, y) => (y[1] - mean[y[0]]) - (x[1] - mean[x[0]]))[0];
     if (over) out.push({ id: `cat:${over[0]}:${m}`, prio: 2, tone: "info", who: "Gastos", text: `${catLabel(over[0])} está ${num((over[1] / mean[over[0]] - 1) * 100, 0)}% acima da média dos meses anteriores (${brl(over[1], 0)} contra ${brl(mean[over[0]], 0)})`, fin: "lanc" });

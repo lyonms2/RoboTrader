@@ -635,6 +635,10 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
   const st = accountsStatus(months, setup);
   const noBalance = st.rows.filter((r) => r.used && !r.informed);
   const generic = genericCount(months);
+  // em Outros e o site nao sabe arrumar sozinho: mostra quais sao e onde estao (podem estar em outro mes ou no cartao)
+  const fixIds = new Set(fixes.map((f) => f.id));
+  const genericLeft = Object.entries(months).flatMap(([m, md]) => md.items.filter((g) => GENERIC_CATS.includes(g.cat) && !fixIds.has(g.id)).map((g) => ({ m, g })))
+    .sort((x, y) => y.g.d.localeCompare(x.g.d));
   if (!invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length && !generic && !oldMarks.length && !rf.length && !wrongDir.length) return null;
   const removeOldMarks = async () => {
     if (!await ask(`Apagar ${oldMarks.length} ${oldMarks.length > 1 ? "marcações" : "marcação"} do "já paguei" antigo? Depois marque o pagamento de novo pelo botão novo.`)) return;
@@ -678,8 +682,14 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
             <button className="ghost small-btn" onClick={() => setPaying(paying === c.id + f.m ? null : c.id + f.m)}>{paying === c.id + f.m ? "fechar" : "já paguei"}</button>
             {paying === c.id + f.m && <CardPayForm card={c} fm={f.m} rest={f.rest} due={f.due} months={months} setup={setup} onDone={() => setPaying(null)} />}</li>
         ))}
-        {generic - recat > 0 && <li>{generic - recat} {generic - recat > 1 ? "lançamentos" : "lançamento"} em &quot;Outros&quot; sem dizer o que é: na lista, troque a categoria
-          (escolha uma existente, ou &quot;+ nova categoria&quot; para criar a sua). Os iguais do mês mudam juntos e o site lembra para as próximas.</li>}
+        {genericLeft.length > 0 && <li>{genericLeft.length} {genericLeft.length > 1 ? "lançamentos" : "lançamento"} em &quot;Outros&quot; sem dizer o que é. Troque a categoria (uma existente ou &quot;+ nova categoria&quot;):
+          <ul className="review-items">
+            {genericLeft.slice(0, 5).map(({ m: gm, g }) => {
+              const c = setup.cards.find((x) => x.id === g.card);
+              return <li key={g.id}><b>{g.desc.slice(0, 50)}</b> {brl(g.v)} <span className="muted">{dm(g.d)}/{g.d.slice(2, 4)} - {c ? `cartão ${c.name}, na fatura (Cartões e empréstimos)` : `Lançamentos de ${monthLabel(gm)}`}</span></li>;
+            })}
+            {genericLeft.length > 5 && <li className="muted">e mais {genericLeft.length - 5}</li>}
+          </ul></li>}
         {noBalance.map((r) => <li key={r.acc.id}>Conta {r.acc.name} sem saldo conferido: informe o saldo do app do banco em &quot;Contas&quot; para o patrimônio ficar certo.</li>)}
       </ul>
     </div>

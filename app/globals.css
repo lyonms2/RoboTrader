@@ -679,3 +679,4 @@ textarea.wallets { width: 100%; background: var(--bg); color: var(--text); borde
 .todo li button.todo-x:hover { color: var(--accent); }
 .todo li em { width: 0; }
 @media (max-width: 520px) { .todo li { grid-template-columns: 1fr auto 16px; } .todo li b { grid-column: 1 / -1; } }
+.review-items { margin: 4px 0 2px; padding-left: 16px; }

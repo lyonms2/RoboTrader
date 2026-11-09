@@ -840,7 +840,8 @@ export function AccountForm({ acc, canRemove, onSave, onCancel, onRemove }: {
 }) {
   const [name, setName] = useState(acc?.name ?? "");
   const [bal, setBal] = useState(acc?.balance !== undefined ? fmt(acc.balance) : "");
-  const [at, setAt] = useState(todayBR());
+  // abre com o dia em que o saldo foi conferido; digitou outro saldo, a data vai para hoje
+  const [at, setAt] = useState(acc?.at ?? todayBR());
   const [noSt, setNoSt] = useState(!!acc?.noStatement);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -852,16 +853,17 @@ export function AccountForm({ acc, canRemove, onSave, onCancel, onRemove }: {
   return (
     <form className="row wrapline acct-form" onSubmit={submit}>
       <label>Conta<input value={name} onChange={(e) => setName(e.target.value)} placeholder="PicPay, Nubank..." /></label>
-      <label className="check"><input type="checkbox" checked={noSt} onChange={(e) => setNoSt(e.target.checked)} /> Conta sem extrato (começa do zero)</label>
+      <label className="check"><input type="checkbox" checked={noSt} onChange={(e) => setNoSt(e.target.checked)} /> Conta sem extrato (você não importa o extrato dela)</label>
       {!noSt && <>
-      <label>Saldo no app do banco (R$)<input value={bal} inputMode="decimal" onChange={(e) => setBal(e.target.value)} placeholder="ex.: 1.250,00" /></label>
+      <label>Saldo no app do banco (R$)<input value={bal} inputMode="decimal" onChange={(e) => { setBal(e.target.value); setAt(todayBR()); }} placeholder="ex.: 1.250,00" /></label>
       <label>No fim do dia<input type="date" value={at} onChange={(e) => setAt(e.target.value)} /></label>
       </>}
       <button className="primary" type="submit">Salvar</button>
       <button className="ghost" type="button" onClick={onCancel}>Cancelar</button>
       {canRemove && <button className="ghost" type="button" onClick={onRemove}>remover conta</button>}
-      <span className="muted">O saldo vale para o fim do dia escolhido: lançamentos até esse dia já estão nele, os seguintes somam ou descontam,
-        e os meses anteriores são recalculados de trás para frente. Deixe vazio para mostrar só o movimento.</span>
+      <span className="muted">{noSt
+        ? "Sem extrato: o saldo começa em zero e só muda com o que você lança ou transfere para ela. Use para conta de outra pessoa, vale ou dinheiro."
+        : "Com extrato: informe o saldo do app e o dia dele. Lançamentos até esse dia já estão no saldo; os seguintes somam ou descontam. Sem saldo informado, mostra só a soma dos lançamentos."}</span>
     </form>
   );
 }

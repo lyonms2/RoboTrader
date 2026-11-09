@@ -684,3 +684,9 @@ textarea.wallets { width: 100%; background: var(--bg); color: var(--text); borde
 .support-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; border-color: var(--accent); color: var(--text); }
 .support-bar button { margin-left: auto; }
 .pay-cta { display: block; width: 100%; max-width: 320px; padding: 11px 18px; font-weight: 700; font-size: 15px; margin: 4px 0 12px; }
+
+/* "O que voce quer lancar?" em destaque */
+.card:has(> .entry), .card:has(> * > .entry) { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
+.entry-bar .entry-q { color: var(--accent); font-weight: 700; font-size: 14.5px; }
+.entry-bar .entry-types .pill { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.entry-bar .entry-types .pill:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }

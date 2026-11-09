@@ -1,5 +1,5 @@
 import {
-  CARD_PAY_CAT, GENERIC_CATS, accIdOf, accountsOf, addMonths, cardStatus, catLabel, faturaMonth, fixoHistory, monthBills, monthOf, recvLedger, subValue, summarize, todayBR,
+  CARD_PAY_CAT, GENERIC_CATS, accIdOf, accountsOf, accountsStatus, addMonths, cardStatus, catLabel, faturaMonth, fixoHistory, monthBills, monthOf, recvLedger, subValue, summarize, todayBR,
   type Card, type GastosSetup, type MonthDoc,
 } from "./gastos";
 
@@ -25,6 +25,12 @@ export function bestBuy(c: Card, today = todayBR()) {
     }
   }
   return null;
+}
+
+// Saldo conferido neste mes e inicio do mes negativo: o site calcula de tras para frente, entao em geral faltam saidas lancadas
+export function negativeStarts(months: Record<string, MonthDoc>, setup: GastosSetup, m = monthOf(todayBR())) {
+  return accountsStatus(months, setup, m).rows.filter((r) => !r.acc.noStatement && r.acc.balance !== undefined && !!r.acc.at && r.acc.at.slice(0, 7) === m && r.start < -0.5)
+    .map((r) => ({ id: r.acc.id, name: r.acc.name, start: r.start }));
 }
 
 export function buildAlerts(a: {
@@ -84,6 +90,9 @@ export function buildAlerts(a: {
     if (dl >= 10) out.push({ id: `extrato:${acc.id}:${m}`, prio: 3, tone: "info", who: "Dados", text: `Último extrato da conta ${acc.name} tem ${dl} dias: importe o novo para os números ficarem certos`, fin: "lanc" });
     else if (dc >= 30) out.push({ id: `saldo-conf:${acc.id}:${m}`, prio: 3, tone: "info", who: "Dados", text: `O saldo da conta ${acc.name} não é conferido há ${dc} dias`, fin: "bens" });
   }
+
+  for (const r of negativeStarts(months, setup, m))
+    out.push({ id: `inicio-neg:${r.id}:${m}`, prio: 2, tone: "warn", who: "Dados", text: `O início do mês da conta ${r.name} aparece negativo (${brl(r.start)}): se a conta não estava no vermelho, faltam saídas lançadas. Importe o extrato do mês`, fin: "lanc" });
 
   // 6) categoria fora do padrao (a que mais passou da media)
   const keys = [1, 2, 3].map((k) => addMonths(m, -k)).filter((k) => months[k]?.items.length);

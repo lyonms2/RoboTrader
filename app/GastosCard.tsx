@@ -3,6 +3,7 @@ import { doc, setDoc } from "firebase/firestore";
 import { Fragment, useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { P, isReadOnly } from "@/lib/paths";
+import { negativeStarts } from "@/lib/alerts";
 import { CARD_PAY_CAT, GENERIC_CATS, INVEST_CAT, TRANSFER_CAT, customCats, setCustomCats, accNameFromDesc, looksDuplicate, suggestCard, suggestToAcc, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardPayForm } from "./CardsLoans";
@@ -656,7 +657,8 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
   const fixIds = new Set(fixes.map((f) => f.id));
   const genericLeft = Object.entries(months).flatMap(([m, md]) => md.items.filter((g) => GENERIC_CATS.includes(g.cat) && !fixIds.has(g.id)).map((g) => ({ m, g })))
     .sort((x, y) => y.g.d.localeCompare(x.g.d));
-  if (!invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length && !generic && !oldMarks.length && !rf.length && !wrongDir.length) return null;
+  const negStarts = negativeStarts(months, setup);
+  if (negStarts.length === 0 && !invMissing && !payMissing && !lost.length && !overdue.length && !noBalance.length && !generic && !oldMarks.length && !rf.length && !wrongDir.length) return null;
   const removeOldMarks = async () => {
     if (!await ask(`Apagar ${oldMarks.length} ${oldMarks.length > 1 ? "marcações" : "marcação"} do "já paguei" antigo? Depois marque o pagamento de novo pelo botão novo.`)) return;
     const by: Record<string, Set<string>> = {};
@@ -678,6 +680,7 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
         {payMissing > 0 && <li>{payMissing} {payMissing > 1 ? "pagamentos" : "pagamento"} de fatura sem cartão: a fatura continua aparecendo como dívida.</li>}
         {rf.length > 0 && <li>{rf.length} {rf.length > 1 ? "recebimentos" : "recebimento"} de quem te deve ({[...new Set(rf.map((x) => x.who))].join(", ")}) achados no extrato: ligar a parcela
           {rf.some((x) => x.patch.tipo === "neutro") ? " e tirar da renda (e dinheiro seu voltando)" : ""}.</li>}
+        {negStarts.map((r) => <li key={r.id}>O início do mês da conta <b>{r.name}</b> aparece negativo ({brl(r.start)}). O site calcula de trás para frente a partir do saldo conferido: se a conta não estava no vermelho, faltam saídas lançadas. Importe o extrato do mês.</li>)}
         {parcFix > 0 && <li>{parcFix} {parcFix > 1 ? "parcelas ficaram" : "parcela ficou"} em &quot;Outros&quot;, mas outra parcela da mesma compra já tem categoria.</li>}
         {recat > 0 && <li>{recat} {recat > 1 ? "lançamentos" : "lançamento"} em Outros/Outras entradas que o texto já diz o que é (ex.: resgate de cofrinho = Investimento).</li>}
         {fixes.length > 0 && <li><button className="primary small-btn" disabled={busy} onClick={applyFixes}>{busy ? "Arrumando..." : `Arrumar ${fixes.length} automaticamente`}</button>

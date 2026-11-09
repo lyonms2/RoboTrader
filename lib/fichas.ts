@@ -34,6 +34,10 @@ async function json<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+// Lista padrao: maiores projetos com receita conhecida e redes grandes. Criterio: tamanho e dados disponiveis; nao e indicacao de compra.
+// Quem nao esta na carteira nem na lista do usuario fica so para acompanhar: nao gera "comprar", nao ocupa vaga do satelite
+export const DEFAULT_WATCH = ["BNB", "TRX", "AVAX", "SUI", "HYPE", "LINK", "UNI", "AAVE", "JUP", "ETHFI", "RAY", "PENDLE", "LDO", "GMX"];
+
 // Simbolos a acompanhar: moedas da estrategia + tokens das carteiras (nao estaveis, >= $1) + lista da Configuracao
 export function fichaSymbols(strategy: string[], wallet: WalletDoc | undefined, watch: string[] = []) {
   const fromWallet = (wallet?.items ?? []).filter((i) => i.value >= 1 && i.cls !== "stable" && !STABLE.test(i.symbol)).map((i) => i.symbol);
@@ -167,7 +171,7 @@ async function volumeAlert(f: TokenFicha) {
 }
 
 // held = USD de cada token nas carteiras; satCapital = patrimonio x fatia do satelite
-async function situacoes(items: TokenFicha[], strategy: string[], latest: LatestDoc[], held: Map<string, number>, reentry: boolean, satCapital: number) {
+export async function situacoes(items: TokenFicha[], strategy: string[], latest: LatestDoc[], held: Map<string, number>, reentry: boolean, satCapital: number, listOnly: Set<string> = new Set()) {
   const btc = (await fetchDaily("BTCUSDT")).closed;
   const btcUp = new Map(runStrategy(btc, { ...DEFAULT_PARAMS, reentry }).map((s) => [s.t, s.expo > 0]));
   const warn = (f: TokenFicha, use: "entrada" | "saida") => f.alerts.filter((a) => a.level === "warn" && a.use?.includes(use));
@@ -175,10 +179,13 @@ async function situacoes(items: TokenFicha[], strategy: string[], latest: Latest
   // Vagas do satelite: tokens que voce ja tem e que seguem em tendencia ocupam vaga
   let used = 0;
   const pending: { f: TokenFicha; slot: number; ret: number }[] = [];
+  // Busca em paralelo (com a lista padrao, um a um estouraria o limite de 60 s da atualizacao)
+  await Promise.all(items.map(volumeAlert));
+  const candles = new Map(await Promise.all(items.filter((f) => !strategy.includes(f.symbol)).map(async (f) =>
+    [f.symbol, await fetchDaily(`${f.symbol}USDT`).then((r) => r.closed).catch(() => null)] as const)));
   for (const f of items) {
     f.held = held.get(f.symbol) ?? 0;
     const isHeld = f.held >= 1;
-    await volumeAlert(f);
     const exitWarn = warn(f, "saida");
     if (strategy.includes(f.symbol)) {
       const l = latest.find((x) => x.symbol === `${f.symbol}USDT`);
@@ -192,10 +199,8 @@ async function situacoes(items: TokenFicha[], strategy: string[], latest: Latest
       f.situacao = { code, label, detail: "sinal da estrategia principal (cards acima)" };
       continue;
     }
-    let k: Kline[];
-    try {
-      k = (await fetchDaily(`${f.symbol}USDT`)).closed;
-    } catch {
+    const k = candles.get(f.symbol) as Kline[] | null;
+    if (!k) {
       f.situacao = { code: "sem_dados", label: "Sem grafico", detail: "nao negocia contra USDT na Binance (fonte dos precos)" };
       continue;
     }
@@ -205,6 +210,13 @@ async function situacoes(items: TokenFicha[], strategy: string[], latest: Latest
       continue;
     }
     const b = breakoutState(k, btcUp);
+    // Lista padrao, fora da carteira e da lista do usuario: so mostra onde esta, sem sinal de compra ou venda
+    if (listOnly.has(f.symbol) && !isHeld) {
+      f.situacao = b.inPos
+        ? { code: "tendencia", label: "Em tendencia", detail: `pela regra 55/20, desde ${dayStr(b.since)}. Lista padrao: so para acompanhar` }
+        : { code: "observar", label: "Observar", detail: "fora de tendencia pela regra 55/20. Lista padrao: so para acompanhar" };
+      continue;
+    }
     const entryWarn = warn(f, "entrada");
     // Tamanho do backtest: 1/5 do satelite x min(1, 80% / vol 30d); metade com alerta de entrada
     const c = k.map((r) => r[4]).slice(-31);
@@ -264,7 +276,9 @@ export async function refreshFichas({ force, strategy }: { force: boolean; strat
   if (!force && prev && !newCandle && Date.now() - prev.at < REFRESH_MS) return { skipped: true };
   const [cfg, wallet, latestSnap] = await Promise.all([db.doc("config/main").get(), db.doc("wallet/main").get(), db.collection("latest").get()]);
   const w = wallet.data() as WalletDoc | undefined;
-  const symbols = fichaSymbols(strategy, w, (cfg.data()?.watchlist as string[] | undefined) ?? []);
+  const chosen = fichaSymbols(strategy, w, (cfg.data()?.watchlist as string[] | undefined) ?? []);
+  const symbols = [...new Set([...chosen, ...DEFAULT_WATCH])].slice(0, 40);
+  const listOnly = new Set(DEFAULT_WATCH.filter((s) => !chosen.includes(s)));
   const doc = await buildFichas(symbols);
   // USD de cada token nas carteiras (mesma normalizacao das fichas: WETH -> ETH etc.)
   const held = new Map<string, number>();
@@ -275,7 +289,7 @@ export async function refreshFichas({ force, strategy }: { force: boolean; strat
   const c = { ...(cfg.data() as AppConfig) };
   const satCapital = c.capitalUsdt !== undefined ? baseCapital(c, w) * allocOf(c).satellite : 0;
   try {
-    await situacoes(doc.items, strategy, latestSnap.docs.map((d) => d.data() as LatestDoc), held, !!c.reentry, satCapital);
+    await situacoes(doc.items, strategy, latestSnap.docs.map((d) => d.data() as LatestDoc), held, !!c.reentry, satCapital, listOnly);
   } catch (e) {
     doc.errors.push(`situacao: ${String(e)}`);
   }

@@ -934,7 +934,7 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
         <label>Tokens extras para acompanhar nas fichas (separados por virgula)
           <input value={watchText} placeholder="HYPE, PENDLE, JUP" spellCheck={false} onChange={(e) => setWatchText(e.target.value)} />
         </label>
-        <p className="hint">Os tokens das suas carteiras ja entram sozinhos.</p>
+        <p className="hint">Os tokens das suas carteiras e uma lista padrao de projetos grandes ja entram sozinhos. Os da lista padrao sao so para acompanhar: nao geram aviso de compra. Digitando um deles aqui, ele passa a seguir a regra completa.</p>
       </fieldset>
 
       <details className="cfg-more">

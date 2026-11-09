@@ -21,14 +21,23 @@ export function effectiveConfig(cfg: AppConfig, sync: LighterSyncDoc | null | un
   let positions = { ...cfg.positions };
   const avgPrice = { ...(cfg.avgPrice ?? {}) };
   const realized = { ...(cfg.realized ?? {}) };
-  if (cfg.walletPositions && wallet && px && wallet.address === walletKey(walletAddresses(cfg))) {
-    positions = {};
+  const walletOk = !!wallet && wallet.address === walletKey(walletAddresses(cfg));
+  if (wallet && walletOk) {
+    // Preco medio da lista "Meus tokens" (Zerion ou digitado), somando as versoes da moeda (BTC, cbBTC, WBTC...), ponderado pela quantidade.
+    // Com posicao manual, so preenche se a Configuracao nao tiver preco medio
     const rows = holdings(wallet, cfg.costBasis);
     for (const s of Object.keys(cfg.weights)) {
       const coin = s.replace("USDT", "");
-      // Preco medio = o da lista "Meus tokens" (Zerion ou digitado); sem ele, o da Configuracao
-      const row = rows.find((r) => r.symbol.toUpperCase() === coin);
-      if (row?.avg) avgPrice[s] = row.avg;
+      const symbols = new Set(wallet.items.filter((i) => i.cls === coin).map((i) => i.symbol.toUpperCase()));
+      const known = rows.filter((r) => symbols.has(r.symbol.toUpperCase()) && r.avg && r.qty > 0);
+      const qty = known.reduce((t, r) => t + r.qty, 0);
+      if (qty > 0 && (cfg.walletPositions || !(avgPrice[s] > 0))) avgPrice[s] = r8(known.reduce((t, r) => t + r.avg! * r.qty, 0) / qty);
+    }
+  }
+  if (cfg.walletPositions && wallet && px && walletOk) {
+    positions = {};
+    for (const s of Object.keys(cfg.weights)) {
+      const coin = s.replace("USDT", "");
       const value = wallet.items.filter((i) => i.cls === coin).reduce((sum, i) => sum + i.value, 0);
       positions[s] = px[s] > 0 ? r8(Math.max(0, value) / px[s]) : 0;
     }

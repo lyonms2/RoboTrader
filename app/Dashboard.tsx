@@ -151,6 +151,16 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     return () => { alive = false; };
   }, [user, demo]);
   const member = role === "member";
+  // altura do topo (muda no celular): as sub-abas ficam ancoradas logo abaixo dele
+  useEffect(() => {
+    const h = document.querySelector("header.topbar");
+    if (!h) return;
+    const set = () => document.documentElement.style.setProperty("--topbar-h", `${Math.round(h.getBoundingClientRect().height)}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(h);
+    return () => ro.disconnect();
+  }, [user, role]);
   // membro nao tem Tokens nem Operacoes: cai no Robo (estudo)
   useEffect(() => { if (member && (tab === "tokens" || tab === "operacoes")) setTabState("sinais"); }, [member, tab]);
 

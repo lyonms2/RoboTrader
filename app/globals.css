@@ -663,3 +663,11 @@ textarea.wallets { width: 100%; background: var(--bg); color: var(--text); borde
 .members li { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .members li button.link { margin-left: auto; }
 .privacy { padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+
+/* sub-abas ancoradas logo abaixo do topo (nao precisa subir a pagina para trocar) */
+:root { --topbar-h: 96px; --sub-h: 50px; }
+.subtabs:not(.inner), .toolbar { position: sticky; top: var(--topbar-h); z-index: 15; background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(8px); margin: 0 -16px 12px; padding: 8px 16px; min-height: var(--sub-h); align-items: center; }
+.toolbar .subtabs:not(.inner) { position: static; margin: 0; padding: 0; min-height: 0; background: none; backdrop-filter: none; }
+.subtabs.inner { position: sticky; top: calc(var(--topbar-h) + var(--sub-h)); z-index: 14; background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(8px); margin: -12px -16px 12px; padding: 6px 16px 8px; border-bottom: 1px solid var(--line); }

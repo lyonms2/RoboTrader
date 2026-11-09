@@ -16,8 +16,8 @@ import { ask, askText, tell } from "./Dialog";
 // O resumo (patrimonio, mes, proximos pagamentos, evolucao) fica na Visao geral
 export type Sub = "lanc" | "invest" | "cards" | "bens";
 const SUBS: { id: Sub; label: string }[] = [
-  { id: "bens", label: "Contas e bens" }, { id: "lanc", label: "Lancamentos" }, { id: "invest", label: "Investimentos" },
-  { id: "cards", label: "Cartoes e emprestimos" },
+  { id: "bens", label: "Contas e bens" }, { id: "lanc", label: "Lançamentos" }, { id: "invest", label: "Investimentos" },
+  { id: "cards", label: "Cartões e empréstimos" },
 ];
 const OLD_SUB: Record<string, Sub> = { gastos: "lanc", dividas: "bens", resumo: "lanc", loans: "cards", recv: "cards" };
 
@@ -36,10 +36,10 @@ export function parse(s: string) {
   return Number(t) || 0;
 }
 const KINDS: { key: FinKind; label: string; hint: string }[] = [
-  { key: "caixa", label: "Conta / cofrinho", hint: "saldo + % do CDI: o rendimento ate hoje e estimado sozinho" },
-  { key: "tesouro", label: "Tesouro Direto", hint: "titulo + quantidade: o preco do dia vem do Tesouro" },
-  { key: "acao", label: "Acao / FII / ETF", hint: "codigo + quantidade: cotacao e proventos automaticos" },
-  { key: "outro", label: "Outro", hint: "previdencia, poupanca, imovel... valor digitado a mao" },
+  { key: "caixa", label: "Conta / cofrinho", hint: "saldo + % do CDI: o rendimento até hoje e estimado sozinho" },
+  { key: "tesouro", label: "Tesouro Direto", hint: "título + quantidade: o preço do dia vem do Tesouro" },
+  { key: "acao", label: "Ação / FII / ETF", hint: "código + quantidade: cotação e proventos automáticos" },
+  { key: "outro", label: "Outro", hint: "previdência, poupança, imóvel... valor digitado à mão" },
 ];
 
 // Aba Financas: tudo num lugar so (cripto das carteiras + reserva, Tesouro, acoes/FIIs e outros), em reais
@@ -98,7 +98,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
     await save(list, it.kind === "acao" || it.kind === "tesouro");
   };
   const remove = async (it: FinItem) => {
-    if (!await ask(`Remover "${it.name}" da lista? (so tira do site, nao mexe no investimento)`)) return;
+    if (!await ask(`Remover "${it.name}" da lista? (só tira do site, não mexe no investimento)`)) return;
     await save(items.filter((x) => x.id !== it.id), false);
     if (it.kind === "bem") setBemEdit(undefined); else setInvEdit(undefined);
   };
@@ -114,7 +114,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   const bemRows = rows.filter((r) => r.item.kind === "bem");
 
   const nav = (
-    <nav className="subtabs" role="tablist" aria-label="Financas">
+    <nav className="subtabs" role="tablist" aria-label="Finanças">
       {SUBS.map((x) => (
         <button key={x.id} role="tab" aria-selected={sub === x.id} className={sub === x.id ? "pill on" : "pill"} onClick={() => setSub(x.id)}>{x.label}</button>
       ))}
@@ -136,20 +136,20 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
       {nav}
       {sub === "bens" && <>
       <section className="card">
-        <h2>Balanco</h2>
+        <h2>Balanço</h2>
         <div className="kpis">
           <div><span>Contas e investimentos</span><b>{brl(fin0)}</b><small className="muted">sem cripto e sem bens</small></div>
-          <div><span>Bens</span><b>{brl(s.bens)}</b><small className="muted">imoveis, terrenos, veiculos</small></div>
-          <div><span>O que voce deve</span><b className={debt.total > 0 ? "warn" : ""}>{brl(debt.total)}</b><small className="muted">cartoes {brl(debt.cards, 0)} - emprestimos {brl(debt.loans, 0)}</small></div>
+          <div><span>Bens</span><b>{brl(s.bens)}</b><small className="muted">imóveis, terrenos, veículos</small></div>
+          <div><span>O que você deve</span><b className={debt.total > 0 ? "warn" : ""}>{brl(debt.total)}</b><small className="muted">cartões {brl(debt.cards, 0)} - empréstimos {brl(debt.loans, 0)}</small></div>
           {debt.recv > 0 && <div><span>A receber</span><b className="pos">{brl(debt.recv)}</b><small className="muted">o que te devem</small></div>}
-          <div><span>Liquido sem bens</span><b>{brl(fin0 + debt.recv - debt.total)}</b><small className="muted">{s.bens > 0 ? `com bens: ${brl(fin0 + debt.recv + s.bens - debt.total)}` : debt.recv > 0 ? "tem + a receber - deve" : "tem - deve"}</small></div>
+          <div><span>Líquido sem bens</span><b>{brl(fin0 + debt.recv - debt.total)}</b><small className="muted">{s.bens > 0 ? `com bens: ${brl(fin0 + debt.recv + s.bens - debt.total)}` : debt.recv > 0 ? "tem + a receber - deve" : "tem - deve"}</small></div>
         </div>
-        <p className="muted small">Aqui so se ve: para lancar ou alterar, use Lancamentos (contas e fixos), Investimentos (investimentos e bens),
-          Cartoes e emprestimos, ou o link &quot;alterar&quot; de cada item.
-          A cripto fica na aba Carteira{crypto > 0 ? ` (${brl(crypto, 0)})` : ""}; o patrimonio total da Visao geral soma tudo.</p>
+        <p className="muted small">Aqui só se vê: para lançar ou alterar, use Lançamentos (contas e fixos), Investimentos (investimentos e bens),
+          Cartões e empréstimos, ou o link &quot;alterar&quot; de cada item.
+          A cripto fica na aba Carteira{crypto > 0 ? ` (${brl(crypto, 0)})` : ""}; o patrimônio total da Visão geral soma tudo.</p>
       </section>
 
-      <h3 className="bal-title">O que voce tem</h3>
+      <h3 className="bal-title">O que você tem</h3>
       <section className="card">
         <div className="card-head"><h2>Contas</h2><span className="muted small">{brl(acct?.value ?? 0)}</span></div>
         <AccountsPanel months={months} setup={setup} m={mon.m} onEdit={(id) => goEdit("conta", id)} />
@@ -171,7 +171,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
               );
             })}
           </ul>
-        ) : <p className="muted small">Nenhum investimento cadastrado. Cofrinho, Tesouro, acoes e FIIs se cadastram em Investimentos.</p>}
+        ) : <p className="muted small">Nenhum investimento cadastrado. Cofrinho, Tesouro, ações e FIIs se cadastram em Investimentos.</p>}
       </section>
 
       <section className="card">
@@ -187,7 +187,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
               </li>
             ))}
           </ul>
-        ) : <p className="muted small">Nenhum bem cadastrado. Imoveis, terrenos e veiculos entram no patrimonio &quot;com bens&quot;, separados do financeiro.</p>}
+        ) : <p className="muted small">Nenhum bem cadastrado. Imóveis, terrenos e veículos entram no patrimônio &quot;com bens&quot;, separados do financeiro.</p>}
       </section>
 
       {(setup.recvs ?? []).length > 0 && (
@@ -198,9 +198,9 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
             {(setup.recvs ?? []).map((r) => {
               const st = recvStatus(r, months);
               return (
-                <li key={r.id}><b>{r.name}</b> <span className="tag">{r.kind === "emprestei" ? "emprestimo" : r.kind === "venda" ? "venda" : "conta com a pessoa"}</span>
+                <li key={r.id}><b>{r.name}</b> <span className="tag">{r.kind === "emprestei" ? "empréstimo" : r.kind === "venda" ? "venda" : "conta com a pessoa"}</span>
                   {r.kind === "conta"
-                    ? <span className="muted">{st.saldo >= 0 ? "te deve" : "voce deve a ela"}</span>
+                    ? <span className="muted">{st.saldo >= 0 ? "te deve" : "você deve a ela"}</span>
                     : <span className="muted">{st.got} de {r.n} recebidas</span>}
                   {st.late > 0 && <span className="warn">{st.late} atrasada{st.late > 1 ? "s" : ""}</span>}
                   <span className={st.saldo < 0 ? "warn" : ""}>{brl(r.kind === "conta" ? Math.abs(st.saldo) : st.leftV, 0)}</span>
@@ -211,10 +211,10 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
         </section>
       )}
 
-      <h3 className="bal-title">O que voce deve</h3>
+      <h3 className="bal-title">O que você deve</h3>
       <DebtsBlock months={months} setup={setup} onEdit={(t, id) => goEdit(t, id)} />
 
-      <h3 className="bal-title">Compromissos todo mes</h3>
+      <h3 className="bal-title">Compromissos todo mês</h3>
       <Fixos setup={setup} months={months} onEdit={(id) => goEdit("fixo", id)} />
       </>}
     </>
@@ -261,20 +261,20 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes
       <section className="card">
         <div className="card-head"><h2>Investimentos</h2>
           <span className="head-actions">
-            {onQuotes && <button className="ghost small-btn" disabled={qBusy} title="Acoes, FIIs, Tesouro, CDI, IPCA e dolar"
-              onClick={async () => { setQBusy(true); try { await onQuotes(); } finally { setQBusy(false); } }}>{qBusy ? "Atualizando..." : "Atualizar cotacoes"}</button>}
+            {onQuotes && <button className="ghost small-btn" disabled={qBusy} title="Ações, FIIs, Tesouro, CDI, IPCA e dólar"
+              onClick={async () => { setQBusy(true); try { await onQuotes(); } finally { setQBusy(false); } }}>{qBusy ? "Atualizando..." : "Atualizar cotações"}</button>}
             <button className="primary small-btn" onClick={() => setEdit(null)}>+ novo investimento</button>
           </span></div>
-        {fin && <p className="muted small head-note">Cotacoes de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} (atualizam sozinhas varias vezes ao dia)</p>}
+        {fin && <p className="muted small head-note">Cotações de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} (atualizam sozinhas varias vezes ao dia)</p>}
         <div className="kpis">
           <div><span>Investido hoje</span><b>{brl(total)}</b><small className="muted">{live.length} {live.length === 1 ? "investimento" : "investimentos"}, fora cripto</small></div>
-          <div><span>Lucro / prejuizo</span><b className={pnlClass(gain)}>{cost > 0 ? signed(gain) : "-"}</b>
-            <small className="muted">{cost > 0 ? `${pctS(gain / cost)} sobre ${brl(cost, 0)} aplicados` : "informe os precos medios"}</small></div>
-          <div><span>Rende por mes (estimado)</span><b>{brl(monthly)}</b><small className="muted">{monthly > 0 ? `~${brl(monthly * 12, 0)} por ano, antes de IR` : "juros + proventos"}</small></div>
-          <div><span>Reserva de emergencia</span><b>{brl(reserve)}</b>
-            <small className="muted">{reserveMonths !== null ? `cobre ${fmt(reserveMonths, 1)} meses de gastos` : reserve > 0 ? "quantos meses cobre: depois do 1o mes de lancamentos" : "marque \"reserva\" no investimento"}</small></div>
+          <div><span>Lucro / prejuízo</span><b className={pnlClass(gain)}>{cost > 0 ? signed(gain) : "-"}</b>
+            <small className="muted">{cost > 0 ? `${pctS(gain / cost)} sobre ${brl(cost, 0)} aplicados` : "informe os preços médios"}</small></div>
+          <div><span>Rende por mês (estimado)</span><b>{brl(monthly)}</b><small className="muted">{monthly > 0 ? `~${brl(monthly * 12, 0)} por ano, antes de IR` : "juros + proventos"}</small></div>
+          <div><span>Reserva de emergência</span><b>{brl(reserve)}</b>
+            <small className="muted">{reserveMonths !== null ? `cobre ${fmt(reserveMonths, 1)} meses de gastos` : reserve > 0 ? "quantos meses cobre: depois do 1o mês de lançamentos" : "marque \"reserva\" no investimento"}</small></div>
           <div><span>Guardou em 12 meses</span><b className={pnlClass(put - took)}>{moves.length ? signed(put - took) : "-"}</b>
-            <small className="muted">{moves.length ? `aplicou ${brl(put, 0)} - resgatou ${brl(took, 0)}` : "aportes lancados no extrato"}</small></div>
+            <small className="muted">{moves.length ? `aplicou ${brl(put, 0)} - resgatou ${brl(took, 0)}` : "aportes lançados no extrato"}</small></div>
         </div>
         <FinBar byGroup={byGroup} />
       </section>
@@ -292,7 +292,7 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes
         {inv.length ? (
           <div className="table-scroll">
             <table className="stack fin grouped">
-              <thead><tr><th>Investimento</th><th>Quantidade</th><th>Preco</th><th>Valor</th><th>Lucro</th><th>Rende/mes</th><th /></tr></thead>
+              <thead><tr><th>Investimento</th><th>Quantidade</th><th>Preço</th><th>Valor</th><th>Lucro</th><th>Rende/mês</th><th /></tr></thead>
               {GROUPS.filter((g) => inv.some((r) => r.group === g.key)).map((g) => {
                 const gr = inv.filter((r) => r.group === g.key).sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
                 const gv = gr.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.value ?? 0), 0);
@@ -303,7 +303,7 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes
                       <td colSpan={7}>
                         <span className="grp-name"><i className={`dot g-${g.key}`} aria-hidden="true" />{g.label}</span>
                         <span className="grp-nums"><b>{brl(gv)}</b><span className="muted">{total > 0 ? pctS(gv / total) : ""}</span>
-                          {gm > 0 && <span className="muted">rende ~{brl(gm)}/mes</span>}</span>
+                          {gm > 0 && <span className="muted">rende ~{brl(gm)}/mês</span>}</span>
                       </td>
                     </tr>
                     {gr.map((r) => <ItemRow key={r.item.id} r={r} onEdit={() => setEdit(r.item.id)} />)}
@@ -313,17 +313,17 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes
             </table>
           </div>
         ) : (
-          <p className="muted">Nenhum investimento cadastrado. Clique em &quot;+ novo investimento&quot; para incluir cofrinho, Tesouro, acoes, FIIs ou outros.</p>
+          <p className="muted">Nenhum investimento cadastrado. Clique em &quot;+ novo investimento&quot; para incluir cofrinho, Tesouro, ações, FIIs ou outros.</p>
         )}
         <p className="muted small">
-          Automatico: cotacao e proventos (Yahoo Finance), preco do Tesouro (Tesouro Transparente, 1 vez por dia), CDI, IPCA e dolar
-          (Banco Central). A mao: quantidades, saldo do cofrinho e precos medios, porque bancos e a B3 nao tem API aberta para ler sua
-          posicao. Valores brutos, antes de IR e taxas.
+          Automático: cotação e proventos (Yahoo Finance), preço do Tesouro (Tesouro Transparente, 1 vez por dia), CDI, IPCA e dólar
+          (Banco Central). À mão: quantidades, saldo do cofrinho e preços médios, porque bancos e a B3 não tem API aberta para ler sua
+          posição. Valores brutos, antes de IR e taxas.
         </p>
       </section>
 
       <section className="card">
-        <div className="card-head"><h2>Aportes e resgates</h2><span className="muted small">ultimos 12 meses<button className="link" onClick={onLanc}>ver lancamentos &rsaquo;</button></span></div>
+        <div className="card-head"><h2>Aportes e resgates</h2><span className="muted small">últimos 12 meses<button className="link" onClick={onLanc}>ver lançamentos &rsaquo;</button></span></div>
         {moves.length > 0 && (() => {
           const per = (out: boolean) => {
             const by: Record<string, number> = {};
@@ -343,7 +343,7 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes
                 {rs.length ? rs.map(([k, v]) => <div key={k} className="flow-r"><span className={k === "sem destino" ? "warn" : ""}>{k}</span><span>{brl(v)}</span></div>)
                   : <div className="flow-r muted"><span>nada resgatado</span></div>}
               </div>
-              <div className="flow-net"><span>Guardou no periodo</span><b className={put - took >= 0 ? "pos" : "v-out"}>{put - took >= 0 ? "+" : "-"}{brl(Math.abs(put - took))}</b>
+              <div className="flow-net"><span>Guardou no período</span><b className={put - took >= 0 ? "pos" : "v-out"}>{put - took >= 0 ? "+" : "-"}{brl(Math.abs(put - took))}</b>
                 <small className="muted">{put - took >= 0 ? "aplicou mais do que resgatou" : "resgatou mais do que aplicou"}</small></div>
             </div>
           );
@@ -351,14 +351,14 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes
         {moves.length ? (
           <div className="table-scroll">
             <table className="stack moves">
-              <thead><tr><th>Data</th><th>Descricao</th><th>Investimento</th><th>Movimento</th></tr></thead>
+              <thead><tr><th>Data</th><th>Descrição</th><th>Investimento</th><th>Movimento</th></tr></thead>
               <tbody>
                 {shown.map((g: Gasto) => {
                   const out = dirOf(g) < 0;
                   return (
                     <tr key={g.id}>
                       <td data-label="Data">{dm(g.d)}/{g.d.slice(2, 4)}</td>
-                      <td data-label="Descricao">{g.desc}</td>
+                      <td data-label="Descrição">{g.desc}</td>
                       <td data-label="Investimento">{nameOf(g.inv) ?? <span className="warn">sem destino</span>}</td>
                       <td data-label="Movimento" className="v-move">{out ? "aplicou " : "resgatou "}<b>{brl(g.v)}</b></td>
                     </tr>
@@ -367,12 +367,12 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes
               </tbody>
             </table>
           </div>
-        ) : <p className="muted small">Nenhum aporte ou resgate nos ultimos 12 meses.</p>}
+        ) : <p className="muted small">Nenhum aporte ou resgate nos últimos 12 meses.</p>}
         {moves.length > 8 && <button className="link" onClick={() => setAllMoves(!allMoves)}>{allMoves ? "ver menos" : `ver todos (${moves.length})`}</button>}
         <p className="muted small">
-          Aportes e resgates vem do extrato (categoria Investimento, em Lancamentos). Ligados a um cofrinho ou &quot;outro&quot;, eles somam e
-          descontam o saldo sozinhos. Tesouro e acoes: atualize a quantidade aqui depois de comprar ou vender.
-          {unlinked > 0 && <b className="warn"> {unlinked} {unlinked === 1 ? "movimento esta" : "movimentos estao"} sem destino: escolha o investimento em Lancamentos.</b>}
+          Aportes e resgates vem do extrato (categoria Investimento, em Lançamentos). Ligados a um cofrinho ou &quot;outro&quot;, eles somam e
+          descontam o saldo sozinhos. Tesouro e ações: atualize a quantidade aqui depois de comprar ou vender.
+          {unlinked > 0 && <b className="warn"> {unlinked} {unlinked === 1 ? "movimento está" : "movimentos estão"} sem destino: escolha o investimento em Lançamentos.</b>}
         </p>
       </section>
 
@@ -394,7 +394,7 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes
               return (
                 <li key={r.item.id} className={r.item.ignore ? "off" : ""}>
                   <span className="a-name"><b>{r.item.name}</b>
-                    <small className="muted">{r.kindLabel}{r.item.ignore ? " - fora do patrimonio" : ""}{r.note ? ` - ${r.note}` : ""}</small></span>
+                    <small className="muted">{r.kindLabel}{r.item.ignore ? " - fora do patrimônio" : ""}{r.note ? ` - ${r.note}` : ""}</small></span>
                   <span className="a-paid small">{r.cost !== null ? <>pagou {brl(r.cost, 0)}{dif !== null && <small className={pnlClass(dif)}>{signed(dif)}</small>}</> : <span className="muted">-</span>}</span>
                   <span className="a-v"><b>{r.value !== null ? brl(r.value, 0) : "-"}</b></span>
                   <button className="link" onClick={() => setBemEdit(r.item.id)}>alterar</button>
@@ -403,8 +403,8 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes
             })}
           </ul>
         ) : <p className="muted small">Nenhum bem cadastrado.</p>}
-        <p className="muted small">Imoveis, terrenos e veiculos: entram no patrimonio &quot;com bens&quot;, separados do financeiro, e nao somam no
-          &quot;Investido hoje&quot; acima. O valor anda sozinho se voce informar quanto valoriza ou deprecia por ano.</p>
+        <p className="muted small">Imóveis, terrenos e veículos: entram no patrimônio &quot;com bens&quot;, separados do financeiro, e não somam no
+          &quot;Investido hoje&quot; acima. O valor anda sozinho se você informar quanto valoriza ou deprecia por ano.</p>
       </section>
     </>
   );
@@ -423,12 +423,12 @@ function ItemRow({ r, onEdit }: { r: FinRow; onEdit: () => void }) {
         <div className="muted small">{r.note || r.problem}</div>
       </td>
       <td data-label="Quantidade">{qty}</td>
-      <td data-label="Preco">{r.price !== null ? <span className="cell">{brl(r.price)}{r.change !== null && <small className={pnlClass(r.change)}>{r.change > 0 ? "+" : ""}{pctS(r.change)} hoje</small>}</span> : "-"}</td>
+      <td data-label="Preço">{r.price !== null ? <span className="cell">{brl(r.price)}{r.change !== null && <small className={pnlClass(r.change)}>{r.change > 0 ? "+" : ""}{pctS(r.change)} hoje</small>}</span> : "-"}</td>
       <td data-label="Valor"><b>{r.value !== null ? brl(r.value) : "-"}</b></td>
       <td data-label="Lucro" className={gain !== null ? pnlClass(gain) : "muted"}>
-        {gain !== null ? <span className="cell">{signed(gain)}{r.cost! > 0 && <small>{pctS(gain / r.cost!)}</small>}</span> : it.kind === "outro" ? "-" : "informe o preco medio"}
+        {gain !== null ? <span className="cell">{signed(gain)}{r.cost! > 0 && <small>{pctS(gain / r.cost!)}</small>}</span> : it.kind === "outro" ? "-" : "informe o preço médio"}
       </td>
-      <td data-label="Rende/mes">{r.monthly !== null ? <span className="cell">{brl(r.monthly)}{r.yieldYear !== null && <small className="muted">{pctS(r.yieldYear)} ao ano</small>}</span> : "-"}</td>
+      <td data-label="Rende/mês">{r.monthly !== null ? <span className="cell">{brl(r.monthly)}{r.yieldYear !== null && <small className="muted">{pctS(r.yieldYear)} ao ano</small>}</span> : "-"}</td>
       <td className="actions">
         <button className="link" onClick={onEdit}>alterar</button>
       </td>
@@ -473,17 +473,17 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
       it = { ...base, name: name.trim() || "Cofrinho", balance: parse(balance), balanceAt: Date.parse(`${balanceAt}T12:00:00-03:00`),
         cdiPct: parse(cdiPct) || 100, reserva };
     } else if (kind === "tesouro") {
-      if (!title) return setErr("Escolha o titulo.");
-      if (!(parse(qty) > 0)) return setErr("Informe a quantidade de titulos (ex.: 0,35).");
+      if (!title) return setErr("Escolha o título.");
+      if (!(parse(qty) > 0)) return setErr("Informe a quantidade de títulos (ex.: 0,35).");
       it = { ...base, name: title.replace("|", " ").replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3"), title, qty: parse(qty), reserva,
         ...(parse(avg) > 0 ? { avg: parse(avg) } : {}) };
     } else if (kind === "acao") {
       const tk = ticker.trim().toUpperCase().replace(/\.SA$/, "");
-      if (!/^[A-Z0-9]{4,7}$/.test(tk)) return setErr("Codigo invalido (ex.: TAEE11, ITSA4, MXRF11, IVVB11).");
+      if (!/^[A-Z0-9]{4,7}$/.test(tk)) return setErr("Código inválido (ex.: TAEE11, ITSA4, MXRF11, IVVB11).");
       if (!(parse(qty) > 0)) return setErr("Informe a quantidade.");
       it = { ...base, name: tk, ticker: tk, qty: parse(qty), ...(parse(avg) > 0 ? { avg: parse(avg) } : {}) };
     } else if (kind === "bem") {
-      if (!name.trim()) return setErr("De um nome (ex.: Apartamento, Terreno Criciuma, Carro).");
+      if (!name.trim()) return setErr("De um nome (ex.: Apartamento, Terreno Criciúma, Carro).");
       if (!(parse(value) > 0)) return setErr("Informe o valor estimado de hoje.");
       const r = rate.trim() ? Number(rate.replace(/\s/g, "").replace(",", ".").replace(/[\u2212]/g, "-")) : NaN;
       // mantem a data do valor se ele nao mudou (para a depreciacao seguir contando)
@@ -491,7 +491,7 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
       it = { ...base, name: name.trim(), bemType, value: parse(value), valueAt, ...(parse(paid) > 0 ? { paid: parse(paid) } : {}),
         ...(Number.isFinite(r) && r !== 0 ? { rate: r } : {}), ...(counts ? {} : { ignore: true }) };
     } else {
-      if (!name.trim()) return setErr("De um nome (ex.: Previdencia, Poupanca).");
+      if (!name.trim()) return setErr("De um nome (ex.: Previdência, Poupança).");
       it = { ...base, name: name.trim(), value: parse(value), valueAt: Date.now(), reserva };
     }
     onSave(it);
@@ -506,25 +506,25 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
         ))}
       </div>}
       {kind !== "bem" && <p className="muted small">{KINDS.find((k) => k.key === kind)?.hint}</p>}
-      {kind === "bem" && <p className="muted small">Imovel, terreno, veiculo: entra no patrimonio &quot;com bens&quot;, separado do patrimonio financeiro.</p>}
+      {kind === "bem" && <p className="muted small">Imóvel, terreno, veículo: entra no patrimônio &quot;com bens&quot;, separado do patrimônio financeiro.</p>}
       <div className="row wrapline">
         {(kind === "caixa" || kind === "outro") && (
-          <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "caixa" ? "Cofrinho do banco" : "Previdencia"} /></label>
+          <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "caixa" ? "Cofrinho do banco" : "Previdência"} /></label>
         )}
         {kind === "caixa" && (
           <>
             <label>Saldo hoje (R$)<input value={balance} inputMode="decimal" onChange={(e) => setBalance(e.target.value)} placeholder="5.000,00" /></label>
             <label>Data do saldo<input type="date" value={balanceAt} onChange={(e) => setBalanceAt(e.target.value)} /></label>
             <label>% do CDI<input value={cdiPct} inputMode="decimal" onChange={(e) => setCdiPct(e.target.value)} /></label>
-            <p className="muted small full">Depositos e resgates lancados em Lancamentos (categoria Investimento) depois dessa data somam
+            <p className="muted small full">Depósitos e resgates lançados em Lançamentos (categoria Investimento) depois dessa data somam
               e descontam sozinhos. Ao atualizar o saldo, use a data de hoje.</p>
           </>
         )}
         {kind === "tesouro" && (
           <>
-            <label className="grow">Titulo
+            <label className="grow">Título
               <select value={title} onChange={(e) => setTitle(e.target.value)}>
-                <option value="">{opts.length ? "escolha..." : "lista carrega no Atualizar cotacoes"}</option>
+                <option value="">{opts.length ? "escolha..." : "lista carrega no Atualizar cotações"}</option>
                 {missing && <option value={title}>{title.replace("|", " ")}</option>}
                 {groups.map((g) => (
                   <optgroup key={g} label={g}>
@@ -533,15 +533,15 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
                 ))}
               </select>
             </label>
-            <label>Quantidade de titulos<input value={qty} inputMode="decimal" onChange={(e) => setQty(e.target.value)} placeholder="0,35" /></label>
-            <label>Preco medio por titulo (R$, opcional)<input value={avg} inputMode="decimal" onChange={(e) => setAvg(e.target.value)} /></label>
+            <label>Quantidade de títulos<input value={qty} inputMode="decimal" onChange={(e) => setQty(e.target.value)} placeholder="0,35" /></label>
+            <label>Preço médio por título (R$, opcional)<input value={avg} inputMode="decimal" onChange={(e) => setAvg(e.target.value)} /></label>
           </>
         )}
         {kind === "acao" && (
           <>
-            <label>Codigo<input value={ticker} onChange={(e) => setTicker(e.target.value)} placeholder="TAEE11" autoCapitalize="characters" /></label>
+            <label>Código<input value={ticker} onChange={(e) => setTicker(e.target.value)} placeholder="TAEE11" autoCapitalize="characters" /></label>
             <label>Quantidade<input value={qty} inputMode="decimal" onChange={(e) => setQty(e.target.value)} /></label>
-            <label>Preco medio (R$, opcional)<input value={avg} inputMode="decimal" onChange={(e) => setAvg(e.target.value)} /></label>
+            <label>Preço médio (R$, opcional)<input value={avg} inputMode="decimal" onChange={(e) => setAvg(e.target.value)} /></label>
           </>
         )}
         {kind === "outro" && (
@@ -551,7 +551,7 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
           <>
             <label>Tipo
               <select value={bemType} onChange={(e) => setBemType(e.target.value as NonNullable<FinItem["bemType"]>)}>
-                <option value="imovel">Imovel</option><option value="terreno">Terreno</option><option value="veiculo">Veiculo</option><option value="outro">Outro bem</option>
+                <option value="imovel">Imóvel</option><option value="terreno">Terreno</option><option value="veiculo">Veículo</option><option value="outro">Outro bem</option>
               </select>
             </label>
             <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} placeholder={bemType === "veiculo" ? "Carro, moto..." : "Apartamento, casa..."} /></label>
@@ -564,11 +564,11 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
         )}
       </div>
       {kind === "bem" && (
-        <label className="check"><input type="checkbox" checked={counts} onChange={(e) => setCounts(e.target.checked)} /> Contar no patrimonio (desmarque para so registrar)</label>
+        <label className="check"><input type="checkbox" checked={counts} onChange={(e) => setCounts(e.target.checked)} /> Contar no patrimônio (desmarque para só registrar)</label>
       )}
       {kind !== "acao" && kind !== "bem" && (
         <label className="check"><input type="checkbox" checked={reserva} onChange={(e) => setReserva(e.target.checked)} />
-          Faz parte da reserva de emergencia (dinheiro que pode sacar a qualquer hora)</label>
+          Faz parte da reserva de emergência (dinheiro que pode sacar a qualquer hora)</label>
       )}
       {err && <p className="error small">{err}</p>}
       <div className="row">
@@ -600,8 +600,8 @@ function FinBar({ byGroup }: { byGroup: Record<FinGroup, number> }) {
   const hov = segs.find((g) => g.key === hover);
   return (
     <figure className="viz">
-      <figcaption className="small muted">Onde esta o dinheiro {hov ? `- ${hov.label}: ${brl(hov.value)} (${pctS(hov.pct)})` : ""}</figcaption>
-      <svg viewBox={`0 0 ${W} 22`} preserveAspectRatio="none" className="alloc" role="img" aria-label="Patrimonio por grupo" onMouseLeave={() => setHover(null)}>
+      <figcaption className="small muted">Onde está o dinheiro {hov ? `- ${hov.label}: ${brl(hov.value)} (${pctS(hov.pct)})` : ""}</figcaption>
+      <svg viewBox={`0 0 ${W} 22`} preserveAspectRatio="none" className="alloc" role="img" aria-label="Patrimônio por grupo" onMouseLeave={() => setHover(null)}>
         {segs.map((g) => (
           <rect key={g.key} x={g.x} y={0} width={g.w} height={22} rx={4} className={`g-${g.key}${hover && hover !== g.key ? " dim" : ""}`}
             onMouseEnter={() => setHover(g.key)}>
@@ -651,11 +651,11 @@ function Dividends({ rows, fin }: { rows: FinRow[]; fin: FinanceDoc | null }) {
     <section className="card">
       <div className="card-head">
         <h2>Proventos</h2>
-        <span className="muted small">{brl(year)} em 12 meses com a quantidade de hoje - ~{brl(year / 12)}/mes</span>
+        <span className="muted small">{brl(year)} em 12 meses com a quantidade de hoje - ~{brl(year / 12)}/mês</span>
       </div>
       {max > 0 && (
         <figure className="viz">
-          <figcaption className="small muted">Por mes (data com) {hov ? `- ${hov.label}/${hov.year}: ${brl(hov.v)}` : ""}</figcaption>
+          <figcaption className="small muted">Por mês (data com) {hov ? `- ${hov.label}/${hov.year}: ${brl(hov.v)}` : ""}</figcaption>
           <div className="mbars" onMouseLeave={() => setHover(null)}>
             {months.map((m, i) => (
               <div key={m.key} className={`mbar${hover !== null && hover !== i ? " dim" : ""}`} onMouseEnter={() => setHover(i)} title={`${m.label}/${m.year}: ${brl(m.v)}`}>
@@ -668,7 +668,7 @@ function Dividends({ rows, fin }: { rows: FinRow[]; fin: FinanceDoc | null }) {
       )}
       <div className="table-scroll">
         <table className="stack divs">
-          <thead><tr><th>Papel</th><th>Por cota (12 m)</th><th>Dividend yield</th><th>Pagamentos</th><th>Ultimo</th><th>Voce receberia/ano</th></tr></thead>
+          <thead><tr><th>Papel</th><th>Por cota (12 m)</th><th>Dividend yield</th><th>Pagamentos</th><th>Último</th><th>Você receberia/ano</th></tr></thead>
           <tbody>
             {paying.map(({ r, per, count, last }) => (
               <tr key={r.item.id}>
@@ -676,17 +676,17 @@ function Dividends({ rows, fin }: { rows: FinRow[]; fin: FinanceDoc | null }) {
                 <td data-label="Por cota (12 m)">{per > 0 ? brl(per, 4) : "-"}</td>
                 <td data-label="Dividend yield">{r.yieldYear !== null ? pctS(r.yieldYear) : "-"}</td>
                 <td data-label="Pagamentos">{count}</td>
-                <td data-label="Ultimo">{last ? <span className="cell">{new Date(last.t).toLocaleDateString("pt-BR")}<small className="muted">{brl(last.v, 4)} por cota</small></span> : "-"}</td>
-                <td data-label="Voce receberia/ano"><b>{brl(per * (r.item.qty ?? 0))}</b></td>
+                <td data-label="Último">{last ? <span className="cell">{new Date(last.t).toLocaleDateString("pt-BR")}<small className="muted">{brl(last.v, 4)} por cota</small></span> : "-"}</td>
+                <td data-label="Você receberia/ano"><b>{brl(per * (r.item.qty ?? 0))}</b></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {none.length > 0 && <p className="muted small">Sem proventos nos ultimos 12 meses: {none.join(", ")}.</p>}
+      {none.length > 0 && <p className="muted small">Sem proventos nos últimos 12 meses: {none.join(", ")}.</p>}
       <p className="muted small">
         Proventos = dividendos + JCP, por data com (Yahoo Finance; JCP aparece bruto, antes dos 15% de IR). Dividend yield alto sozinho
-        nao diz muito: muitas vezes vem de uma acao que caiu. Olhe a constancia dos pagamentos ao longo dos anos.
+        não diz muito: muitas vezes vem de uma ação que caiu. Olhe a constância dos pagamentos ao longo dos anos.
       </p>
     </section>
   );
@@ -708,26 +708,26 @@ export function PatrimonioCard({ cfg, fin, wallet, spend, debt, months, setup, o
   return (
       <section className="card">
         <div className="card-head">
-          <h2>Patrimonio</h2>
+          <h2>Patrimônio</h2>
           <button className="link" onClick={onBens}>ver contas e bens &rsaquo;</button>
         </div>
         <div className="kpis">
-          <div><span>{s.bens > 0 ? "Patrimonio sem bens" : debt.total > 0 ? "Patrimonio liquido" : "Patrimonio total"}</span><b>{brl(s.totalNoBens + debt.recv - debt.total)}</b>
-            <small className="muted">{debt.total > 0 || debt.recv > 0 ? `${brl(s.totalNoBens, 0)}${debt.recv > 0 ? ` + ${brl(debt.recv, 0)} a receber` : ""}${debt.total > 0 ? ` - ${brl(debt.total, 0)} de dividas` : ""}` : s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluida` : wallet ? "falta o dolar: Atualizar cotacoes em Investimentos" : "sem carteiras cripto"}</small></div>
-          {s.bens > 0 && <div><span>Patrimonio com bens</span><b>{brl(s.total + debt.recv - debt.total)}</b>
-            <small className="muted">+ {brl(s.bens, 0)} em imoveis, veiculos...</small></div>}
-          <div><span>Reserva de emergencia</span><b>{brl(s.reserve)}</b>
-            <small className="muted">{s.reserveMonths !== null ? `cobre ${fmt(s.reserveMonths, 1)} meses de gastos` : "a media de gastos aparece depois do 1o mes completo de lancamentos"}{spend ? ` (media de ${spend.months} ${spend.months > 1 ? "meses" : "mes"})` : ""}</small></div>
-          <div><span>Rende por mes (estimado)</span><b>{brl(s.monthly)}</b>
+          <div><span>{s.bens > 0 ? "Patrimônio sem bens" : debt.total > 0 ? "Patrimônio líquido" : "Patrimônio total"}</span><b>{brl(s.totalNoBens + debt.recv - debt.total)}</b>
+            <small className="muted">{debt.total > 0 || debt.recv > 0 ? `${brl(s.totalNoBens, 0)}${debt.recv > 0 ? ` + ${brl(debt.recv, 0)} a receber` : ""}${debt.total > 0 ? ` - ${brl(debt.total, 0)} de dívidas` : ""}` : s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluída` : wallet ? "falta o dólar: Atualizar cotações em Investimentos" : "sem carteiras cripto"}</small></div>
+          {s.bens > 0 && <div><span>Patrimônio com bens</span><b>{brl(s.total + debt.recv - debt.total)}</b>
+            <small className="muted">+ {brl(s.bens, 0)} em imóveis, veículos...</small></div>}
+          <div><span>Reserva de emergência</span><b>{brl(s.reserve)}</b>
+            <small className="muted">{s.reserveMonths !== null ? `cobre ${fmt(s.reserveMonths, 1)} meses de gastos` : "a média de gastos aparece depois do 1o mês completo de lançamentos"}{spend ? ` (média de ${spend.months} ${spend.months > 1 ? "meses" : "mês"})` : ""}</small></div>
+          <div><span>Rende por mês (estimado)</span><b>{brl(s.monthly)}</b>
             <small className="muted">{s.dividends > 0 ? `${brl(s.dividends)} de proventos` : "juros + proventos, antes de IR"}</small></div>
-          <div><span>Lucro / prejuizo</span><b className={pnlClass(s.gain)}>{s.cost > 0 ? signed(s.gain) : "-"}</b>
-            <small className="muted">{s.cost > 0 ? `${pctS(s.gain / s.cost)} sobre ${brl(s.cost)} (fora cripto)` : "informe precos medios"}</small></div>
+          <div><span>Lucro / prejuízo</span><b className={pnlClass(s.gain)}>{s.cost > 0 ? signed(s.gain) : "-"}</b>
+            <small className="muted">{s.cost > 0 ? `${pctS(s.gain / s.cost)} sobre ${brl(s.cost)} (fora cripto)` : "informe preços médios"}</small></div>
         </div>
         <p className="muted small indic">
           {cdi !== null && <span>CDI {pctS(cdi, 2)} ao ano</span>}
           {fin?.ipca12m != null && <span>IPCA 12 m {pctS(fin.ipca12m, 2)} ({fin.ipcaRef})</span>}
-          {fin?.usdbrl && <span>Dolar R$ {fmt(fin.usdbrl, 4)} (PTAX)</span>}
-          {spend && <span>Gasto medio {brl(spend.value, 0)}/mes</span>}
+          {fin?.usdbrl && <span>Dólar R$ {fmt(fin.usdbrl, 4)} (PTAX)</span>}
+          {spend && <span>Gasto médio {brl(spend.value, 0)}/mês</span>}
           {fin && <span>dados de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>}
         </p>
         <FinBar byGroup={s.byGroup} />
@@ -750,19 +750,19 @@ export function MonthAndUpcoming({ months, setup, onLanc, onBens }: { months: Re
   return (
       <div className="two-col">
         <section className="card link-card" role="button" tabIndex={0} onClick={onLanc}>
-          <div className="card-head"><h2>{monthLabel(mon.m, true)}</h2><span className="muted small">ver lancamentos &rsaquo;</span></div>
+          <div className="card-head"><h2>{monthLabel(mon.m, true)}</h2><span className="muted small">ver lançamentos &rsaquo;</span></div>
           {mon.count || mon.pendingN ? (
             <div className="kpis compact">
               <div><span>Entrou</span><b>{brl(mon.receitas, 0)}</b></div>
-              <div><span>Saiu (gastos)</span><b>{brl(mon.gastos, 0)}</b><small className="muted">{mon.avg ? `media ${brl(mon.avg.value, 0)}` : ""}</small></div>
+              <div><span>Saiu (gastos)</span><b>{brl(mon.gastos, 0)}</b><small className="muted">{mon.avg ? `média ${brl(mon.avg.value, 0)}` : ""}</small></div>
               <div><span>Sobrou</span><b className={mon.receitas - mon.gastos >= 0 ? "pos" : "neg"}>{brl(mon.receitas - mon.gastos, 0)}</b></div>
               <div><span>Em conta</span><b className={acct && acct.value < 0 ? "neg" : ""}>{acct ? brl(acct.value, 0) : "-"}</b>
                 <small className={acct && !acct.informed ? "warn" : "muted"}>{acct ? (acct.informed ? "saldo das contas" : "confira o saldo") : ""}</small></div>
             </div>
-          ) : <p className="muted small">Nada lancado neste mes. Em Lancamentos, importe o extrato do banco ou lance a mao.</p>}
+          ) : <p className="muted small">Nada lançado neste mês. Em Lançamentos, importe o extrato do banco ou lance à mão.</p>}
         </section>
         <section className="card">
-          <div className="card-head"><h2>Proximos pagamentos</h2><button className="link" onClick={onBens}>30 dias &rsaquo;</button></div>
+          <div className="card-head"><h2>Próximos pagamentos</h2><button className="link" onClick={onBens}>30 dias &rsaquo;</button></div>
           {next.length ? (
             <ul className="pend small">
               {next.slice(0, 7).map((p, i) => (
@@ -770,7 +770,7 @@ export function MonthAndUpcoming({ months, setup, onLanc, onBens }: { months: Re
               ))}
               {next.length > 7 && <li className="muted">+ {next.length - 7}</li>}
             </ul>
-          ) : <p className="muted small">Nada a pagar nos proximos 30 dias (cartoes e emprestimos se cadastram em Cartoes e emprestimos; fixos em Lancamentos).</p>}
+          ) : <p className="muted small">Nada a pagar nos próximos 30 dias (cartões e empréstimos se cadastram em Cartões e empréstimos; fixos em Lançamentos).</p>}
         </section>
       </div>
   );
@@ -811,13 +811,13 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   const opts = existing[type];
   const saveAccounts = async (list: Account[], m: string) => {
     try { await saveSetup({ accounts: JSON.parse(JSON.stringify(list)), account: null } as Partial<GastosSetup>); done(m); }
-    catch { setMsg(""); await tell("Nao salvou (sem conexao?). Tente de novo."); }
+    catch { setMsg(""); await tell("Não salvou (sem conexão?). Tente de novo."); }
   };
   const usedAcc = new Set(Object.values(months).flatMap((md) => md.items.map((g) => g.acc ?? (g.card ? "" : accounts[0].id))));
   return (
     <div className="entry">
       <div className="entry-bar">
-        <p className="small entry-q">O que voce quer lancar?</p>
+        <p className="small entry-q">O que você quer lançar?</p>
         <div className="kind-pick entry-types">
           {ENTRY_TYPES.map((t) => (
             <button key={t.id} type="button" className={open && type === t.id ? "pill on" : "pill"} onClick={() => { setMsg(""); setEntry({ type: t.id, id: null }); setOpen(true); }}>{t.label}</button>
@@ -826,7 +826,7 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
         {open && <button type="button" className="link entry-close" onClick={() => setOpen(false)}>fechar</button>}
       </div>
       {open && <>
-      <p className="muted small entry-hint">Investimentos e bens: em Investimentos. Compras no cartao e emprestimos: em Cartoes e emprestimos.</p>
+      <p className="muted small entry-hint">Investimentos e bens: em Investimentos. Compras no cartão e empréstimos: em Cartões e empréstimos.</p>
       {opts && (
         <label className="entry-pick small">Novo ou alterar:
           <select value={id ?? ""} onChange={(e) => { setMsg(""); setEntry({ type, id: e.target.value || null }); }}>

@@ -49,13 +49,13 @@ export default function HoldingsCard({ wallet, cfg }: { wallet: WalletDoc; cfg: 
     <section className="card">
       <div className="card-head">
         <h2>Meus tokens</h2>
-        <span className="muted small">clique no preco medio para editar</span>
+        <span className="muted small">clique no preço médio para editar</span>
       </div>
       {tokens.length ? (
         <div className="table-scroll">
           <table className="holdings stack">
             <thead>
-              <tr><th>Token</th><th>Quantidade</th><th>Preco atual</th><th>Valor</th><th>Preco medio</th><th>Lucro / prejuizo</th></tr>
+              <tr><th>Token</th><th>Quantidade</th><th>Preço atual</th><th>Valor</th><th>Preço médio</th><th>Lucro / prejuízo</th></tr>
             </thead>
             <tbody>
               {tokens.map((r) => (
@@ -65,12 +65,12 @@ export default function HoldingsCard({ wallet, cfg }: { wallet: WalletDoc; cfg: 
                     <div className="muted small">{r.where.join(", ")}</div>
                   </td>
                   <td data-label="Quantidade">{qtyFmt(r.qty)}</td>
-                  <td data-label="Preco atual">${pxFmt(r.price)}</td>
+                  <td data-label="Preço atual">${pxFmt(r.price)}</td>
                   <td data-label="Valor">${fmt(r.value)}</td>
-                  <td data-label="Preco medio"><span>
+                  <td data-label="Preço médio"><span>
                     {editing === r.symbol ? (
                       <span className="avg-edit">
-                        <input autoFocus inputMode="decimal" value={text} placeholder="preco medio"
+                        <input autoFocus inputMode="decimal" value={text} placeholder="preço médio"
                           onChange={(e) => setText(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") saveAvg(r.symbol, Number(text.replace(",", ".")) || null);
@@ -80,16 +80,16 @@ export default function HoldingsCard({ wallet, cfg }: { wallet: WalletDoc; cfg: 
                         <button className="ghost icon" title="Cancelar" onClick={() => setEditing(null)}>&#x2715;</button>
                       </span>
                     ) : (
-                      <button className="link" title="Editar preco medio" onClick={() => { setEditing(r.symbol); setText(r.source === "manual" && r.avg ? String(r.avg) : ""); }}>
+                      <button className="link" title="Editar preço médio" onClick={() => { setEditing(r.symbol); setText(r.source === "manual" && r.avg ? String(r.avg) : ""); }}>
                         {r.avg !== null ? `$${pxFmt(r.avg)}` : "informar"}
                         {r.source && <span className="muted small"> {r.source === "manual" ? "digitado" : "auto"}</span>}
                       </button>
                     )}
                     {r.source === "manual" && editing !== r.symbol && (
-                      <button className="link small muted" title="Voltar ao automatico" onClick={() => saveAvg(r.symbol, null)}>limpar</button>
+                      <button className="link small muted" title="Voltar ao automático" onClick={() => saveAvg(r.symbol, null)}>limpar</button>
                     )}
                   </span></td>
-                  <td data-label="Lucro / prejuizo" className={r.pnl === null ? "muted" : pnlClass(r.pnl)}>
+                  <td data-label="Lucro / prejuízo" className={r.pnl === null ? "muted" : pnlClass(r.pnl)}>
                     {r.pnl === null ? "-" : <span>{signed(r.pnl)}{r.pct !== null && <span className="small"> ({signed(r.pct, 1)}%)</span>}</span>}
                   </td>
                 </tr>
@@ -103,7 +103,7 @@ export default function HoldingsCard({ wallet, cfg }: { wallet: WalletDoc; cfg: 
 
       {(wallet.pnlErrors ?? []).length > 0 && (
         <ul className="alerts small">
-          {wallet.pnlErrors!.map((e) => <li key={e} className="warn">Preco medio automatico: {e}</li>)}
+          {wallet.pnlErrors!.map((e) => <li key={e} className="warn">Preço médio automático: {e}</li>)}
         </ul>
       )}
       {stables.length > 0 && (
@@ -126,9 +126,9 @@ export default function HoldingsCard({ wallet, cfg }: { wallet: WalletDoc; cfg: 
         </>
       )}
       <p className="muted small">
-        Preco atual = valor / quantidade lidos nas carteiras. Preco medio &quot;auto&quot; vem do historico da carteira na Zerion (FIFO, so redes EVM,
-        atualizado a cada 6 h); clique no preco medio para digitar o seu (vale para todas as carteiras daquele token). Lucro sem taxas.
-        Perpetuos da Lighter ficam no card proprio.
+        Preço atual = valor / quantidade lidos nas carteiras. Preço médio &quot;auto&quot; vem do histórico da carteira na Zerion (FIFO, só redes EVM,
+        atualizado a cada 6 h); clique no preço médio para digitar o seu (vale para todas as carteiras daquele token). Lucro sem taxas.
+        Perpétuos da Lighter ficam no card próprio.
       </p>
     </section>
   );

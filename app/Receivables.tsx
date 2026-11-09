@@ -57,14 +57,14 @@ export default function ReceivablesPart({ months, setup, openId }: { months: Rec
       <section className="card">
         <h2>A receber</h2>
         <div className="kpis">
-          <div><span>Te devem</span><b className="pos">{brl(left)}</b><small className="muted">{list.filter((x) => x.st.leftV > 0).length} {list.filter((x) => x.st.leftV > 0).length === 1 ? "pessoa/divida" : "pessoas/dividas"} - entra no patrimonio</small></div>
+          <div><span>Te devem</span><b className="pos">{brl(left)}</b><small className="muted">{list.filter((x) => x.st.leftV > 0).length} {list.filter((x) => x.st.leftV > 0).length === 1 ? "pessoa/dívida" : "pessoas/dívidas"} - entra no patrimônio</small></div>
           {late > 0 && <div><span>Parcelas atrasadas</span><b className="warn">{late} - {brl(lateV)}</b><small className="muted">venceram sem pagamento</small></div>}
-          <div><span>Proxima a receber</span><b>{nx ? brl(nx.r.parcela) : "-"}</b>
+          <div><span>Próxima a receber</span><b>{nx ? brl(nx.r.parcela) : "-"}</b>
             <small className="muted">{nx ? `${nx.r.name} ${nx.st.nextK! + 1}/${nx.r.n} - ${nx.st.next! < today ? "venceu" : "dia"} ${dm(nx.st.next!)}/${nx.st.next!.slice(2, 4)}` : "nenhuma"}</small></div>
-          <div><span>Ja recebido</span><b>{brl(got)}</b><small className="muted">soma das parcelas recebidas</small></div>
+          <div><span>Já recebido</span><b>{brl(got)}</b><small className="muted">soma das parcelas recebidas</small></div>
         </div>
-        <p className="muted small">Pix com o nome da pessoa no extrato e reconhecido sozinho como parcela recebida. Recebeu e nao aparece? Use &quot;recebi&quot;.
-          Dinheiro que voce emprestou volta como &quot;Devolucao de emprestimo&quot; (nao e renda); venda ou servico parcelado entra como renda.</p>
+        <p className="muted small">Pix com o nome da pessoa no extrato é reconhecido sozinho como parcela recebida. Recebeu e não aparece? Use &quot;recebi&quot;.
+          Dinheiro que você emprestou volta como &quot;Devolução de empréstimo&quot; (não é renda); venda ou serviço parcelado entra como renda.</p>
       </section>
 
       <section className="card">
@@ -74,7 +74,7 @@ export default function ReceivablesPart({ months, setup, openId }: { months: Rec
         {list.map(({ r, st }) => r.kind === "conta"
           ? <ContaItem key={r.id} r={r} months={months} setup={setup} single={list.length === 1} initial={openId === r.id} />
           : <RecvItem key={r.id} r={r} st={st} months={months} setup={setup} single={list.length === 1} initial={openId === r.id} />)}
-        {!list.length && !adding && <p className="muted small">Ninguem te deve nada cadastrado.</p>}
+        {!list.length && !adding && <p className="muted small">Ninguém te deve nada cadastrado.</p>}
       </section>
     </>
   );
@@ -99,30 +99,30 @@ function RecvItem({ r, st, months, setup, single, initial }: { r: Recv; st: RSta
       await saveRecvs((setup.recvs ?? []).map((y) => (y.id === r.id ? { ...y, gets: (y.gets ?? []).filter((z) => z.k !== row.k) } : y)));
     } else if (row.via === "extrato" && row.g) {
       const g = row.g;
-      if (!await ask(`"${g.desc}" (${brl(g.v)}) nao e pagamento de ${r.name}?`)) return;
+      if (!await ask(`"${g.desc}" (${brl(g.v)}) não é pagamento de ${r.name}?`)) return;
       const gm = monthOf(g.d);
       if (g.ref === r.id) await saveMonth(gm, (months[gm]?.items ?? []).map((x) => (x.id === g.id ? { ...x, ref: undefined, parc: undefined } : x)));
       await saveRecvs((setup.recvs ?? []).map((y) => (y.id === r.id ? { ...y, notIds: [...(y.notIds ?? []), g.id], keys: (y.keys ?? []).filter((k) => k !== descKey(g.desc)) } : y)));
     }
   };
   const remove = async () => {
-    if (await ask(`Remover ${r.name}? (os lancamentos na conta continuam)`)) await saveRecvs((setup.recvs ?? []).filter((x) => x.id !== r.id));
+    if (await ask(`Remover ${r.name}? (os lançamentos na conta continuam)`)) await saveRecvs((setup.recvs ?? []).filter((x) => x.id !== r.id));
   };
   return (
     <div className={`loan${open ? " open" : ""}`}>
       <button className="loan-head" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span className="loan-caret" aria-hidden>{open ? "▾" : "▸"}</span>
-        <span className="loan-name"><b>{r.name}</b><small className="muted">{st.got} de {r.n} recebidas - falta {brl(st.leftV, 0)} - {r.kind === "emprestei" ? "emprestimo" : "venda/servico"}</small></span>
+        <span className="loan-name"><b>{r.name}</b><small className="muted">{st.got} de {r.n} recebidas - falta {brl(st.leftV, 0)} - {r.kind === "emprestei" ? "empréstimo" : "venda/serviço"}</small></span>
         <span className="loan-badge small">
           {st.late > 0 ? <span className="warn">{st.late} {st.late > 1 ? "atrasadas" : "atrasada"}</span>
-            : st.next ? <span className="muted">proxima {dm(st.next)} - {brl(r.parcela, 0)}</span> : <span className="pos">quitado</span>}
+            : st.next ? <span className="muted">próxima {dm(st.next)} - {brl(r.parcela, 0)}</span> : <span className="pos">quitado</span>}
         </span>
       </button>
       {open && (
         <div className="loan-body">
           <div className="limit">
             <span className="limit-fill paid" style={{ width: `${(st.got / r.n) * 100}%` }} />
-            <small className="muted">{st.got} de {r.n} parcelas recebidas - {st.left > 0 ? `ultima em ${monthLabel(st.end, true)}` : "quitado"} - parcela {brl(r.parcela)} dia {r.dueDay}
+            <small className="muted">{st.got} de {r.n} parcelas recebidas - {st.left > 0 ? `última em ${monthLabel(st.end, true)}` : "quitado"} - parcela {brl(r.parcela)} dia {r.dueDay}
               {r.note ? ` - ${r.note}` : ""}</small>
           </div>
           <div className="row wrapline loan-actions">
@@ -136,20 +136,20 @@ function RecvItem({ r, st, months, setup, single, initial }: { r: Recv; st: RSta
           </div>
           <div className="table-scroll">
             <table className="loan-rows">
-              <thead><tr><th>Parcela</th><th>Valor</th><th>Situacao</th><th /></tr></thead>
+              <thead><tr><th>Parcela</th><th>Valor</th><th>Situação</th><th /></tr></thead>
               <tbody>
                 {shown.map((x) => (
                   <tr key={x.k} className={x.status === "atrasada" ? "late" : x.k === st.nextK ? "nextrow" : ""}>
                     <td><span className="cell">{x.k + 1}/{r.n}<small className="muted">dia {dm(x.due)}/{x.due.slice(2, 4)}</small></span></td>
                     <td data-label="Valor">{brl(x.v ?? r.parcela)}</td>
-                    <td data-label="Situacao"><span className={`sit sit-${SIT[x.status].cls}`}>{SIT[x.status].label}</span>
+                    <td data-label="Situação"><span className={`sit sit-${SIT[x.status].cls}`}>{SIT[x.status].label}</span>
                       {x.via === "extrato" && <small className="muted"> pelo extrato{x.d ? ` em ${dm(x.d)}` : ""}</small>}
                       {x.via === "voce" && x.d && <small className="muted"> em {dm(x.d)}</small>}
                       {x.via === "antes" && <small className="muted"> antes do cadastro</small>}</td>
                     <td className="actions">
                       {x.status !== "recebida" && <button className="link" onClick={() => toggle(`get:${x.k}`)}>recebi</button>}
                       {x.via === "voce" && <button className="link" onClick={() => undo(x)}>desfazer</button>}
-                      {x.via === "extrato" && <button className="link" onClick={() => undo(x)}>nao e este</button>}
+                      {x.via === "extrato" && <button className="link" onClick={() => undo(x)}>não é este</button>}
                     </td>
                   </tr>
                 ))}
@@ -188,14 +188,14 @@ function GetForm({ r, k, months, setup, onDone }: { r: Recv; k: number; months: 
         <label>Em qual conta caiu
           <select value={acc} onChange={(e) => setAcc(e.target.value)}>
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            <option value="">nao lancar entrada (ja esta no extrato / recebi em dinheiro)</option>
+            <option value="">não lançar entrada (já está no extrato / recebi em dinheiro)</option>
           </select>
         </label>
         <button className="primary" type="submit" disabled={busy}>{busy ? "Salvando..." : "Recebi"}</button>
         <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
       </div>
-      <p className="muted small">{acc ? `Lanca a entrada nessa conta (${r.kind === "emprestei" ? "Devolucao de emprestimo, nao e renda" : "Renda extra"}) e marca a parcela.`
-        : "So marca a parcela como recebida; o saldo da conta nao muda."}</p>
+      <p className="muted small">{acc ? `Lança a entrada nessa conta (${r.kind === "emprestei" ? "Devolução de empréstimo, não é renda" : "Renda extra"}) e marca a parcela.`
+        : "Só marca a parcela como recebida; o saldo da conta não muda."}</p>
     </form>
   );
 }
@@ -236,7 +236,7 @@ function RecvForm({ r, months, setup, onDone }: { r?: Recv; months: Record<strin
         const list = setup.recvs ?? [];
         await saveRecvs(list.some((x) => x.id === nr.id) ? list.map((x) => (x.id === nr.id ? nr : x)) : [...list, nr]);
         onDone();
-      } catch { setBusy(false); setErr("Nao salvou (sem conexao?). Tente de novo."); }
+      } catch { setBusy(false); setErr("Não salvou (sem conexão?). Tente de novo."); }
       return;
     }
     if (!(num(parcela) > 0) || !(nn > 0)) return setErr("Informe o valor da parcela e quantas parcelas.");
@@ -256,7 +256,7 @@ function RecvForm({ r, months, setup, onDone }: { r?: Recv; months: Record<strin
       await saveRecvs(list.some((x) => x.id === nr.id) ? list.map((x) => (x.id === nr.id ? nr : x)) : [...list, nr]);
       onDone();
     } catch {
-      setBusy(false); setErr("Nao salvou (sem conexao?). Tente de novo.");
+      setBusy(false); setErr("Não salvou (sem conexão?). Tente de novo.");
     }
   };
   const months36 = Array.from({ length: 49 }, (_, i) => addMonths(cur, i - 24));
@@ -264,12 +264,12 @@ function RecvForm({ r, months, setup, onDone }: { r?: Recv; months: Record<strin
     <form className="fin-form" onSubmit={save}>
       <div className="kind-pick" role="radiogroup" aria-label="De onde veio">
         <button type="button" role="radio" aria-checked={kind === "emprestei"} className={kind === "emprestei" ? "pill on" : "pill"} onClick={() => setKind("emprestei")}>Emprestei dinheiro</button>
-        <button type="button" role="radio" aria-checked={kind === "venda"} className={kind === "venda" ? "pill on" : "pill"} onClick={() => setKind("venda")}>Vendi / prestei servico</button>
+        <button type="button" role="radio" aria-checked={kind === "venda"} className={kind === "venda" ? "pill on" : "pill"} onClick={() => setKind("venda")}>Vendi / prestei serviço</button>
         <button type="button" role="radio" aria-checked={kind === "conta"} className={kind === "conta" ? "pill on" : "pill"} onClick={() => setKind("conta")}>Conta com a pessoa (saldo sobe e desce)</button>
       </div>
-      <p className="muted small">{kind === "emprestei" ? "O dinheiro ja era seu: emprestar nao e gasto e receber de volta nao e renda (fica azul nos lancamentos)."
-        : kind === "venda" ? "Cada parcela recebida conta como renda do mes (Renda extra)."
-        : "Sem parcelas fixas: sobe quando voce compra ou paga algo por ela, desce quando ela te paga (Pix, dinheiro ou pagando uma conta sua, como o condominio)."}</p>
+      <p className="muted small">{kind === "emprestei" ? "O dinheiro já era seu: emprestar não é gasto e receber de volta não é renda (fica azul nos lançamentos)."
+        : kind === "venda" ? "Cada parcela recebida conta como renda do mês (Renda extra)."
+        : "Sem parcelas fixas: sobe quando você compra ou paga algo por ela, desce quando ela te paga (Pix, dinheiro ou pagando uma conta sua, como o condomínio)."}</p>
       {kind === "conta" ? (
         <div className="row wrapline">
           <label className="grow">Nome da pessoa<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome como aparece no Pix (ex.: Maria Souza)" /></label>
@@ -280,8 +280,8 @@ function RecvForm({ r, months, setup, onDone }: { r?: Recv; months: Record<strin
           </label>
           <label>Valor (R$)<input value={s0} inputMode="decimal" onChange={(e) => setS0(e.target.value)} placeholder="1.000,00" /></label>
           <label>Saldo em<input type="date" value={since} onChange={(e) => setSince(e.target.value)} /></label>
-          <label className="grow">Observacao (opcional)<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
-          <p className="muted small full">Movimentos depois dessa data mexem no saldo: o que voce marcar como &quot;Emprestei dinheiro&quot; para ela (debito, Pix ou cartao),
+          <label className="grow">Observação (opcional)<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
+          <p className="muted small full">Movimentos depois dessa data mexem no saldo: o que você marcar como &quot;Emprestei dinheiro&quot; para ela (débito, Pix ou cartão),
             os Pix dela que chegarem (pelo nome) e as contas suas que ela pagar.</p>
         </div>
       ) : <>
@@ -296,15 +296,15 @@ function RecvForm({ r, months, setup, onDone }: { r?: Recv; months: Record<strin
           </select>
         </label>
         <label>Dia<input value={dueDay} inputMode="numeric" onChange={(e) => setDueDay(e.target.value)} style={{ width: 60 }} /></label>
-        <label>Ja recebeu<input value={gotBefore} inputMode="numeric" onChange={(e) => setGotBefore(e.target.value)} style={{ width: 70 }} title="parcelas ja pagas antes de cadastrar (as primeiras)" /></label>
-        <label className="grow">Observacao (opcional)<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="ex.: emprestei para a reforma" /></label>
+        <label>Já recebeu<input value={gotBefore} inputMode="numeric" onChange={(e) => setGotBefore(e.target.value)} style={{ width: 70 }} title="parcelas já pagas antes de cadastrar (as primeiras)" /></label>
+        <label className="grow">Observação (opcional)<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="ex.: emprestei para a reforma" /></label>
       </div>
       </>}
       {!r && kind === "emprestei" && (
         <div className="row wrapline">
-          <label>Saida do emprestimo ({brl(total)})
+          <label>Saída do empréstimo ({brl(total)})
             <select value={outAcc} onChange={(e) => setOutAcc(e.target.value)}>
-              <option value="">nao lancar (ja esta no extrato / foi ha tempo)</option>
+              <option value="">não lançar (já está no extrato / foi há tempo)</option>
               {accounts.map((a) => <option key={a.id} value={a.id}>saiu da {a.name}</option>)}
             </select>
           </label>
@@ -312,7 +312,7 @@ function RecvForm({ r, months, setup, onDone }: { r?: Recv; months: Record<strin
         </div>
       )}
       {kind !== "conta" && total > 0 && <p className="small muted">Total: {Math.round(num(n))}x de {brl(num(parcela))} = <b>{brl(total)}</b>, de {monthLabel(first)} a {monthLabel(addMonths(first, Math.max(0, Math.round(num(n)) - 1)))}.
-        {!r && kind === "emprestei" && !outAcc ? " Se o Pix que voce mandou ja esta no extrato, mude a categoria dele para \"Emprestei dinheiro\"." : ""}</p>}
+        {!r && kind === "emprestei" && !outAcc ? " Se o Pix que você mandou já está no extrato, mude a categoria dele para \"Emprestei dinheiro\"." : ""}</p>}
       {err && <p className="error small">{err}</p>}
       <div className="row">
         <button className="primary" type="submit" disabled={busy}>{busy ? "Salvando..." : r ? "Salvar" : "Adicionar"}</button>
@@ -323,8 +323,8 @@ function RecvForm({ r, months, setup, onDone }: { r?: Recv; months: Record<strin
 }
 
 // ---------- conta com a pessoa ----------
-const KIND_LABEL: Record<LedgerEntry["kind"], string> = { inicio: "saldo inicial", ajuste: "ajuste", porela: "voce pagou por ela", pagou: "ela te pagou", pagouconta: "ela pagou uma conta sua" };
-const saldoTxt = (v: number) => (v > 0.004 ? `te deve ${brl(v)}` : v < -0.004 ? `voce deve ${brl(-v)}` : "zerado");
+const KIND_LABEL: Record<LedgerEntry["kind"], string> = { inicio: "saldo inicial", ajuste: "ajuste", porela: "você pagou por ela", pagou: "ela te pagou", pagouconta: "ela pagou uma conta sua" };
+const saldoTxt = (v: number) => (v > 0.004 ? `te deve ${brl(v)}` : v < -0.004 ? `você deve ${brl(-v)}` : "zerado");
 
 function ContaItem({ r, months, setup, single, initial }: { r: Recv; months: Record<string, MonthDoc>; setup: GastosSetup; single: boolean; initial: boolean }) {
   const led = recvLedger(r, months);
@@ -353,12 +353,12 @@ function ContaItem({ r, months, setup, single, initial }: { r: Recv; months: Rec
       return;
     }
     // veio do extrato: desliga desta pessoa
-    if (!(await ask(`Desfazer: "${g.desc}" (${brl(g.v)}) nao e da conta com ${r.name}?`))) return;
+    if (!(await ask(`Desfazer: "${g.desc}" (${brl(g.v)}) não é da conta com ${r.name}?`))) return;
     if (g.ref === r.id || g.by === r.id) await saveMonth(gm, (months[gm]?.items ?? []).map((x) => (x.id === g.id ? { ...x, ref: undefined, by: undefined } : x)));
     await saveRecvs((setup.recvs ?? []).map((x) => (x.id === r.id ? { ...x, notIds: [...(x.notIds ?? []), g.id], keys: (x.keys ?? []).filter((k) => k !== descKey(g.desc)) } : x)));
   };
   const remove = async () => {
-    if (await ask(`Remover a conta com ${r.name}? (os lancamentos continuam)`)) await saveRecvs((setup.recvs ?? []).filter((x) => x.id !== r.id));
+    if (await ask(`Remover a conta com ${r.name}? (os lançamentos continuam)`)) await saveRecvs((setup.recvs ?? []).filter((x) => x.id !== r.id));
   };
   return (
     <div className={`loan${open ? " open" : ""}`}>
@@ -388,19 +388,19 @@ function ContaItem({ r, months, setup, single, initial }: { r: Recv; months: Rec
                 {shown.map((e) => (
                   <tr key={e.id + e.d}>
                     <td>{e.kind === "inicio" ? (r.since ? `${dm(r.since)}/${r.since.slice(2, 4)}` : "-") : `${dm(e.d)}/${e.d.slice(2, 4)}`}</td>
-                    <td data-label="Movimento"><span className="cell">{e.desc}<small className="muted">{KIND_LABEL[e.kind]}{e.auto ? " (pelo nome no extrato)" : ""}{e.g?.card ? " - cartao" : ""}</small></span></td>
+                    <td data-label="Movimento"><span className="cell">{e.desc}<small className="muted">{KIND_LABEL[e.kind]}{e.auto ? " (pelo nome no extrato)" : ""}{e.g?.card ? " - cartão" : ""}</small></span></td>
                     <td data-label="Valor" className={e.kind === "inicio" ? "" : e.v > 0 ? "v-out" : "pos"}>{e.kind === "inicio" ? brl(e.v) : `${e.v > 0 ? "+" : "-"}${brl(Math.abs(e.v))}`}</td>
                     <td data-label="Saldo"><b className={e.bal > 0 ? "" : e.bal < 0 ? "warn" : "muted"}>{saldoTxt(e.bal)}</b></td>
-                    <td className="actions">{e.kind !== "inicio" && <button className="link" onClick={() => undo(e)}>{e.kind === "ajuste" || e.g?.src === "manual" ? "desfazer" : "nao e dela"}</button>}</td>
+                    <td className="actions">{e.kind !== "inicio" && <button className="link" onClick={() => undo(e)}>{e.kind === "ajuste" || e.g?.src === "manual" ? "desfazer" : "não é dela"}</button>}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           {rows.length > shown.length || all ? <button className="link small" onClick={() => setAll(!all)}>{all ? "mostrar menos" : `ver todos (${rows.length})`}</button> : null}
-          <p className="muted small">+ ela passa a te dever mais; - ela te pagou. Compra no cartao ou Pix que voce fez por ela e ja esta no extrato/fatura:
-            mude a categoria para &quot;Emprestei dinheiro&quot; e escolha {r.name}. O que ela paga de contas suas continua sendo seu gasto do mes,
-            mas nao sai da sua conta.</p>
+          <p className="muted small">+ ela passa a te dever mais; - ela te pagou. Compra no cartão ou Pix que você fez por ela e já está no extrato/fatura:
+            mude a categoria para &quot;Emprestei dinheiro&quot; e escolha {r.name}. O que ela paga de contas suas continua sendo seu gasto do mês,
+            mas não sai da sua conta.</p>
         </div>
       )}
     </div>
@@ -464,15 +464,15 @@ function MoveForm({ mode, r, months, setup, onDone }: { mode: MoveMode; r: Recv;
             </select>
           </label>
         )}
-        {(mode !== "conta" || !fx) && <label className="grow">Descricao<input value={desc} onChange={(e) => setDesc(e.target.value)}
-          placeholder={mode === "conta" ? "ex.: agua, IPTU" : mode === "porela" ? "ex.: compra na Magalu" : mode === "pagou" ? "ex.: Pix" : "ex.: acerto"} /></label>}
+        {(mode !== "conta" || !fx) && <label className="grow">Descrição<input value={desc} onChange={(e) => setDesc(e.target.value)}
+          placeholder={mode === "conta" ? "ex.: água, IPTU" : mode === "porela" ? "ex.: compra na Magalu" : mode === "pagou" ? "ex.: Pix" : "ex.: acerto"} /></label>}
         <label>Valor (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
         <label>Data<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
         {mode === "pagou" && (
           <label>Onde caiu
             <select value={where} onChange={(e) => setWhere(e.target.value)}>
-              {accounts.map((a) => <option key={a.id} value={`acc:${a.id}`}>na {a.name} (nao vem no extrato)</option>)}
-              <option value="">em dinheiro / ja esta no extrato</option>
+              {accounts.map((a) => <option key={a.id} value={`acc:${a.id}`}>na {a.name} (não vem no extrato)</option>)}
+              <option value="">em dinheiro / já está no extrato</option>
             </select>
           </label>
         )}
@@ -480,8 +480,8 @@ function MoveForm({ mode, r, months, setup, onDone }: { mode: MoveMode; r: Recv;
           <label>Pago com
             <select value={where} onChange={(e) => setWhere(e.target.value)}>
               {accounts.map((a) => <option key={a.id} value={`acc:${a.id}`}>{a.name}</option>)}
-              {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>cartao {c.name}</option>)}
-              <option value="">dinheiro / so registrar</option>
+              {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>cartão {c.name}</option>)}
+              <option value="">dinheiro / só registrar</option>
             </select>
           </label>
         )}
@@ -489,10 +489,10 @@ function MoveForm({ mode, r, months, setup, onDone }: { mode: MoveMode; r: Recv;
         <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
       </div>
       <p className="muted small">
-        {mode === "conta" && "Conta como seu gasto do mes (o fixo fica pago, \"pago por\" ela), nao sai da sua conta e abate do que ela te deve."}
-        {mode === "pagou" && "Abate do que ela te deve. Pix dela que vier no extrato e reconhecido sozinho pelo nome: so use isto para o que nao vem no extrato."}
-        {mode === "porela" && "Nao e gasto seu: ela passa a te dever. Se ja esta no extrato ou na fatura, em vez disto mude a categoria do lancamento para \"Emprestei dinheiro\" e escolha a pessoa."}
-        {mode === "ajuste" && "Para acertos que nao passaram por conta nem cartao."}
+        {mode === "conta" && "Conta como seu gasto do mês (o fixo fica pago, \"pago por\" ela), não sai da sua conta e abate do que ela te deve."}
+        {mode === "pagou" && "Abate do que ela te deve. Pix dela que vier no extrato é reconhecido sozinho pelo nome: só use isto para o que não vem no extrato."}
+        {mode === "porela" && "Não é gasto seu: ela passa a te dever. Se já está no extrato ou na fatura, em vez disto mude a categoria do lançamento para \"Emprestei dinheiro\" e escolha a pessoa."}
+        {mode === "ajuste" && "Para acertos que não passaram por conta nem cartão."}
       </p>
     </form>
   );

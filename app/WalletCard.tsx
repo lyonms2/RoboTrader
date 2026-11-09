@@ -22,15 +22,15 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
     return (
       <section className="card empty">
         <h2>Carteira</h2>
-        <p className="muted">Cadastre os enderecos publicos das suas carteiras (Rabby / Phantom) na Configuracao para ver saldos,
-          tokens e lucro aqui. So leitura: nada e movimentado.</p>
+        <p className="muted">Cadastre os endereços públicos das suas carteiras (Rabby / Phantom) na Configuração para ver saldos,
+          tokens e lucro aqui. Só leitura: nada e movimentado.</p>
       </section>
     );
   if (!wallet || wallet.address !== walletKey(addrs))
     return (
       <section className="card empty">
         <h2>Carteira</h2>
-        <p className="muted">Ainda nao lida. Clique em &quot;Atualizar&quot; (no alto desta pagina).</p>
+        <p className="muted">Ainda não lida. Clique em &quot;Atualizar&quot; (no alto desta página).</p>
       </section>
     );
 
@@ -41,7 +41,7 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
   const apps = new Map<string, WalletItem[]>();
   for (const i of [...wallet.items].sort((a, b) => b.value - a.value)) apps.set(i.app, [...(apps.get(i.app) ?? []), i]);
   const appRows = [...apps.entries()].map(([app, list]) => ({ app, list, value: list.reduce((s, i) => s + i.value, 0) }));
-  if (lt) appRows.push({ app: "Lighter (perpetuos)", list: [], value: lt.value });
+  if (lt) appRows.push({ app: "Lighter (perpétuos)", list: [], value: lt.value });
   appRows.sort((a, b) => b.value - a.value);
   const notices = walletNotices(wallet);
   const first = history[0];
@@ -54,15 +54,15 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
           <span className="muted small">{addrs.map(short).join(" + ")} - lida {new Date(wallet.at).toLocaleString("pt-BR")}</span>
         </div>
         <div className="kpis">
-          <div><span>Patrimonio</span><b>${fmt(total)}</b>
+          <div><span>Patrimônio</span><b>${fmt(total)}</b>
             <small className={first ? pnlClass(total - first.total) : "muted"}>
-              {first && history.length > 1 ? `${signed(total - first.total)} desde ${new Date(first.t).toLocaleDateString("pt-BR")}` : "evolucao a partir do 2o dia"}
+              {first && history.length > 1 ? `${signed(total - first.total)} desde ${new Date(first.t).toLocaleDateString("pt-BR")}` : "evolução a partir do 2o dia"}
             </small></div>
           <div><span>Em tokens</span><b>${fmt(sum.tokens)}</b><small className="muted">{pct(sum.tokens, total)} - {sum.count} tokens</small></div>
-          <div><span>Lucro / prejuizo dos tokens</span><b className={pnlClass(sum.pnl)}>{sum.known ? signed(sum.pnl) : "-"}</b>
-            <small className="muted">{sum.cost > 0 ? `${signed((sum.pnl / sum.cost) * 100, 1)}% sobre $${fmt(sum.cost)}` : "informe os precos medios"}
+          <div><span>Lucro / prejuízo dos tokens</span><b className={pnlClass(sum.pnl)}>{sum.known ? signed(sum.pnl) : "-"}</b>
+            <small className="muted">{sum.cost > 0 ? `${signed((sum.pnl / sum.cost) * 100, 1)}% sobre $${fmt(sum.cost)}` : "informe os preços médios"}
               {sum.known < sum.count ? ` (${sum.known} de ${sum.count})` : ""}</small></div>
-          <div><span>Em dolar</span><b>${fmt(byClass.stable)}</b><small className="muted">{pct(byClass.stable, total)} rendendo / parado</small></div>
+          <div><span>Em dólar</span><b>${fmt(byClass.stable)}</b><small className="muted">{pct(byClass.stable, total)} rendendo / parado</small></div>
         </div>
         {notices.length > 0 && (
           <ul className="alerts small">
@@ -74,7 +74,7 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
       <HoldingsCard wallet={wallet} cfg={cfg} />
 
       <section className="card">
-        <h2>Composicao</h2>
+        <h2>Composição</h2>
         <AllocationBar byClass={byClass} />
         <div className="viz-grid">
           <ProtocolBars rows={appRows} total={total} />
@@ -100,10 +100,10 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
       </section>
 
       <section className="card">
-        <h2>Robo x carteira</h2>
+        <h2>Robô x carteira</h2>
         <div className="table-scroll">
           <table>
-            <thead><tr><th>Moeda</th><th>Alvo do robo</th><th>Na carteira</th><th>Diferenca</th></tr></thead>
+            <thead><tr><th>Moeda</th><th>Alvo do robô</th><th>Na carteira</th><th>Diferença</th></tr></thead>
             <tbody>
               {COINS.map((c) => {
                 const l = latest.find((x) => x.symbol === `${c}USDT`);
@@ -122,15 +122,15 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
             </tbody>
           </table>
         </div>
-        <p className="muted small">Alvo = exposicao do ultimo fechamento x peso da moeda x capital do nucleo. Inclui saldo a vista e perpetuos.</p>
+        <p className="muted small">Alvo = exposição do último fechamento x peso da moeda x capital do núcleo. Inclui saldo a vista e perpétuos.</p>
       </section>
 
       {lt && lt.perps.length > 0 && (
         <section className="card">
-          <h2>Perpetuos (Lighter)</h2>
+          <h2>Perpétuos (Lighter)</h2>
           <div className="table-scroll">
             <table>
-              <thead><tr><th>Par</th><th>Lado</th><th>Tamanho</th><th>Entrada</th><th>Valor</th><th>Lucro/prejuizo</th></tr></thead>
+              <thead><tr><th>Par</th><th>Lado</th><th>Tamanho</th><th>Entrada</th><th>Valor</th><th>Lucro/prejuízo</th></tr></thead>
               <tbody>
                 {lt.perps.map((p) => (
                   <tr key={p.symbol}>
@@ -146,7 +146,7 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
         </section>
       )}
       <p className="muted small">
-        Fontes: EVM pela Zerion (+ Lighter); Solana pela RPC publica + Jupiter (so tokens na carteira, sem posicoes DeFi da Solana). So leitura.
+        Fontes: EVM pela Zerion (+ Lighter); Solana pela RPC pública + Jupiter (só tokens na carteira, sem posições DeFi da Solana). Só leitura.
       </p>
     </>
   );

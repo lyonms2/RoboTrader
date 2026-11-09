@@ -9,7 +9,7 @@ const big = (v: number | null) =>
 const pct = (v: number | null, d = 0) => (v === null ? "-" : Math.abs(v) < 0.5 ? "0%" : `${v > 0 ? "+" : ""}${fmt(v, d)}%`);
 
 const USES = [
-  ["entrada", "Antes de comprar (com metade ou nao entre)"],
+  ["entrada", "Antes de comprar (com metade ou não entre)"],
   ["saida", "Se estiver exposto (reduzir)"],
   ["olho", "Para ficar de olho"],
 ] as const;
@@ -27,16 +27,16 @@ export default function FichasCard({ fichas }: { fichas: FichaDoc | null }) {
         {fichas && <span className="muted small">atualizadas {new Date(fichas.at).toLocaleString("pt-BR")}</span>}
       </div>
       {!fichas ? (
-        <p className="muted">Ainda nao montadas. Clique em &quot;Atualizar&quot; (no alto desta pagina).</p>
+        <p className="muted">Ainda não montadas. Clique em &quot;Atualizar&quot; (no alto desta página).</p>
       ) : (
         <>
           <div className="table-scroll">
             <table className="fichas stack">
               <thead>
                 <tr>
-                  <th>Token</th><th>Situacao</th><th>Valor de mercado</th><th title="Valor totalmente diluido / valor de mercado">FDV / mercado</th>
-                  <th title="Oferta em circulacao / maxima">Circulando</th><th>Receita 30 dias</th>
-                  <th title="Valor de mercado / receita anualizada">Preco / receita</th><th>30 dias</th><th>Alertas</th>
+                  <th>Token</th><th>Situação</th><th>Valor de mercado</th><th title="Valor totalmente diluído / valor de mercado">FDV / mercado</th>
+                  <th title="Oferta em circulação / máxima">Circulando</th><th>Receita 30 dias</th>
+                  <th title="Valor de mercado / receita anualizada">Preço / receita</th><th>30 dias</th><th>Alertas</th>
                 </tr>
               </thead>
               <tbody>
@@ -48,19 +48,19 @@ export default function FichasCard({ fichas }: { fichas: FichaDoc | null }) {
                         <img src={f.image} alt="" width={16} height={16} className="coin" />
                         <b>{f.symbol}</b> <span className="muted small">#{f.rank ?? "-"}</span>
                       </td>
-                      <td data-label="Situacao"><div className="cell">
+                      <td data-label="Situação"><div className="cell">
                         {f.situacao ? <span className={`sit sit-${f.situacao.code}`} title={f.situacao.detail}>{f.situacao.label}</span> : <span className="muted small">-</span>}
                         {f.action && <div className="small action-line">{f.action}</div>}
-                        {f.held >= 1 && <div className="small muted">voce tem ${fmt(f.held, 0)}{f.target !== null ? ` / alvo $${fmt(f.target, 0)}` : ""}</div>}
+                        {f.held >= 1 && <div className="small muted">você tem ${fmt(f.held, 0)}{f.target !== null ? ` / alvo $${fmt(f.target, 0)}` : ""}</div>}
                       </div></td>
                       <td data-label="Valor de mercado">{big(f.mcap)}</td>
                       <td data-label="FDV / mercado" className={f.fdv && f.mcap && f.fdv / f.mcap >= 2 ? "warn" : ""}>{f.fdv && f.mcap ? `${fmt(f.fdv / f.mcap, 1)}x` : "-"}</td>
                       <td data-label="Circulando">{f.circPct === null ? "-" : `${fmt(f.circPct * 100, 0)}%`}</td>
                       <td data-label="Receita 30 dias"><span>{big(f.revenue30d)}{f.kind === "rede" && f.revenue30d !== null ? <span className="muted small"> taxas</span> : ""}</span></td>
-                      <td data-label="Preco / receita">{f.pf === null ? "-" : `${fmt(f.pf, 0)}x`}</td>
+                      <td data-label="Preço / receita">{f.pf === null ? "-" : `${fmt(f.pf, 0)}x`}</td>
                       <td data-label="30 dias" className={f.change30d === null ? "" : f.change30d >= 0 ? "pos" : "neg"}>{pct(f.change30d)}</td>
                       <td data-label="Alertas"><span>
-                        {warnCount(f) > 0 ? <span className="chip warn-chip">{warnCount(f)} atencao</span> : null}
+                        {warnCount(f) > 0 ? <span className="chip warn-chip">{warnCount(f)} atenção</span> : null}
                         {f.alerts.length - warnCount(f) > 0 ? <span className="chip">{f.alerts.length - warnCount(f)} info</span> : null}
                         {!f.alerts.length ? <span className="muted small">-</span> : null}
                       </span></td>
@@ -68,9 +68,9 @@ export default function FichasCard({ fichas }: { fichas: FichaDoc | null }) {
                     {open === f.id && (
                       <tr className="detail">
                         <td colSpan={9}>
-                          <b>{f.name}</b> - preco ${fmt(f.price, f.price < 1 ? 6 : 2)}, volume 24h {big(f.volume)},
-                          {" "}{f.athDrop === null ? "" : `${fmt(-f.athDrop, 0)}% abaixo da maxima historica`}
-                          {f.revenuePrev30d ? `, receita do mes anterior ${big(f.revenuePrev30d)}` : ""}.
+                          <b>{f.name}</b> - preço ${fmt(f.price, f.price < 1 ? 6 : 2)}, volume 24h {big(f.volume)},
+                          {" "}{f.athDrop === null ? "" : `${fmt(-f.athDrop, 0)}% abaixo da máxima histórica`}
+                          {f.revenuePrev30d ? `, receita do mês anterior ${big(f.revenuePrev30d)}` : ""}.
                           {f.situacao && <p className="sit-detail"><span className={`sit sit-${f.situacao.code}`}>{f.situacao.label}</span> {f.situacao.detail}</p>}
                           {USES.map(([use, title]) => {
                             const list = f.alerts.filter((a) => (a.use ?? ["olho"]).includes(use));
@@ -90,14 +90,14 @@ export default function FichasCard({ fichas }: { fichas: FichaDoc | null }) {
               </tbody>
             </table>
           </div>
-          {fichas.missing.length > 0 && <p className="muted small">Nao encontrados na CoinGecko: {fichas.missing.join(", ")}.</p>}
+          {fichas.missing.length > 0 && <p className="muted small">Não encontrados na CoinGecko: {fichas.missing.join(", ")}.</p>}
           {fichas.errors.map((e) => <p key={e} className="error small">{e}</p>)}
           <p className="muted small">
-            Situacao: BTC, ETH e SOL seguem o robo; os outros tokens, o rompimento 55/20 (entra ao fechar na maxima de 55 dias com o
-            BTC em alta, sai ao fechar na minima de 20 dias). &quot;Com metade&quot; quando ha alerta de entrada; &quot;Reduzir&quot; quando voce
-            tem o token e aparece alerta de saida. Os alertas sozinhos nao mandam comprar: no backtest nao melhoraram o momento.
-            Operar so em carteira propria (DEX); a Binance e usada apenas como fonte de precos.
-            Fontes: Binance (so precos), CoinGecko e DefiLlama, gratuitas. Clique numa linha para ver os detalhes.
+            Situação: BTC, ETH e SOL seguem o robô; os outros tokens, o rompimento 55/20 (entra ao fechar na máxima de 55 dias com o
+            BTC em alta, sai ao fechar na mínima de 20 dias). &quot;Com metade&quot; quando há alerta de entrada; &quot;Reduzir&quot; quando você
+            tem o token e aparece alerta de saída. Os alertas sozinhos não mandam comprar: no backtest não melhoraram o momento.
+            Operar só em carteira própria (DEX); a Binance é usada apenas como fonte de preços.
+            Fontes: Binance (só preços), CoinGecko e DefiLlama, gratuitas. Clique numa linha para ver os detalhes.
           </p>
         </>
       )}

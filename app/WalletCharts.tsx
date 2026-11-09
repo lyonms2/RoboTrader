@@ -6,7 +6,7 @@ import type { ClassTotals } from "@/lib/walletMath";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 // Ordem fixa das classes (a cor segue a classe, nunca a posicao)
 const CLASSES: { key: WalletItem["cls"]; label: string }[] = [
-  { key: "stable", label: "Dolar" }, { key: "BTC", label: "BTC" }, { key: "ETH", label: "ETH" },
+  { key: "stable", label: "Dólar" }, { key: "BTC", label: "BTC" }, { key: "ETH", label: "ETH" },
   { key: "SOL", label: "SOL" }, { key: "outro", label: "Outros" },
 ];
 
@@ -29,8 +29,8 @@ export function AllocationBar({ byClass }: { byClass: ClassTotals }) {
   const hov = segs.find((s) => s.key === hover);
   return (
     <figure className="viz">
-      <figcaption className="small muted">Patrimonio por classe {hov ? `- ${hov.label}: ${fmt(hov.value)} USD (${fmt(hov.pct, 1)}%)` : ""}</figcaption>
-      <svg viewBox={`0 0 ${W} 22`} preserveAspectRatio="none" className="alloc" role="img" aria-label="Patrimonio por classe" onMouseLeave={() => setHover(null)}>
+      <figcaption className="small muted">Patrimônio por classe {hov ? `- ${hov.label}: ${fmt(hov.value)} USD (${fmt(hov.pct, 1)}%)` : ""}</figcaption>
+      <svg viewBox={`0 0 ${W} 22`} preserveAspectRatio="none" className="alloc" role="img" aria-label="Patrimônio por classe" onMouseLeave={() => setHover(null)}>
         {segs.map((s) => (
           <rect key={s.key} x={s.x} y={0} width={s.w} height={22} rx={4} className={`c-${s.key}${hover && hover !== s.key ? " dim" : ""}`}
             onMouseEnter={() => setHover(s.key)}>
@@ -73,7 +73,7 @@ export function ProtocolBars({ rows, total }: { rows: { app: string; value: numb
 export function HistoryLine({ history }: { history: WalletHistoryDoc[] }) {
   const [idx, setIdx] = useState<number | null>(null);
   if (history.length < 2)
-    return <p className="muted small">Evolucao do patrimonio: o grafico aparece a partir do 2o dia de leituras (1 ponto por dia).</p>;
+    return <p className="muted small">Evolução do patrimônio: o gráfico aparece a partir do 2o dia de leituras (1 ponto por dia).</p>;
   const W = 640;
   const H = 170;
   const PADL = 4;
@@ -97,10 +97,10 @@ export function HistoryLine({ history }: { history: WalletHistoryDoc[] }) {
   return (
     <figure className="viz">
       <figcaption className="small muted">
-        Evolucao do patrimonio{" "}
+        Evolução do patrimônio{" "}
         {cur ? <>- {date(cur.t)}: <b className="ink">{fmt(cur.total)} USD</b></> : <>desde {date(first.t)}: <b className={chg >= 0 ? "pos" : "neg"}>{chg >= 0 ? "+" : ""}{fmt(chg)} USD</b></>}
       </figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label="Evolucao do patrimonio" onMouseMove={move} onMouseLeave={() => setIdx(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label="Evolução do patrimônio" onMouseMove={move} onMouseLeave={() => setIdx(null)}>
         <line x1={0} x2={W} y1={y(hi)} y2={y(hi)} className="grid" />
         <line x1={0} x2={W} y1={y(lo)} y2={y(lo)} className="grid" />
         <text x={W - 2} y={y(hi) - 4} className="axis" textAnchor="end">{fmt(hi, 0)}</text>

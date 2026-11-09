@@ -18,10 +18,10 @@ export function allocationBlocks(wallet: WalletDoc, cfg: AppConfig, latest: Late
   const satReal = sat.filter((f) => IN_SYSTEM.includes(f.situacao?.code ?? "")).reduce((s, f) => s + f.held, 0);
   const satTarget = sat.reduce((s, f) => s + (f.target ?? 0), 0);
   return [
-    { name: "Nucleo", hint: "BTC/ETH/SOL pelo robo", target: coreTarget, real: coreReal },
-    { name: "Satelite", hint: "rompimento 55/20", target: alloc.satellite > 0 ? satTarget : 0, real: satReal },
+    { name: "Núcleo", hint: "BTC/ETH/SOL pelo robô", target: coreTarget, real: coreReal },
+    { name: "Satélite", hint: "rompimento 55/20", target: alloc.satellite > 0 ? satTarget : 0, real: satReal },
     { name: "Fora do sistema", hint: "tokens sem regra", target: 0, real: Math.max(0, byClass.outro - satReal) },
-    { name: "Dolar", hint: "stablecoins rendendo", target: null, real: byClass.stable },
+    { name: "Dólar", hint: "stablecoins rendendo", target: null, real: byClass.stable },
   ];
 }
 
@@ -31,11 +31,11 @@ export function walletNotices(wallet: WalletDoc) {
   const lt = wallet.lighter;
   const notional = (lt?.perps ?? []).reduce((s, p) => s + p.notional, 0);
   if (lt && lt.value > 0 && notional / lt.value > 1.01)
-    out.push({ level: "warn", text: `Lighter com alavancagem de ${(notional / lt.value).toFixed(2)}x sobre a margem (a estrategia usa 1x)` });
+    out.push({ level: "warn", text: `Lighter com alavancagem de ${(notional / lt.value).toFixed(2)}x sobre a margem (a estratégia usa 1x)` });
   for (const i of wallet.items) {
     if (i.maturity !== null) {
       const days = Math.ceil((i.maturity - Date.now()) / 86_400_000);
-      out.push({ level: days <= 14 ? "warn" : "info", text: `${i.symbol} (${i.app}) ${days > 0 ? `vence em ${days} dias` : "ja venceu: resgate"} - $${i.value.toFixed(2)}` });
+      out.push({ level: days <= 14 ? "warn" : "info", text: `${i.symbol} (${i.app}) ${days > 0 ? `vence em ${days} dias` : "já venceu: resgate"} - $${i.value.toFixed(2)}` });
     }
     if (i.type === "reward") out.push({ level: "info", text: `Recompensa para resgatar: ${i.qty.toFixed(4)} ${i.symbol} (${i.app}, $${i.value.toFixed(2)})` });
   }

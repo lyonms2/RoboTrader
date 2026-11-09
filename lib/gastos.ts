@@ -105,6 +105,11 @@ export const CATS_NEUTRO = ["Fatura do cartao", "Investimento", "Compra de cript
 export const RECV_OUT_CAT = "Emprestei dinheiro"; // saiu da conta para alguem que vai te pagar (vira "a receber")
 export const RECV_BACK_CAT = "Devolucao de emprestimo"; // parcela de quem te deve entrando (nao e renda)
 export const RECV_SALE_CAT = "Renda extra"; // parcela de venda/servico (e renda)
+// Nome com acento so na tela: o valor gravado nos lancamentos continua sem acento (nao mudar, senao os dados antigos deixam de bater)
+const CAT_LABEL: Record<string, string> = { Alimentacao: "Alimentação", Saude: "Saúde", Educacao: "Educação", "Contas (luz, agua, internet)": "Contas (luz, água, internet)",
+  "Pix e transferencias": "Pix e transferências", Emprestimos: "Empréstimos", Salario: "Salário", "Fatura do cartao": "Fatura do cartão",
+  "Transferencia entre contas": "Transferência entre contas", "Emprestimo recebido": "Empréstimo recebido", "Devolucao de emprestimo": "Devolução de empréstimo" };
+export const catLabel = (c: string) => CAT_LABEL[c] ?? c;
 export const CARD_PAY_CAT = "Fatura do cartao";
 export const TRANSFER_CAT = "Transferencia entre contas";
 // Categorias suas (gasto ou entrada). Ficam num registro do modulo, atualizado quando o setup carrega

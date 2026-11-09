@@ -19,7 +19,7 @@ export default function Chart({ chart }: { chart: LatestDoc["chart"] }) {
     if (on) bands[bands.length - 1][1] = i;
   });
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label="Preco, SMA e HMA">
+    <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label="Preço, SMA e HMA">
       {bands.map(([a, b]) => (
         <rect key={a} x={x(a)} y={0} width={Math.max(1, x(b) - x(a))} height={H} className="band" />
       ))}

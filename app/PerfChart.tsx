@@ -15,7 +15,7 @@ export default function PerfChart({ points }: { points: PerfPoint[] }) {
   const path = (key: "real" | "strat") =>
     points.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p[key]).toFixed(1)}`).join("");
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label="Lucro real x estrategia">
+    <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label="Lucro real x estratégia">
       <line x1={0} x2={W} y1={y(0)} y2={y(0)} className="zero" />
       <path d={path("strat")} className="l-strat" />
       <path d={path("real")} className="l-real" />

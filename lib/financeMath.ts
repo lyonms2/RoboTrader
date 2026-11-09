@@ -4,9 +4,9 @@ import type { FinanceDoc, FinItem, WalletDoc } from "./types";
 // Contas das financas (roda no navegador): valor de cada investimento em R$, rendimento estimado e composicao
 export type FinGroup = "reserva" | "conta" | "rendafixa" | "acoes" | "fiis" | "outro" | "cripto" | "dolar" | "bens";
 export const GROUPS: { key: FinGroup; label: string }[] = [
-  { key: "reserva", label: "Reserva" }, { key: "conta", label: "Conta corrente" }, { key: "rendafixa", label: "Renda fixa" }, { key: "acoes", label: "Acoes e ETFs" },
-  { key: "fiis", label: "FIIs" }, { key: "cripto", label: "Cripto" }, { key: "dolar", label: "Dolar (cripto)" },
-  { key: "outro", label: "Outros" }, { key: "bens", label: "Bens (imoveis, veiculos)" },
+  { key: "reserva", label: "Reserva" }, { key: "conta", label: "Conta corrente" }, { key: "rendafixa", label: "Renda fixa" }, { key: "acoes", label: "Ações e ETFs" },
+  { key: "fiis", label: "FIIs" }, { key: "cripto", label: "Cripto" }, { key: "dolar", label: "Dólar (cripto)" },
+  { key: "outro", label: "Outros" }, { key: "bens", label: "Bens (imóveis, veículos)" },
 ];
 
 export type FinRow = {
@@ -67,7 +67,7 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     const moved = fl.length ? ` + ${fl.length} ${fl.length > 1 ? "movimentos" : "movimento"} (${net >= 0 ? "+" : "-"}R$ ${Math.abs(net).toLocaleString("pt-BR", { maximumFractionDigits: 2 })})` : "";
     // Movimentos ligados ate a data do saldo ja estao dentro dele (mostra para nao parecer que sumiram)
     const inside = flows.length - fl.length;
-    const incl = inside > 0 ? ` (${inside} ${inside > 1 ? "movimentos anteriores ja estao" : "movimento anterior ja esta"} nesse saldo)` : "";
+    const incl = inside > 0 ? ` (${inside} ${inside > 1 ? "movimentos anteriores já estão" : "movimento anterior já está"} nesse saldo)` : "";
     if (!f?.cdi.d.length) return { ...r, value: bal + net, cost: bal + net, note: `${fmtP(pct)} do CDI - saldo de ${fmtD(at)}${incl}${moved}`, problem: null };
     const value = bal * cdiFactor(f, dayBR(at), pct) + fl.reduce((s, x) => s + x.v * cdiFactor(f, x.d, pct), 0);
     const year = (1 + cdiDaily(f)! * pct) ** 252 - 1;
@@ -75,7 +75,7 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     return {
       ...r, value, cost: bal + net, monthly: monthlyOf(value, year), yieldYear: year,
       note: `${(pct * 100).toLocaleString("pt-BR")}% do CDI - saldo de ${fmtD(at)}${incl}${moved} + rendimento estimado`,
-      stale: days > 60 ? `saldo informado ha ${days} dias: confira no app do banco` : null,
+      stale: days > 60 ? `saldo informado há ${days} dias: confira no app do banco` : null,
     };
   }
   if (item.kind === "tesouro") {
@@ -84,7 +84,7 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     const t = f?.tesouro?.titles.find((x) => x.name === name && x.venc === venc);
     const qty = item.qty ?? 0;
     const cost = item.avg ? item.avg * qty : null;
-    if (!t) return { ...r, cost, problem: f?.tesouro ? "titulo nao encontrado nos precos do dia" : "precos do Tesouro ainda nao carregados" };
+    if (!t) return { ...r, cost, problem: f?.tesouro ? "título não encontrado nos preços do dia" : "preços do Tesouro ainda não carregados" };
     const value = t.pu * qty;
     const cdi = cdiYear(f);
     const ipca = f?.ipca12m ?? null;
@@ -94,7 +94,7 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
       : t.taxa / 100;
     return {
       ...r, value, cost, price: t.pu, yieldYear: year, monthly: year === null ? null : monthlyOf(value, year),
-      note: `vence ${venc} - taxa de hoje ${t.taxa.toLocaleString("pt-BR")}%${/selic/i.test(name) ? " + Selic" : /ipca/i.test(name) ? " + IPCA" : " ao ano"} - preco de ${fmtD(Date.parse(`${f!.tesouro!.date}T12:00:00`))}`,
+      note: `vence ${venc} - taxa de hoje ${t.taxa.toLocaleString("pt-BR")}%${/selic/i.test(name) ? " + Selic" : /ipca/i.test(name) ? " + IPCA" : " ao ano"} - preço de ${fmtD(Date.parse(`${f!.tesouro!.date}T12:00:00`))}`,
     };
   }
   if (item.kind === "acao") {
@@ -102,16 +102,16 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     const q = f?.quotes?.[tk];
     const qty = item.qty ?? 0;
     const cost = item.avg ? item.avg * qty : null;
-    if (!q) return { ...base, kindLabel: "Acao / FII", group: "acoes", cost, problem: "cotacao ainda nao carregada (clique em Atualizar cotacoes)" };
+    if (!q) return { ...base, kindLabel: "Ação / FII", group: "acoes", cost, problem: "cotação ainda não carregada (clique em Atualizar cotações)" };
     const d12 = divs12m(q.divs);
     const value = q.price * qty;
     const lastDiv = q.divs[q.divs.length - 1];
     return {
-      ...base, kindLabel: q.type === "fii" ? "FII" : q.type === "etf" ? "ETF" : "Acao", group: q.type === "fii" ? "fiis" : "acoes",
+      ...base, kindLabel: q.type === "fii" ? "FII" : q.type === "etf" ? "ETF" : "Ação", group: q.type === "fii" ? "fiis" : "acoes",
       value, cost, price: q.price, change: q.change, yieldYear: d12 > 0 ? d12 / q.price : null, monthly: d12 > 0 ? (d12 * qty) / 12 : null,
       note: d12 > 0
-        ? `proventos 12 m: R$ ${d12.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} por cota - ultimo ${fmtD(lastDiv.t)}`
-        : "sem proventos nos ultimos 12 meses",
+        ? `proventos 12 m: R$ ${d12.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} por cota - último ${fmtD(lastDiv.t)}`
+        : "sem proventos nos últimos 12 meses",
     };
   }
   if (item.kind === "bem") {
@@ -123,8 +123,8 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     const age = item.valueAt ? Math.floor((Date.now() - item.valueAt) / DAY) : null;
     return {
       ...base, group: "bens", kindLabel: label, value, cost: item.paid ?? null,
-      note: `valor estimado em ${item.valueAt ? fmtD(item.valueAt) : "-"}${rate ? ` (${rate > 0 ? "+" : ""}${(rate * 100).toLocaleString("pt-BR")}% ao ano)` : ""}${item.ignore ? " - nao conta no patrimonio" : ""}`,
-      stale: age !== null && age > 365 && !rate ? `valor de ${age} dias atras: atualize a estimativa` : null,
+      note: `valor estimado em ${item.valueAt ? fmtD(item.valueAt) : "-"}${rate ? ` (${rate > 0 ? "+" : ""}${(rate * 100).toLocaleString("pt-BR")}% ao ano)` : ""}${item.ignore ? " - não conta no patrimônio" : ""}`,
+      stale: age !== null && age > 365 && !rate ? `valor de ${age} dias atrás: atualize a estimativa` : null,
     };
   }
   const days = item.valueAt ? Math.floor((Date.now() - item.valueAt) / DAY) : null;
@@ -133,7 +133,7 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
   return {
     ...base, kindLabel: "Outro", value: (item.value ?? 0) + net, cost: null,
     note: (item.valueAt ? `valor informado em ${fmtD(item.valueAt)}` : "valor informado") + (fl.length ? ` + ${fl.length} movimentos ligados` : ""),
-    stale: days !== null && days > 90 ? `valor informado ha ${days} dias: atualize` : null,
+    stale: days !== null && days > 90 ? `valor informado há ${days} dias: atualize` : null,
   };
 }
 

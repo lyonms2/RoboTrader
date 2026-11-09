@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   CARD_PAY_CAT, RECV_OUT_CAT, accountsOf, addMonths, cardStatus, dayIn, descKey, commitments, debts, faturaItems, faturaMonth, loanDue, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
-  subValue, type Card, type CardSub, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
+  catLabel, subValue, type Card, type CardSub, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardForm, CatSelect, LoanForm, QuickAdd, saveMonth, saveSetup } from "./GastosCard";
@@ -15,7 +15,7 @@ const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
 export type CardsEntry = { type: "compra" | "card" | "loan" | "prepay" | "recv"; id: string | null };
 const TYPES: { id: CardsEntry["type"]; label: string }[] = [
-  { id: "compra", label: "Compra no cartao" }, { id: "card", label: "Cadastrar cartao" },
+  { id: "compra", label: "Compra no cartão" }, { id: "card", label: "Cadastrar cartão" },
 ];
 const STATUS: Record<string, string> = { aberta: "aberta (ainda recebendo compras)", fechada: "fechada, a pagar", paga: "paga", vencida: "atrasada (venceu sem pagamento)" };
 const FSIT: Record<string, { cls: string; label: string }> = {
@@ -44,11 +44,11 @@ export default function CardsLoans({ months, setup, invest, entry, setEntry }: {
   const d = debts(months, setup);
   const com = commitments(months, setup);
   const nav = (
-    <nav className="subtabs inner" role="tablist" aria-label="Cartoes e emprestimos">
+    <nav className="subtabs inner" role="tablist" aria-label="Cartões e empréstimos">
       <button role="tab" aria-selected={part === "cards"} className={part === "cards" ? "pill on" : "pill"} onClick={() => setEntry({ type: "compra", id: null })}>
-        Cartoes <span className="muted">{brl(d.cards, 0)}</span></button>
+        Cartões <span className="muted">{brl(d.cards, 0)}</span></button>
       <button role="tab" aria-selected={part === "loans"} className={part === "loans" ? "pill on" : "pill"} onClick={() => setEntry({ type: "loan", id: null })}>
-        Emprestimos <span className="muted">{brl(d.loans, 0)}</span></button>
+        Empréstimos <span className="muted">{brl(d.loans, 0)}</span></button>
       <button role="tab" aria-selected={part === "recv"} className={part === "recv" ? "pill on" : "pill"} onClick={() => setEntry({ type: "recv", id: null })}>
         A receber <span className="pos">{brl(d.recv, 0)}</span></button>
     </nav>
@@ -81,14 +81,14 @@ function CardsPart({ months, setup, invest, entry, setEntry, owed, com }: {
   return (
     <>
       <section className="card">
-        <h2>Cartoes</h2>
+        <h2>Cartões</h2>
         <div className="kpis">
-          <div><span>Devendo nos cartoes</span><b className={owed > 0 ? "warn" : ""}>{brl(owed)}</b><small className="muted">faturas a pagar + parcelas futuras</small></div>
-          <div><span>Faturas em {monthLabel(next.m)}</span><b>{brl(next.cards)}</b><small className="muted">ja comprometido</small></div>
-          <div><span>Planejado nos cartoes</span><b>{planned ? brl(planned, 0) : "-"}</b>
-            <small className={planned && usedNow > planned ? "warn" : "muted"}>{planned ? `usado ${brl(usedNow, 0)} nas faturas abertas (${fmt((usedNow / planned) * 100, 0)}%)` : "defina no cadastro do cartao"}</small></div>
+          <div><span>Devendo nos cartões</span><b className={owed > 0 ? "warn" : ""}>{brl(owed)}</b><small className="muted">faturas a pagar + parcelas futuras</small></div>
+          <div><span>Faturas em {monthLabel(next.m)}</span><b>{brl(next.cards)}</b><small className="muted">já comprometido</small></div>
+          <div><span>Planejado nos cartões</span><b>{planned ? brl(planned, 0) : "-"}</b>
+            <small className={planned && usedNow > planned ? "warn" : "muted"}>{planned ? `usado ${brl(usedNow, 0)} nas faturas abertas (${fmt((usedNow / planned) * 100, 0)}%)` : "defina no cadastro do cartão"}</small></div>
         </div>
-        <p className="muted small">As compras no cartao sao controladas aqui. Em Lancamentos (o extrato da conta), a fatura entra como uma saida so, no dia em que voce paga.</p>
+        <p className="muted small">As compras no cartão são controladas aqui. Em Lançamentos (o extrato da conta), a fatura entra como uma saída só, no dia em que você paga.</p>
       </section>
 
       <section className="card entry-card">
@@ -105,7 +105,7 @@ function CardsPart({ months, setup, invest, entry, setEntry, owed, com }: {
             <div className="month-nav">
               <button className="ghost icon" aria-label="Fatura anterior" onClick={() => setFm(addMonths(fm, -1))}>&lsaquo;</button>
               <h2>Fatura {monthLabel(fm)}</h2>
-              <button className="ghost icon" aria-label="Proxima fatura" onClick={() => setFm(addMonths(fm, 1))}>&rsaquo;</button>
+              <button className="ghost icon" aria-label="Próxima fatura" onClick={() => setFm(addMonths(fm, 1))}>&rsaquo;</button>
             </div>
           </div>
           <FaturaView card={card} st={st} fm={fm} months={months} setup={setup} />
@@ -139,22 +139,22 @@ function LoansPart({ months, setup, entry, owed, com }: {
   return (
     <>
       <section className="card">
-        <h2>Emprestimos</h2>
+        <h2>Empréstimos</h2>
         <div className="kpis">
-          <div><span>Devendo em emprestimos</span><b>{brl(owed)}</b><small className="muted">saldo devedor de {active.length} {active.length === 1 ? "emprestimo" : "emprestimos"}</small></div>
+          <div><span>Devendo em empréstimos</span><b>{brl(owed)}</b><small className="muted">saldo devedor de {active.length} {active.length === 1 ? "empréstimo" : "empréstimos"}</small></div>
           {late > 0 && <div><span>Parcelas atrasadas</span><b className="warn">{late} - {brl(lateV)}</b><small className="muted">venceram sem pagamento</small></div>}
-          <div><span>Proxima parcela</span><b className={nx && nx.st.next! < todayBR() ? "warn" : ""}>{nx ? brl(nx.l.parcela) : "-"}</b>
+          <div><span>Próxima parcela</span><b className={nx && nx.st.next! < todayBR() ? "warn" : ""}>{nx ? brl(nx.l.parcela) : "-"}</b>
             <small className="muted">{nx ? `${nx.st.nextK! + 1}/${nx.l.n}${sts.length > 1 ? ` ${nx.l.name}` : ""} - ${nx.st.next! < todayBR() ? "venceu" : "vence"} ${dm(nx.st.next!)}/${nx.st.next!.slice(2, 4)}` : "nenhuma"}</small></div>
-          <div><span>Livre de emprestimos em</span><b>{lastEnd ? monthLabel(lastEnd, true) : "-"}</b><small className="muted">ultima parcela</small></div>
+          <div><span>Livre de empréstimos em</span><b>{lastEnd ? monthLabel(lastEnd, true) : "-"}</b><small className="muted">última parcela</small></div>
           {saved > 0.005 && <div><span>Economizou adiantando</span><b className="pos">{brl(saved)}</b></div>}
         </div>
-        <p className="muted small">Abra o emprestimo para ver as parcelas. Parcela paga pelo extrato e reconhecida sozinha;
-          se pagou e nao aparece, use &quot;pagar&quot;. Parcela vencida sem pagamento fica como atrasada.</p>
+        <p className="muted small">Abra o empréstimo para ver as parcelas. Parcela paga pelo extrato e reconhecida sozinha;
+          se pagou e não aparece, use &quot;pagar&quot;. Parcela vencida sem pagamento fica como atrasada.</p>
       </section>
 
       <section className="card">
-        <div className="card-head"><h2>Seus emprestimos</h2>
-          {!adding && <button className="ghost small-btn" onClick={() => setAdding(true)}>+ novo emprestimo</button>}</div>
+        <div className="card-head"><h2>Seus empréstimos</h2>
+          {!adding && <button className="ghost small-btn" onClick={() => setAdding(true)}>+ novo empréstimo</button>}</div>
         {adding && (
           <div className="loan-form">
             <LoanForm l={{ id: newId(), name: "", parcela: 0, n: 12, first: monthOf(todayBR()), dueDay: 10, paidBefore: 0 }} onSave={saveLoan} onCancel={() => setAdding(false)} />
@@ -164,7 +164,7 @@ function LoansPart({ months, setup, entry, owed, com }: {
           <LoanItem key={l.id} l={l} st={st} months={months} setup={setup} single={sts.length === 1}
             initial={entry.id === l.id ? (entry.type === "prepay" ? "prepay" : "edit") : null} />
         ))}
-        {!sts.length && !adding && <p className="muted small">Nenhum emprestimo cadastrado.</p>}
+        {!sts.length && !adding && <p className="muted small">Nenhum empréstimo cadastrado.</p>}
       </section>
 
       <CommitmentsChart data={com} which="loans" />
@@ -197,12 +197,12 @@ function LoanItem({ l, st, months, setup, single, initial }: {
     await saveSetup({ loans: setup.loans.map((x) => (x.id === l.id ? { ...x, pays: (x.pays ?? []).filter((y) => y.k !== k) } : x)) });
   };
   const remove = async () => {
-    if (await ask(`Remover ${l.name}? (os lancamentos na conta continuam)`)) await saveSetup({ loans: setup.loans.filter((x) => x.id !== l.id) });
+    if (await ask(`Remover ${l.name}? (os lançamentos na conta continuam)`)) await saveSetup({ loans: setup.loans.filter((x) => x.id !== l.id) });
   };
   // marca de uma vez as atrasadas como pagas (sem lancar saida): para quem cadastra um emprestimo antigo
   const markLate = async () => {
     const late = st.rows.filter((r) => r.status === "atrasada");
-    if (!await ask(`Marcar as ${late.length} parcelas atrasadas como pagas? Nao lanca saida em nenhuma conta.`)) return;
+    if (!await ask(`Marcar as ${late.length} parcelas atrasadas como pagas? Não lança saída em nenhuma conta.`)) return;
     const add = late.map((r) => ({ k: r.k, d: r.due, v: l.parcela }));
     await saveSetup({ loans: setup.loans.map((x) => (x.id === l.id ? { ...x, pays: [...(x.pays ?? []), ...add] } : x)) });
   };
@@ -214,7 +214,7 @@ function LoanItem({ l, st, months, setup, single, initial }: {
         <span className="loan-name"><b>{l.name}</b><small className="muted">{st.paid} de {l.n} pagas - saldo {brl(st.saldo, 0)}</small></span>
         <span className="loan-badge small">
           {st.late > 0 ? <span className="warn">{st.late} {st.late > 1 ? "atrasadas" : "atrasada"}</span>
-            : st.next ? <span className="muted">proxima {dm(st.next)} - {brl(l.parcela, 0)}</span> : <span className="pos">quitado</span>}
+            : st.next ? <span className="muted">próxima {dm(st.next)} - {brl(l.parcela, 0)}</span> : <span className="pos">quitado</span>}
         </span>
       </button>
       {open && (
@@ -223,7 +223,7 @@ function LoanItem({ l, st, months, setup, single, initial }: {
             <span className="limit-fill paid" style={{ width: `${(st.paid / l.n) * 100}%` }} />
             <small className="muted">{st.paid} de {l.n} parcelas pagas{st.prepaid ? ` (${st.prepaid} adiantadas)` : ""} - {st.left > 0 ? `termina em ${monthLabel(st.end, true)}` : "quitado"}
               {st.left > 0 && st.end !== st.originalEnd ? ` (era ${monthLabel(st.originalEnd, true)})` : ""}
-              {" "}- parcela {brl(l.parcela)} dia {l.dueDay}{l.rate ? `, juros ${fmt(l.rate)}% ao mes` : ""}</small>
+              {" "}- parcela {brl(l.parcela)} dia {l.dueDay}{l.rate ? `, juros ${fmt(l.rate)}% ao mês` : ""}</small>
           </div>
           {st.saved > 0.005 && <p className="small pos">Economizou {brl(st.saved)} adiantando parcelas</p>}
           <div className="row wrapline loan-actions">
@@ -242,13 +242,13 @@ function LoanItem({ l, st, months, setup, single, initial }: {
 
           <div className="table-scroll">
             <table className="loan-rows">
-              <thead><tr><th>Parcela</th><th>Valor</th><th>Situacao</th><th /></tr></thead>
+              <thead><tr><th>Parcela</th><th>Valor</th><th>Situação</th><th /></tr></thead>
               <tbody>
                 {shown.map((r) => (
                   <tr key={r.k} className={r.status === "atrasada" ? "late" : r.k === st.nextK ? "nextrow" : ""}>
                     <td><span className="cell">{r.k + 1}/{l.n}<small className="muted">vence {dm(r.due)}/{r.due.slice(2, 4)}</small></span></td>
                     <td data-label="Valor">{brl(r.v ?? l.parcela)}</td>
-                    <td data-label="Situacao"><span className={`sit sit-${r.status}`}>{SIT[r.status]}</span>
+                    <td data-label="Situação"><span className={`sit sit-${r.status}`}>{SIT[r.status]}</span>
                       {r.via === "extrato" && <small className="muted"> pelo extrato</small>}
                       {r.via === "voce" && r.d && <small className="muted"> em {dm(r.d)}</small>}</td>
                     <td className="actions">
@@ -298,13 +298,13 @@ function PayForm({ l, k, months, setup, onDone }: { l: Loan; k: number; months: 
         <label>De qual conta
           <select value={acc} onChange={(e) => setAcc(e.target.value)}>
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            <option value="">nao lancar saida (ja esta no extrato / paguei por fora)</option>
+            <option value="">não lançar saída (já está no extrato / paguei por fora)</option>
           </select>
         </label>
         <button className="primary" type="submit">Pagar</button>
         <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
       </div>
-      <p className="muted small">{acc ? "Lanca a saida nessa conta (categoria Emprestimos) e marca a parcela como paga." : "So marca a parcela como paga; o saldo da conta nao muda."}
+      <p className="muted small">{acc ? "Lança a saída nessa conta (categoria Empréstimos) e marca a parcela como paga." : "Só marca a parcela como paga; o saldo da conta não muda."}
         {num(v) > l.parcela * 1.005 ? ` Pagou ${brl(num(v) - l.parcela)} a mais (juros/multa?).` : ""}</p>
     </form>
   );
@@ -352,15 +352,15 @@ function FaturaView({ card, st, fm, months, setup }: {
           <small className={total > card.budget ? "warn" : "muted"}>planejado {brl(card.budget, 0)} por fatura: {fmt((total / card.budget) * 100, 0)}% usado
             {total < card.budget ? ` - sobram ${brl(card.budget - total, 0)}` : ` - passou ${brl(total - card.budget, 0)}`}</small>
         </div>
-      ) : <p className="muted small">Sem planejamento: em &quot;Cadastrar cartao&quot; (acima), informe quanto quer gastar por fatura para acompanhar aqui.</p>}
+      ) : <p className="muted small">Sem planejamento: em &quot;Cadastrar cartão&quot; (acima), informe quanto quer gastar por fatura para acompanhar aqui.</p>}
 
       {cats.length > 0 && (
         <figure className="viz">
           <figcaption className="small muted">Por categoria nesta fatura</figcaption>
           <div className="hbars">
             {cats.map(([c, v]) => (
-              <div key={c} className="hbar" title={`${c}: ${brl(v)}`}>
-                <span className="hbar-label small">{c}</span>
+              <div key={c} className="hbar" title={`${catLabel(c)}: ${brl(v)}`}>
+                <span className="hbar-label small">{catLabel(c)}</span>
                 <span className="hbar-track"><span className="hbar-fill" style={{ width: `${(v / maxCat) * 100}%` }} /></span>
                 <span className="hbar-value small">{fmt(v, 0)} <span className="muted">{total > 0 ? `${fmt((v / total) * 100, 0)}%` : ""}</span></span>
               </div>
@@ -377,7 +377,7 @@ function FaturaView({ card, st, fm, months, setup }: {
               {list.map(({ m, g }) => (<Fragment key={g.id}>
                 <tr>
                   <td><span className="cell">{g.desc}<small className="muted">{[dm(g.d), g.sub ? "assinatura" : null, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null].filter(Boolean).join(" - ")}</small></span></td>
-                  <td data-label="Categoria">{g.sub ? g.cat : <span className="cell"><CatSelect value={g.cat} onChange={(c) => setCat(m, g.id, c)} />
+                  <td data-label="Categoria">{g.sub ? catLabel(g.cat) : <span className="cell"><CatSelect value={g.cat} onChange={(c) => setCat(m, g.id, c)} />
                     {g.cat === RECV_OUT_CAT && <RecvSelect g={g} m={m} months={months} setup={setup} />}</span>}</td>
                   <td data-label="Valor" className={g.tipo === "receita" ? "pos" : ""}>{g.tipo === "receita" ? "+" : "-"}{brl(g.v)}</td>
                   <td className="actions"><button className="link" onClick={() => setEditId(editId === g.id ? null : g.id)}>alterar</button>
@@ -390,10 +390,10 @@ function FaturaView({ card, st, fm, months, setup }: {
             </tbody>
           </table>
         </div>
-      ) : <p className="muted small">Nenhuma compra lancada nesta fatura.</p>}
+      ) : <p className="muted small">Nenhuma compra lançada nesta fatura.</p>}
 
       {later.length > 0 && (
-        <p className="small muted">Proximas faturas: {later.map((x) => `${monthLabel(x.m)} ${brl(x.rest, 0)}${x.futuro > 0 ? " (parcelas)" : ""}`).join(" - ")}</p>
+        <p className="small muted">Próximas faturas: {later.map((x) => `${monthLabel(x.m)} ${brl(x.rest, 0)}${x.futuro > 0 ? " (parcelas)" : ""}`).join(" - ")}</p>
       )}
     </>
   );
@@ -409,9 +409,9 @@ function CommitmentsChart({ data, which }: { data: Com; which: "cards" | "loans"
   const what = which === "cards" ? "faturas" : "parcelas";
   return (
     <section className="card">
-      <h2>{which === "cards" ? "Faturas" : "Parcelas"} nos proximos 12 meses</h2>
+      <h2>{which === "cards" ? "Faturas" : "Parcelas"} nos próximos 12 meses</h2>
       <figure className="viz">
-        <figcaption className="small muted">{h ? `${monthLabel(h.m)}: ${what} ${brl(val(h))}` : "passe o mouse para ver o valor do mes"}</figcaption>
+        <figcaption className="small muted">{h ? `${monthLabel(h.m)}: ${what} ${brl(val(h))}` : "passe o mouse para ver o valor do mês"}</figcaption>
         <div className="mbars twelve" onMouseLeave={() => setHover(null)}>
           {data.map((x, i) => (
             <div key={x.m} className={`mbar${hover !== null && hover !== i ? " dim" : ""}`} onMouseEnter={() => setHover(i)} title={`${monthLabel(x.m)}: ${brl(val(x))}`}>
@@ -421,7 +421,7 @@ function CommitmentsChart({ data, which }: { data: Com; which: "cards" | "loans"
           ))}
         </div>
       </figure>
-      <p className="muted small">{which === "cards" ? "Faturas futuras somam as parcelas que ainda vem; compras novas aumentam esses valores." : "Parcelas adiantadas ja saem daqui. Para mudar quais meses o adiantamento cobre, use \"Adiantar parcelas\"."}</p>
+      <p className="muted small">{which === "cards" ? "Faturas futuras somam as parcelas que ainda vem; compras novas aumentam esses valores." : "Parcelas adiantadas já saem daqui. Para mudar quais meses o adiantamento cobre, use \"Adiantar parcelas\"."}</p>
     </section>
   );
 }
@@ -445,7 +445,7 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry, onAdded }: {
   return (
     <div className="entry">
       <div className="entry-bar">
-        <p className="small entry-q">O que voce quer lancar?</p>
+        <p className="small entry-q">O que você quer lançar?</p>
         <div className="kind-pick entry-types">
           {TYPES.filter((t) => LOAN_TYPES.includes(t.id) === LOAN_TYPES.includes(type)).map((t) => <button key={t.id} type="button" className={open && type === t.id ? "pill on" : "pill"} onClick={() => { setEntry({ type: t.id, id: null }); setOpen(true); }}>{t.label}</button>)}
         </div>
@@ -460,20 +460,20 @@ function CardsEntryPanel({ months, setup, invest, entry, setEntry, onAdded }: {
           </select>
         </label>
       )}
-      {noCards && <p className="muted small">Cadastre um cartao primeiro (opcao &quot;Cadastrar cartao&quot;).</p>}
-      {noLoans && <p className="muted small">Cadastre o emprestimo primeiro (opcao &quot;Cadastrar emprestimo&quot;).</p>}
+      {noCards && <p className="muted small">Cadastre um cartão primeiro (opção &quot;Cadastrar cartão&quot;).</p>}
+      {noLoans && <p className="muted small">Cadastre o empréstimo primeiro (opção &quot;Cadastrar empréstimo&quot;).</p>}
       {type === "prepay" && !noLoans && <PrepayForm key={id ?? "p"} setup={setup} loanId={id ?? setup.loans[0].id} onPick={(lid) => setEntry({ type, id: lid })} />}
       {type === "compra" && !noCards && <QuickAdd key="compra" mode="cartao" months={months} setup={setup} invest={invest} defaultDate={todayBR()} onAdded={onAdded} />}
       {type === "card" && (
         <>
           <CardForm key={id ?? "novo"} c={setup.cards.find((c) => c.id === id) ?? { id: newId(), name: "", closeDay: 1, dueDay: 8 }} onSave={saveCards} onCancel={reset} />
-          {id && <button className="ghost small-btn" onClick={async () => { if (await ask("Remover este cartao? (as compras continuam lancadas)")) { await saveSetup({ cards: setup.cards.filter((c) => c.id !== id) }); reset(); } }}>remover este cartao</button>}
+          {id && <button className="ghost small-btn" onClick={async () => { if (await ask("Remover este cartão? (as compras continuam lançadas)")) { await saveSetup({ cards: setup.cards.filter((c) => c.id !== id) }); reset(); } }}>remover este cartão</button>}
         </>
       )}
       {type === "loan" && (
         <>
           <LoanForm key={id ?? "novo"} l={setup.loans.find((l) => l.id === id) ?? { id: newId(), name: "", parcela: 0, n: 12, first: monthOf(todayBR()), dueDay: 10, paidBefore: 0 }} onSave={saveLoans} onCancel={reset} />
-          {id && <button className="ghost small-btn" onClick={async () => { if (await ask("Remover este emprestimo?")) { await saveSetup({ loans: setup.loans.filter((l) => l.id !== id) }); reset(); } }}>remover este emprestimo</button>}
+          {id && <button className="ghost small-btn" onClick={async () => { if (await ask("Remover este empréstimo?")) { await saveSetup({ loans: setup.loans.filter((l) => l.id !== id) }); reset(); } }}>remover este empréstimo</button>}
         </>
       )}
       </>}
@@ -495,7 +495,7 @@ function PrepayForm({ setup, loanId, onPick }: { setup: GastosSetup; loanId: str
   const paidV = num(v) > 0 ? num(v) : qty * loan.parcela;
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (qty > st.left) return await tell(`So restam ${st.left} parcelas.`);
+    if (qty > st.left) return await tell(`Só restam ${st.left} parcelas.`);
     const prepay = [...(loan.prepay ?? []), { id: newId(), d, n: qty, v: Math.round(paidV * 100) / 100, from: from === "next" ? nextM : from }];
     await saveSetup({ loans: setup.loans.map((l) => (l.id === loan.id ? { ...l, prepay } : l)) });
     setN("1"); setV(""); setFrom("fim");
@@ -515,7 +515,7 @@ function PrepayForm({ setup, loanId, onPick }: { setup: GastosSetup; loanId: str
   return (
     <form className="fin-form" onSubmit={save}>
       <div className="row wrapline">
-        <label>Emprestimo
+        <label>Empréstimo
           <select value={loan.id} onChange={(e) => onPick(e.target.value)}>{setup.loans.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
         </label>
         <label>Data<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
@@ -523,8 +523,8 @@ function PrepayForm({ setup, loanId, onPick }: { setup: GastosSetup; loanId: str
         <label>Quanto pagou (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder={fmt(qty * loan.parcela)} /></label>
         <label>Quais parcelas
           <select value={from} onChange={(e) => setFrom(e.target.value)}>
-            <option value="fim">as ultimas (termina antes)</option>
-            <option value="next">as proximas ({monthLabel(nextM)} em diante)</option>
+            <option value="fim">as últimas (termina antes)</option>
+            <option value="next">as próximas ({monthLabel(nextM)} em diante)</option>
             {monthsOpt.map((m) => <option key={m} value={m}>a partir de {monthLabel(m, true)}</option>)}
           </select>
         </label>
@@ -532,9 +532,9 @@ function PrepayForm({ setup, loanId, onPick }: { setup: GastosSetup; loanId: str
       </div>
       <p className="muted small">
         {qty} x {brl(loan.parcela)} = {brl(qty * loan.parcela)}{num(v) > 0 && num(v) < qty * loan.parcela ? ` - desconto de ${brl(qty * loan.parcela - num(v))}` : ""}.
-        {from === "fim" ? <>As ultimas parcelas saem do contrato: termina em {monthLabel(addMonths(st.end, -qty), true)} (hoje: {monthLabel(st.end, true)}).</>
-          : <>Esses meses ficam sem parcela; o fim do contrato nao muda.</>}
-        O pagamento em si entra pelo extrato da conta (categoria Emprestimos).
+        {from === "fim" ? <>As últimas parcelas saem do contrato: termina em {monthLabel(addMonths(st.end, -qty), true)} (hoje: {monthLabel(st.end, true)}).</>
+          : <>Esses meses ficam sem parcela; o fim do contrato não muda.</>}
+        O pagamento em si entra pelo extrato da conta (categoria Empréstimos).
       </p>
       {(loan.prepay ?? []).length > 0 && (
         <ul className="pend small">
@@ -543,7 +543,7 @@ function PrepayForm({ setup, loanId, onPick }: { setup: GastosSetup; loanId: str
               <span>{brl(p.v)}</span>
               <span className="muted">cobre {range(covered(p.id))}</span>
               <select className="pay-sel" value={!p.from || p.from === "fim" ? "fim" : p.from} onChange={(e) => setPFrom(p.id, e.target.value)} aria-label="Quais parcelas">
-                <option value="fim">as ultimas</option>
+                <option value="fim">as últimas</option>
                 {monthsOpt.map((m) => <option key={m} value={m}>a partir de {monthLabel(m, true)}</option>)}
               </select>
               <button className="link" type="button" onClick={() => undo(p.id)}>desfazer</button></li>
@@ -586,7 +586,7 @@ function FaturasList({ card, st, fm, setFm, months, setup }: {
       </div>
       <div className="table-scroll">
         <table className="loan-rows">
-          <thead><tr><th>Fatura</th><th>Valor</th><th>Situacao</th><th /></tr></thead>
+          <thead><tr><th>Fatura</th><th>Valor</th><th>Situação</th><th /></tr></thead>
           <tbody>
             {shown.map((r) => {
               const mine = pays.filter((p) => p.fm === r.m);
@@ -595,7 +595,7 @@ function FaturasList({ card, st, fm, setFm, months, setup }: {
                   <td><span className="cell"><button className="link" onClick={() => setFm(r.m)} title="ver as compras">{monthLabel(r.m)}</button>
                     <small className="muted">vence {dm(r.due)}{r.futuro > 0 ? " - parcelas" : ""}</small></span></td>
                   <td data-label="Valor">{brl(r.v)}{r.paid > 0.005 && r.status !== "paga" && <small className="muted"> falta {brl(r.rest)}</small>}</td>
-                  <td data-label="Situacao"><span className={`sit sit-${FSIT[r.status].cls}`}>{FSIT[r.status].label}</span>
+                  <td data-label="Situação"><span className={`sit sit-${FSIT[r.status].cls}`}>{FSIT[r.status].label}</span>
                     {mine.length > 0 && <small className="muted"> em {dm(mine[mine.length - 1].d)}</small>}
                     {r.status === "paga" && !mine.length && <small className="muted"> pelo extrato</small>}</td>
                   <td className="actions">
@@ -645,13 +645,13 @@ export function CardPayForm({ card, fm, rest, due, months, setup, onDone }: {
         <label>De qual conta
           <select value={acc} onChange={(e) => setAcc(e.target.value)}>
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            <option value="">nao lancar saida (ja esta no extrato / paguei por fora)</option>
+            <option value="">não lançar saída (já está no extrato / paguei por fora)</option>
           </select>
         </label>
         <button className="primary" type="submit">Pagar</button>
         <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
       </div>
-      <p className="muted small">{acc ? "Lanca a saida nessa conta (categoria Fatura do cartao) e abate desta fatura." : "So abate desta fatura; o saldo da conta nao muda."}
+      <p className="muted small">{acc ? "Lança a saída nessa conta (categoria Fatura do cartão) e abate desta fatura." : "Só abate desta fatura; o saldo da conta não muda."}
         {num(v) > 0 && num(v) < rest - 0.005 ? ` Pagamento parcial: ficam ${brl(rest - num(v))} em aberto.` : ""}</p>
     </form>
   );
@@ -711,15 +711,15 @@ function EditBuy({ g, months, setup, onDone }: { g: Gasto; months: Record<string
     <form className="fin-form loan-pay" onSubmit={save}>
       <div className="row wrapline">
         <label>Data{many && all ? " desta parcela" : ""}<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
-        <label className="grow">Descricao<input value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
+        <label className="grow">Descrição<input value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
         <label>{many ? "Valor da parcela" : "Valor"} (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
-        <label>Cartao
+        <label>Cartão
           <select value={card} onChange={(e) => setCard(e.target.value)}>{setup.cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         </label>
       </div>
       {many && (
         <label className="check small"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
-          aplicar nas {siblings.length} parcelas desta compra (as datas mudam juntas, uma por mes)</label>
+          aplicar nas {siblings.length} parcelas desta compra (as datas mudam juntas, uma por mês)</label>
       )}
       <div className="row">
         <button className="primary" type="submit" disabled={busy}>Salvar</button>
@@ -739,19 +739,19 @@ function SubsList({ card, setup }: { card: Card; setup: GastosSetup }) {
   const ativas = subs.filter((s) => !s.end || s.end >= cur);
   return (
     <section className="card">
-      <div className="card-head"><h2>Assinaturas</h2><span className="muted small">{brl(ativas.reduce((t, s) => t + subValue(s, cur), 0))} por mes</span></div>
+      <div className="card-head"><h2>Assinaturas</h2><span className="muted small">{brl(ativas.reduce((t, s) => t + subValue(s, cur), 0))} por mês</span></div>
       <ul className="pend small">
         {subs.map((s) => (
           <li key={s.id} className={s.end && s.end < cur ? "muted" : ""}>
-            <span className="muted">dia {s.day}</span> <b>{s.desc}</b> <span className="muted">{s.cat} - desde {monthLabel(s.start)}</span>
-            {s.end && <span className="tag">{s.end < cur ? "cancelada" : "ate"} {monthLabel(s.end)}</span>}
+            <span className="muted">dia {s.day}</span> <b>{s.desc}</b> <span className="muted">{catLabel(s.cat)} - desde {monthLabel(s.start)}</span>
+            {s.end && <span className="tag">{s.end < cur ? "cancelada" : "até"} {monthLabel(s.end)}</span>}
             <span>{brl(subValue(s, cur))}</span>
             <button className="link" onClick={() => setEdit(edit === s.id ? null : s.id)}>alterar</button>
             {edit === s.id && <div className="sub-edit"><EditSub sub={s} card={card} setup={setup} onDone={() => setEdit(null)} /></div>}
           </li>
         ))}
       </ul>
-      <p className="muted small">Para cadastrar outra: em &quot;Compra no cartao&quot;, marque &quot;Assinatura&quot;. Mudar o valor vale do mes atual em diante; as faturas antigas ficam como estao.</p>
+      <p className="muted small">Para cadastrar outra: em &quot;Compra no cartão&quot;, marque &quot;Assinatura&quot;. Mudar o valor vale do mês atual em diante; as faturas antigas ficam como estão.</p>
     </section>
   );
 }
@@ -779,17 +779,17 @@ function EditSub({ sub, card, setup, onDone }: { sub: CardSub; card: Card; setup
     await write([...others, { ...rest, desc: desc.trim(), cat, day: Math.max(1, Math.min(31, Math.round(num(day)) || sub.day)), ...(steps ? { steps } : {}), ...(end ? { end } : {}) }]);
   };
   const remove = async () => {
-    if (await ask(`Apagar a assinatura ${sub.desc}? Ela sai tambem das faturas passadas. Para so parar de cobrar, use "Ultimo mes".`)) await write(others);
+    if (await ask(`Apagar a assinatura ${sub.desc}? Ela sai também das faturas passadas. Para só parar de cobrar, use "Último mês".`)) await write(others);
   };
   const opts = Array.from({ length: 25 }, (_, i) => addMonths(cur, i - 6)).filter((m) => m >= sub.start);
   return (
     <form className="fin-form loan-pay" onSubmit={save}>
       <div className="row wrapline">
-        <label className="grow">Descricao<input value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
-        <label>Valor por mes (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
+        <label className="grow">Descrição<input value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
+        <label>Valor por mês (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
         <label>Dia<input value={day} inputMode="numeric" onChange={(e) => setDay(e.target.value)} style={{ width: 60 }} /></label>
         <label>Categoria<CatSelect value={cat} onChange={setCat} /></label>
-        <label>Ultimo mes
+        <label>Último mês
           <select value={end} onChange={(e) => setEnd(e.target.value)}>
             <option value="">sem fim (ativa)</option>
             {end && !opts.includes(end) && <option value={end}>{monthLabel(end)}</option>}

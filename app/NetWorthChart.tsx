@@ -44,10 +44,10 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
   if (pts.length < 2)
     return (
       <section className="card">
-        <h2>Evolucao do patrimonio</h2>
+        <h2>Evolução do patrimônio</h2>
         <p className="muted small">
-          O grafico comeca hoje{all[0] ? ` (${brl(all[0].net)})` : ""}: a cada dia em que o agendador roda (ou voce clica em &quot;Atualizar&quot;, em Cripto)
-          fica gravada uma foto do patrimonio liquido. A linha aparece a partir do 2o dia.
+          O gráfico começa hoje{all[0] ? ` (${brl(all[0].net)})` : ""}: a cada dia em que o agendador roda (ou você clica em &quot;Atualizar&quot;, em Cripto)
+          fica gravada uma foto do patrimônio líquido. A linha aparece a partir do 2o dia.
         </p>
       </section>
     );
@@ -84,8 +84,8 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
   return (
     <section className="card">
       <div className="card-head">
-        <h2>Evolucao do patrimonio</h2>
-        <div className="ranges" role="group" aria-label="Periodo">
+        <h2>Evolução do patrimônio</h2>
+        <div className="ranges" role="group" aria-label="Período">
           {hasBens && (
             <>
               <button className={!withBens ? "pill on" : "pill"} onClick={() => setWithBens(false)}>sem bens</button>
@@ -100,7 +100,7 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
       </div>
       <div className="nw-head">
         <div>
-          <span className="muted small">{idx !== null ? date(cur.t) : `Patrimonio liquido${hasBens ? (withBens ? " com bens" : " sem bens") : ""} agora`}</span>
+          <span className="muted small">{idx !== null ? date(cur.t) : `Patrimônio líquido${hasBens ? (withBens ? " com bens" : " sem bens") : ""} agora`}</span>
           <b>{brl(cur.net)}</b>
         </div>
         {idx === null ? (
@@ -110,16 +110,16 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
           </div>
         ) : (
           <div>
-            <span className="muted small">bens - dividas</span>
+            <span className="muted small">bens - dívidas</span>
             <b className="small-b">{brl(cur.bens)} - {brl(cur.dividas)}</b>
           </div>
         )}
       </div>
       <figure className="viz" ref={box}>
         {hasDebt && (
-          <figcaption className="small muted"><i className="key k-net" /> patrimonio liquido <i className="key k-bens" /> bens (sem descontar dividas)</figcaption>
+          <figcaption className="small muted"><i className="key k-net" /> patrimônio líquido <i className="key k-bens" /> bens (sem descontar dívidas)</figcaption>
         )}
-        <svg viewBox={`0 0 ${W} ${H}`} className="chart nw" role="img" aria-label="Evolucao do patrimonio liquido"
+        <svg viewBox={`0 0 ${W} ${H}`} className="chart nw" role="img" aria-label="Evolução do patrimônio líquido"
           onPointerMove={move} onPointerLeave={() => setIdx(null)}>
           <line x1={0} x2={W} y1={y(hi)} y2={y(hi)} className="grid" />
           <line x1={0} x2={W} y1={y(lo)} y2={y(lo)} className="grid" />
@@ -144,7 +144,7 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
         ))}
       </ul>
       <p className="muted small">
-        Uma foto por dia, gravada pelo agendador (ou quando voce clica em &quot;Atualizar&quot;, em Cripto); o ultimo ponto e o valor de agora.
+        Uma foto por dia, gravada pelo agendador (ou quando você clica em &quot;Atualizar&quot;, em Cripto); o último ponto e o valor de agora.
         {cur.partial?.length ? ` Neste dia ficou de fora: ${cur.partial.join(", ")}.` : ""}
       </p>
     </section>

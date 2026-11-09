@@ -35,7 +35,7 @@ const fmtPx = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 
 const day = (t: number) => new Date(t).toLocaleDateString("pt-BR", { timeZone: "UTC" });
 const ago = (t: number) => {
   const m = Math.max(0, Math.round((Date.now() - t) / 60000));
-  return m < 1 ? "agora" : `ha ${m} min`;
+  return m < 1 ? "agora" : `há ${m} min`;
 };
 const signed = (v: number, d = 2) => `${v > 0 ? "+" : ""}${fmt(v, d)}`;
 const pnlClass = (v: number) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
@@ -166,7 +166,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
 
   useEffect(() => {
     if (!user || demo || (role !== "owner" && role !== "member")) return;
-    const onErr = (e: Error) => setError(e.message.includes("permission") ? "Este e-mail nao tem acesso (veja firestore.rules)." : e.message);
+    const onErr = (e: Error) => setError(e.message.includes("permission") ? "Este e-mail não tem acesso (veja firestore.rules)." : e.message);
     const owner = role === "owner";
     const none = () => undefined;
     const u1 = onSnapshot(doc(db(), P("config/main")), (s) => s.exists() && setCfg({ ...DEFAULT_CONFIG, ...(s.data() as AppConfig) }), onErr);
@@ -201,10 +201,10 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     try {
       const res = await fetch("/api/finance", { method: "POST", headers: { Authorization: `Bearer ${await user!.getIdToken()}` } });
       const body = (await res.json().catch(() => ({}))) as { error?: string; errors?: string[] };
-      if (!res.ok) return [`financas: ${body.error ?? `HTTP ${res.status}`}`];
-      return (body.errors ?? []).map((e) => `financas: ${e}`);
+      if (!res.ok) return [`finanças: ${body.error ?? `HTTP ${res.status}`}`];
+      return (body.errors ?? []).map((e) => `finanças: ${e}`);
     } catch (e) {
-      return [`financas: ${String(e)}`];
+      return [`finanças: ${String(e)}`];
     }
   }
 
@@ -231,7 +231,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       const clientProject = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
       if (body.projectId && body.projectId !== clientProject) {
         setError(`O servidor gravou no projeto "${body.projectId}", mas o site le o projeto "${clientProject}". ` +
-          "Gere a chave da conta de servico (FIREBASE_SERVICE_ACCOUNT) no mesmo projeto do Firebase.");
+          "Gere a chave da conta de serviço (FIREBASE_SERVICE_ACCOUNT) no mesmo projeto do Firebase.");
         return;
       }
       // Membro: o servidor so le a carteira dele e as cotacoes
@@ -239,7 +239,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         const b = body as { wallet?: { error?: string; errors?: string[]; reason?: string; total?: number } | null };
         const finProblems = await finJob;
         const probs = [...finProblems, b.wallet?.error, ...(b.wallet?.errors ?? [])].filter(Boolean);
-        setNotice(`Atualizado as ${new Date().toLocaleTimeString("pt-BR")}` + (b.wallet?.total !== undefined ? `: carteira $${fmt(b.wallet.total)}` : b.wallet?.reason ? ` (carteira: ${b.wallet.reason})` : "") +
+        setNotice(`Atualizado às ${new Date().toLocaleTimeString("pt-BR")}` + (b.wallet?.total !== undefined ? `: carteira $${fmt(b.wallet.total)}` : b.wallet?.reason ? ` (carteira: ${b.wallet.reason})` : "") +
           (probs.length ? `. Avisos: ${probs.join("; ")}` : "."));
         return;
       }
@@ -251,9 +251,9 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         ...finProblems, body.wallet?.error, ...(body.wallet?.errors ?? []), body.fichas?.error, ...(body.fichas?.errors ?? []),
         snap.empty ? `nada foi encontrado em "latest" no projeto ${clientProject}` : undefined,
       ].filter(Boolean);
-      setNotice(`Atualizado as ${new Date().toLocaleTimeString("pt-BR")}: sinais` +
+      setNotice(`Atualizado às ${new Date().toLocaleTimeString("pt-BR")}: sinais` +
         (body.wallet?.total !== undefined ? `, carteiras ($${fmt(body.wallet.total)})` : body.wallet?.reason ? ` (carteiras: ${body.wallet.reason})` : "") +
-        (body.fichas?.count !== undefined ? `, ${body.fichas.count} fichas` : "") + ", financas." +
+        (body.fichas?.count !== undefined ? `, ${body.fichas.count} fichas` : "") + ", finanças." +
         (problems.length ? ` Avisos: ${problems.join("; ")}` : ""));
     } catch (e) {
       setError(`Atualizar falhou: ${String(e)}`);
@@ -272,16 +272,16 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const debt = debts(months, gSetup);
 
   if (!firebaseConfigured && !demo)
-    return <main className="wrap center"><h1>SeuBitico</h1><p className="error">Firebase nao configurado: cadastre as variaveis NEXT_PUBLIC_FIREBASE_* na Vercel e faca Redeploy.</p></main>;
+    return <main className="wrap center"><h1>SeuBitico</h1><p className="error">Firebase não configurado: cadastre as variáveis NEXT_PUBLIC_FIREBASE_* na Vercel e faça Redeploy.</p></main>;
   if (user === undefined || (user && role === null)) return <main className="wrap"><p>Carregando...</p></main>;
   if (!user)
     return (
       <main className="wrap login">
         <img className="brand-mark" src="/seubitico-256.png" alt="SeuBitico" width={96} height={96} />
         <h1 className="brand-name">Seu<span className="bb">Bitico</span></h1>
-        <p className="muted">Financas pessoais e cripto num lugar so: contas, cartoes, investimentos e carteira.</p>
+        <p className="muted">Finanças pessoais e cripto num lugar só: contas, cartões, investimentos e carteira.</p>
         <button onClick={() => signInWithPopup(auth(), new GoogleAuthProvider())}>Entrar com Google</button>
-        <p className="muted small">Ferramenta educacional, nao e recomendacao de investimento.</p>
+        <p className="muted small">Ferramenta educacional, não é recomendação de investimento.</p>
       </main>
     );
   if (role === "none")
@@ -289,23 +289,23 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       <main className="wrap login">
         <img className="brand-mark" src="/seubitico-256.png" alt="SeuBitico" width={96} height={96} />
         <h1 className="brand-name">Seu<span className="bb">Bitico</span></h1>
-        <p>O e-mail <b>{user.email}</b> ainda nao tem acesso.</p>
-        <p className="muted small">A area e para membros do canal. Se voce e membro, envie este e-mail para o SeuBitico liberar o acesso.</p>
+        <p>O e-mail <b>{user.email}</b> ainda não tem acesso.</p>
+        <p className="muted small">A área e para membros do canal. Se você e membro, envie este e-mail para o SeuBitico liberar o acesso.</p>
         <button className="ghost" onClick={() => signOut(auth())}>Sair</button>
       </main>
     );
 
   // Topo: Visao geral, Financas e Cripto; dentro de Cripto: Robo, Carteira, Tokens e Operacoes
   const tabs = [
-    { id: "geral", label: "Visao geral" },
-    { id: "financas", label: "Financas" },
+    { id: "geral", label: "Visão geral" },
+    { id: "financas", label: "Finanças" },
     { id: "cripto", label: "Cripto" },
   ] as const;
   const cryptoSubs = [
-    { id: "sinais", label: "Robo" },
+    { id: "sinais", label: "Robô" },
     { id: "carteira", label: "Carteira" },
     { id: "tokens", label: "Tokens" },
-    { id: "operacoes", label: "Operacoes" },
+    { id: "operacoes", label: "Operações" },
   ] as const;
   const inCrypto = CRYPTO_TABS.includes(tab);
   const lastCrypto = (): TabId => {
@@ -326,7 +326,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             <img className="brand-mark" src="/seubitico-96.png" alt="" width={34} height={34} />
             <div className="brand">
               <span className="brand-name">Seu<span className="bb">Bitico</span></span>
-              <span className="muted small">financas e cripto{updatedAt ? ` - dados ${ago(updatedAt)}` : ""}</span>
+              <span className="muted small">finanças e cripto{updatedAt ? ` - dados ${ago(updatedAt)}` : ""}</span>
             </div>
           </div>
           <div className="row">
@@ -362,10 +362,10 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
               ))}
             </nav>
             <div className="toolbar-actions">
-              <button onClick={refresh} disabled={busy} className="primary small-btn" title="Sinais do robo, carteiras, fichas dos tokens e cotacoes">
+              <button onClick={refresh} disabled={busy} className="primary small-btn" title="Sinais do robô, carteiras, fichas dos tokens e cotações">
                 {busy ? "Atualizando..." : "Atualizar"}
               </button>
-              <button className="ghost icon" onClick={() => setShowCfg(true)} aria-label="Configuracao do cripto" title="Configuracao do cripto">
+              <button className="ghost icon" onClick={() => setShowCfg(true)} aria-label="Configuração do cripto" title="Configuração do cripto">
                 <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -376,8 +376,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         )}
         {tab === "sinais" && (
           <>
-            {member && <p className="banner">Estudo educacional: mostra como a regra do robo (SMA 150 + HMA 100) se comportou e onde esta cada moeda em relacao a ela.
-              Nao e recomendacao de compra ou venda.</p>}
+            {member && <p className="banner">Estudo educacional: mostra como a regra do robô (SMA 150 + HMA 100) se comportou e onde está cada moeda em relação a ela.
+              Não é recomendação de compra ou venda.</p>}
             {!latest.length && <p className="muted">Nenhum sinal ainda. Em Cripto, clique em &quot;Atualizar&quot;.</p>}
             <div className="grid">
               {[...latest].sort((a, b) => SYMBOLS.indexOf(a.symbol) - SYMBOLS.indexOf(b.symbol)).map((l) => (
@@ -390,7 +390,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         )}
         {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup}
           onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }}
-          onQuotes={async () => { const p = await refreshFinance(); if (p.length) setError(p.join("; ")); else setNotice(`Cotacoes atualizadas as ${new Date().toLocaleTimeString("pt-BR")}.`); }} />}
+          onQuotes={async () => { const p = await refreshFinance(); if (p.length) setError(p.join("; ")); else setNotice(`Cotações atualizadas às ${new Date().toLocaleTimeString("pt-BR")}.`); }} />}
         {tab === "carteira" && <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} />}
         {tab === "tokens" && !member && <FichasCard fichas={fichas} />}
         {tab === "operacoes" && !member && (
@@ -401,8 +401,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
           </>
         )}
 
-        <p className="muted small footer">Ferramenta educacional, nao e recomendacao de investimento. O candle diario fecha as 21:00 (Brasilia).
-          Opere so na sua carteira (DEX); a Binance e usada apenas como fonte de precos.</p>
+        <p className="muted small footer">Ferramenta educacional, não é recomendação de investimento. O candle diário fecha às 21:00 (Brasília).
+          Opere só na sua carteira (DEX); a Binance é usada apenas como fonte de preços.</p>
       </main>
       {showCfg && (
         <Modal onClose={() => setShowCfg(false)}>
@@ -460,7 +460,7 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
     const ps = l.preview?.state;
     if (ps) {
       const pd = decide(ps, capital, cfg.positions[l.symbol] ?? 0, params);
-      if (pd.kind !== d.kind) todo.push({ tone: "info", who: coin, text: `previa (nao e sinal): se hoje fechar como esta, ${pd.label}`, tab: "sinais" });
+      if (pd.kind !== d.kind) todo.push({ tone: "info", who: coin, text: `prévia (não é sinal): se hoje fechar como está, ${pd.label}`, tab: "sinais" });
     }
   }
   for (const f of fichas?.items ?? []) {
@@ -470,8 +470,8 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
       todo.push({ tone: c === "saida" ? "sell" : c === "reduzir" || c === "sem_vaga" ? "warn" : "buy", who: f.symbol, text: `${f.situacao.label}${f.action ? `: ${f.action}` : ""}`, tab: "tokens" });
   }
   if (wallet) for (const n of walletNotices(wallet)) if (n.level !== "info") todo.push({ tone: "warn", who: "Carteira", text: n.text, tab: "carteira" });
-  if (unknown && !member) todo.push({ tone: "info", who: "Robo", text: "ha posicao sem preco medio: informe-o em Carteira > Meus tokens para ver o lucro", tab: "sinais" });
-  if (sync?.shorts.length) todo.push({ tone: "warn", who: "Lighter", text: `posicao vendida (${sync.shorts.join(", ")}) fica fora da conta`, tab: "carteira" });
+  if (unknown && !member) todo.push({ tone: "info", who: "Robô", text: "há posição sem preço médio: informe-o em Carteira > Meus tokens para ver o lucro", tab: "sinais" });
+  if (sync?.shorts.length) todo.push({ tone: "warn", who: "Lighter", text: `posição vendida (${sync.shorts.join(", ")}) fica fora da conta`, tab: "carteira" });
   // Financas: pagamentos vencidos e pontos para revisar
   for (const p of upcoming(money.months, money.setup).filter((x) => x.late))
     todo.push({ tone: "warn", who: "Pagar", text: `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : p.card ? "cards" : "lanc" });
@@ -480,14 +480,14 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
     if (st.late) todo.push({ tone: "warn", who: "Receber", text: `${r.name}: ${st.late} ${st.late > 1 ? "parcelas atrasadas" : "parcela atrasada"} (R$ ${fmt(st.lateV)})`, tab: "financas", fin: "recv" });
   }
   for (const b of budgetAlerts(money.months, money.setup))
-    todo.push({ tone: "warn", who: "Cartao", text: `${b.c.name}: R$ ${fmt(b.used, 0)} na fatura aberta, ${fmt(b.pct * 100, 0)}% do planejado (R$ ${fmt(b.c.budget!, 0)})`, tab: "financas", fin: "cards" });
+    todo.push({ tone: "warn", who: "Cartão", text: `${b.c.name}: R$ ${fmt(b.used, 0)} na fatura aberta, ${fmt(b.pct * 100, 0)}% do planejado (R$ ${fmt(b.c.budget!, 0)})`, tab: "financas", fin: "cards" });
   {
     const cm = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 7);
     for (const f of money.setup.fixos) if (fixoActive(f, cm) && fixoReajPending(f, cm))
-      todo.push({ tone: "info", who: "Fixo", text: `${f.desc} reajusta este mes: atualize o novo valor (Lancamentos > Gasto fixo)`, tab: "financas", fin: "lanc" });
+      todo.push({ tone: "info", who: "Fixo", text: `${f.desc} reajusta este mês: atualize o novo valor (Lançamentos > Gasto fixo)`, tab: "financas", fin: "lanc" });
   }
   const rc = reviewCount(money.months, money.setup);
-  if (rc) todo.push({ tone: "info", who: "Financas", text: `${rc} ${rc > 1 ? "pontos" : "ponto"} para revisar nos lancamentos (para os numeros ficarem certos)`, tab: "financas", fin: "lanc" });
+  if (rc) todo.push({ tone: "info", who: "Finanças", text: `${rc} ${rc > 1 ? "pontos" : "ponto"} para revisar nos lançamentos (para os números ficarem certos)`, tab: "financas", fin: "lanc" });
 
   const total = wallet && wallet.address === walletKey(walletAddresses(cfg)) ? wallet.total : null;
   const blocks = total !== null && wallet ? allocationBlocks(wallet, cfg, latest, fichas) : [];
@@ -513,7 +513,7 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
         ) : (
           <p className="muted">Nada a fazer: nenhum sinal novo, nenhum pagamento vencido e nenhum aviso.</p>
         )}
-        <p className="muted small">{member ? "Clique num item para ver os detalhes." : "Sinais oficiais so no fechamento diario (21:00 de Brasilia). Clique num item para ver os detalhes."}</p>
+        <p className="muted small">{member ? "Clique num item para ver os detalhes." : "Sinais oficiais só no fechamento diário (21:00 de Brasília). Clique num item para ver os detalhes."}</p>
       </section>
 
       {hasMoney && <MonthAndUpcoming months={money.months} setup={money.setup} onLanc={() => onFin("lanc")} onBens={() => onFin("bens")} />}
@@ -522,10 +522,10 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
       <section className="card">
         <div className="card-head"><h2>Cripto</h2><button className="link" onClick={() => onTab("carteira")}>ver cripto &rsaquo;</button></div>
         <div className="kpis">
-          <div><span>{hasMoney ? "Carteira cripto" : "Patrimonio"}</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
-            <small className="muted">{total === null ? "cadastre as carteiras" : member ? "suas carteiras" : `nucleo $${fmt(cfg.capitalUsdt)}`}</small></div>
-          {!member && <><div><span>Lucro aberto (robo)</span><b className={pnlClass(open)}>{signed(open)}</b>
-            <small className="muted">{invested > 0 ? `${signed((open / invested) * 100, 1)}% sobre $${fmt(invested)}` : "sem posicao"}</small></div>
+          <div><span>{hasMoney ? "Carteira cripto" : "Patrimônio"}</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
+            <small className="muted">{total === null ? "cadastre as carteiras" : member ? "suas carteiras" : `núcleo $${fmt(cfg.capitalUsdt)}`}</small></div>
+          {!member && <><div><span>Lucro aberto (robô)</span><b className={pnlClass(open)}>{signed(open)}</b>
+            <small className="muted">{invested > 0 ? `${signed((open / invested) * 100, 1)}% sobre $${fmt(invested)}` : "sem posição"}</small></div>
           <div><span>Realizado</span><b className={pnlClass(realized)}>{signed(realized)}</b><small className="muted">vendas registradas</small></div>
           <div><span>Total</span><b className={pnlClass(open + realized)}>{signed(open + realized)}</b><small className="muted">sem taxas e funding</small></div></>}
         </div>
@@ -534,11 +534,11 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
 
       {!member && <div className="two-col">
         <section className="card">
-          <h2>Alocacao</h2>
+          <h2>Alocação</h2>
           {blocks.length ? (
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Bloco</th><th>Alvo</th><th>Real</th><th>Diferenca</th></tr></thead>
+                <thead><tr><th>Bloco</th><th>Alvo</th><th>Real</th><th>Diferença</th></tr></thead>
                 <tbody>
                   {blocks.map((b) => (
                     <tr key={b.name}>
@@ -556,15 +556,15 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
           ) : (
             <p className="muted">Cadastre as carteiras na engrenagem de Cripto e clique em &quot;Atualizar&quot;.</p>
           )}
-          <p className="muted small">Divisao: nucleo {fmt(alloc.core * 100, 0)}% / satelite {fmt(alloc.satellite * 100, 0)}% (engrenagem em Cripto).</p>
+          <p className="muted small">Divisão: núcleo {fmt(alloc.core * 100, 0)}% / satélite {fmt(alloc.satellite * 100, 0)}% (engrenagem em Cripto).</p>
         </section>
 
         <section className="card">
-          <h2>Posicoes do robo</h2>
+          <h2>Posições do robô</h2>
           {rows.length ? (
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Moeda</th><th>Posicao</th><th>Preco medio</th><th>Agora</th><th>Lucro</th></tr></thead>
+                <thead><tr><th>Moeda</th><th>Posição</th><th>Preço médio</th><th>Agora</th><th>Lucro</th></tr></thead>
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.symbol}>
@@ -577,9 +577,9 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
               </table>
             </div>
           ) : (
-            <p className="muted">Sem posicao em BTC, ETH ou SOL.</p>
+            <p className="muted">Sem posição em BTC, ETH ou SOL.</p>
           )}
-          <p className="muted small">Preco {prices.at ? `ao vivo (${ago(prices.at)})` : "do ultimo calculo"}.</p>
+          <p className="muted small">Preço {prices.at ? `ao vivo (${ago(prices.at)})` : "do último cálculo"}.</p>
         </section>
       </div>}
     </>
@@ -593,8 +593,8 @@ function Performance({ cfg, latest, trades, prices }: { cfg: AppConfig; latest: 
   if (!perf)
     return (
       <section className="card">
-        <h2>Real x estrategia</h2>
-        <p className="muted small">Em Cripto, clique em &quot;Atualizar&quot; para carregar a serie da estrategia.</p>
+        <h2>Real x estratégia</h2>
+        <p className="muted small">Em Cripto, clique em &quot;Atualizar&quot; para carregar a série da estratégia.</p>
       </section>
     );
   const last = perf.points[perf.points.length - 1];
@@ -602,24 +602,24 @@ function Performance({ cfg, latest, trades, prices }: { cfg: AppConfig; latest: 
   const pctOf = (v: number) => (perf.capital > 0 ? ` (${signed((v / perf.capital) * 100, 1)}%)` : "");
   return (
     <section className="card">
-      <div className="row between"><h2>Real x estrategia</h2><span className="muted small">desde {day(perf.start)}</span></div>
+      <div className="row between"><h2>Real x estratégia</h2><span className="muted small">desde {day(perf.start)}</span></div>
       <div className="summary perf">
         <div><span className="muted small">Seu resultado</span><b className={pnlClass(last.real)}>{signed(last.real)} USDT{pctOf(last.real)}</b></div>
-        <div><span className="muted small">Estrategia a risca</span><b className={pnlClass(last.strat)}>{signed(last.strat)} USDT{pctOf(last.strat)}</b></div>
-        <div><span className="muted small">Diferenca</span><b className={pnlClass(diff)}>{signed(diff)} USDT</b></div>
+        <div><span className="muted small">Estratégia a risca</span><b className={pnlClass(last.strat)}>{signed(last.strat)} USDT{pctOf(last.strat)}</b></div>
+        <div><span className="muted small">Diferença</span><b className={pnlClass(diff)}>{signed(diff)} USDT</b></div>
       </div>
       <PerfChart points={perf.points} />
-      <p className="legend small"><i className="k-real" /> seu resultado <i className="k-strat" /> estrategia a risca</p>
+      <p className="legend small"><i className="k-real" /> seu resultado <i className="k-strat" /> estratégia a risca</p>
       <p className="muted small">
-        A estrategia usa o capital configurado de cada moeda ({fmt(perf.capital)} USDT) e opera no fechamento das 21:00.
-        A diferenca mostra atraso, preco e tamanho diferentes dos sinais. Sem taxas e funding nos dois.
-        {perf.clipped ? " As operacoes mais antigas que o grafico (240 dias) entram no primeiro dia." : ""}
+        A estratégia usa o capital configurado de cada moeda ({fmt(perf.capital)} USDT) e opera no fechamento das 21:00.
+        A diferença mostra atraso, preço e tamanho diferentes dos sinais. Sem taxas e funding nos dois.
+        {perf.clipped ? " As operações mais antigas que o gráfico (240 dias) entram no primeiro dia." : ""}
       </p>
     </section>
   );
 }
 
-const EVENT_LABEL = { entrada: "Compra", reentrada: "Reentrada", cheia: "Posicao cheia", meia: "Reduz a metade", saida: "Venda" } as const;
+const EVENT_LABEL = { entrada: "Compra", reentrada: "Reentrada", cheia: "Posição cheia", meia: "Reduz a metade", saida: "Venda" } as const;
 const pctFmt = (v: number, d = 1) => `${v > 0 ? "+" : ""}${fmt(v * 100, d)}%`;
 // Preco de referencia com 2 casas (ou mais para moedas baratas): so para leitura, nao e quantidade
 const refPx = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: v >= 100 ? 2 : 4 });
@@ -652,7 +652,7 @@ function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppConfig; pr
     <section className="card asset">
       <div className="card-head">
         <h2>{coin} <span className="muted small">{inMarket ? `comprado ${fmt(s.expo * 100, 0)}% da fatia` : "fora do mercado"}</span></h2>
-        <div className="price-now"><b>{fmtPx(cur.price)}</b><span className="muted small">{cur.live ? "ao vivo" : `recalculo ${ago(cur.at)}`}</span></div>
+        <div className="price-now"><b>{fmtPx(cur.price)}</b><span className="muted small">{cur.live ? "ao vivo" : `recálculo ${ago(cur.at)}`}</span></div>
       </div>
 
       {study ? (
@@ -662,27 +662,27 @@ function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppConfig; pr
         </div>
       ) : (
       <div className={`signal ${tone}`}>
-        <span className="signal-tag">Sinal oficial - fechamento de {when} - vale ate o proximo fechamento</span>
+        <span className="signal-tag">Sinal oficial - fechamento de {when} - vale até o próximo fechamento</span>
         <b>{d.label}</b>
         {d.qty > 0 && <span>{fmtQty(d.qty)} {coin} (~${fmt(d.qty * s.close)})</span>}
       </div>
       )}
       {!study && pd && ps && (
         <div className={`preview-box ${pd.kind !== d.kind ? "changes" : ""}`}>
-          <span className="signal-tag">Previa (nao e sinal) - se o candle de hoje fechasse agora a {fmtPx(ps.close)}</span>
-          {pd.kind !== d.kind ? <b>{pd.label}</b> : <span className="muted">sem mudanca</span>}
+          <span className="signal-tag">Prévia (não é sinal) - se o candle de hoje fechasse agora a {fmtPx(ps.close)}</span>
+          {pd.kind !== d.kind ? <b>{pd.label}</b> : <span className="muted">sem mudança</span>}
         </div>
       )}
 
       {!study && pos > 0 && (
         <div className="pos-row">
-          <span>Sua posicao: <b>{fmtQty(pos)} {coin}</b> (~${fmt(pos * cur.price)})</span>
-          <span className={pnlClass(pnl.usdt)}>{avg > 0 ? `${signed(pnl.usdt)} (${signed(pnl.pct, 1)}%)` : <span className="muted">sem preco medio</span>}</span>
+          <span>Sua posição: <b>{fmtQty(pos)} {coin}</b> (~${fmt(pos * cur.price)})</span>
+          <span className={pnlClass(pnl.usdt)}>{avg > 0 ? `${signed(pnl.usdt)} (${signed(pnl.pct, 1)}%)` : <span className="muted">sem preço médio</span>}</span>
         </div>
       )}
 
       <div className="rules">
-        <span className="small muted">{inMarket ? "Saidas (qualquer uma vale, no fechamento):" : "Para entrar (no fechamento):"}</span>
+        <span className="small muted">{inMarket ? "Saídas (qualquer uma vale, no fechamento):" : "Para entrar (no fechamento):"}</span>
         <ul>
           {inMarket ? (
             <>
@@ -694,30 +694,30 @@ function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppConfig; pr
             <>
               <li><span>Fechar acima da SMA 150 + 2%</span><b>{refPx(sma * (1 + buf))}</b><i className="muted small">{dist(sma * (1 + buf))}</i></li>
               <li><span>e a HMA 100 subindo</span><b className={s.hmaDown ? "warn" : "pos"}>{s.hmaDown ? "caindo" : "subindo"}</b><i /></li>
-              {cfg.reentry && <li><span>ou repique na SMA (meia posicao)</span><b>{refPx(sma)}</b><i className="muted small">{dist(sma)}</i></li>}
+              {cfg.reentry && <li><span>ou repique na SMA (meia posição)</span><b>{refPx(sma)}</b><i className="muted small">{dist(sma)}</i></li>}
             </>
           )}
         </ul>
       </div>
 
       <Chart chart={l.chart} />
-      <p className="legend small"><i className="k-close" /> preco <i className="k-sma" /> SMA {DEFAULT_PARAMS.sma} <i className="k-hma" /> HMA {DEFAULT_PARAMS.hma} <i className="k-band" /> comprado</p>
+      <p className="legend small"><i className="k-close" /> preço <i className="k-sma" /> SMA {DEFAULT_PARAMS.sma} <i className="k-hma" /> HMA {DEFAULT_PARAMS.hma} <i className="k-band" /> comprado</p>
 
       {stats && h && (
         <div className="results">
           <div className="card-head">
-            <h3>Resultados do robo</h3>
+            <h3>Resultados do robô</h3>
             <span className={`health health-${h.level}`}>{h.label}</span>
           </div>
           {h.reasons.length > 0 && <ul className="alerts small">{h.reasons.map((r) => <li key={r} className={h.level === "bad" ? "error" : "warn"}>{r}</li>)}</ul>}
           <div className="stat-grid">
-            <div><span>Robo</span><b className={pnlClass(stats.totalRet)}>{pctFmt(stats.totalRet, 0)}</b><small>so segurar {pctFmt(stats.bhRet, 0)}</small></div>
-            <div><span>Pior queda</span><b>{pctFmt(stats.mdd, 0)}</b><small>so segurar {pctFmt(stats.bhMdd, 0)}{ref ? ` - teste ${pctFmt(ref.mdd, 0)}` : ""}</small></div>
+            <div><span>Robô</span><b className={pnlClass(stats.totalRet)}>{pctFmt(stats.totalRet, 0)}</b><small>só segurar {pctFmt(stats.bhRet, 0)}</small></div>
+            <div><span>Pior queda</span><b>{pctFmt(stats.mdd, 0)}</b><small>só segurar {pctFmt(stats.bhMdd, 0)}{ref ? ` - teste ${pctFmt(ref.mdd, 0)}` : ""}</small></div>
             <div><span>Queda agora</span><b className={stats.curDD < -0.1 ? "warn" : ""}>{pctFmt(stats.curDD, 0)}</b><small>{stats.daysUnderwater} dias sem novo pico</small></div>
             <div><span>12 meses</span><b className={pnlClass(stats.last12?.strat ?? 0)}>{stats.last12 ? pctFmt(stats.last12.strat, 0) : "-"}</b>
-              <small>{stats.last12 ? `so segurar ${pctFmt(stats.last12.bh, 0)}` : ""}</small></div>
+              <small>{stats.last12 ? `só segurar ${pctFmt(stats.last12.bh, 0)}` : ""}</small></div>
             <div><span>Trades</span><b>{stats.count}</b><small>acerto {fmt(stats.win * 100, 0)}%{ref ? ` (teste ${fmt(ref.win * 100, 0)}%)` : ""}</small></div>
-            <div><span>Ganho / perda media</span><b>{pctFmt(stats.avgWin, 0)} / {pctFmt(stats.avgLoss, 1)}</b>
+            <div><span>Ganho / perda média</span><b>{pctFmt(stats.avgWin, 0)} / {pctFmt(stats.avgLoss, 1)}</b>
               <small>perdas seguidas: {stats.streakNow} (max {stats.streakMax}{ref ? `, teste ${ref.streak}` : ""})</small></div>
           </div>
           <ul className="events trades">
@@ -732,21 +732,21 @@ function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppConfig; pr
             ))}
           </ul>
           <p className="muted small">
-            Desde {day(stats.since)} ({fmt(stats.years, 1)} anos de graficos disponiveis), seguindo o robo a risca com a fatia cheia, a vista e 0,1% de taxa.
-            &quot;Teste&quot; = backtest ate 07/2024. A estrategia para de fazer sentido se a queda ou as perdas seguidas passarem bem do teste.
+            Desde {day(stats.since)} ({fmt(stats.years, 1)} anos de gráficos disponíveis), seguindo o robô a risca com a fatia cheia, a vista e 0,1% de taxa.
+            &quot;Teste&quot; = backtest até 07/2024. A estratégia para de fazer sentido se a queda ou as perdas seguidas passarem bem do teste.
           </p>
         </div>
       )}
 
       <details className="history">
-        <summary className="small">Detalhes e historico de sinais ({l.events?.length ?? 0})</summary>
+        <summary className="small">Detalhes e histórico de sinais ({l.events?.length ?? 0})</summary>
         <dl>
           <dt>Fechamento do candle</dt><dd>{fmtPx(s.close)}</dd>
           <dt>SMA {DEFAULT_PARAMS.sma}</dt><dd>{fmtPx(sma)} ({fmt(((s.close / (sma || s.close)) - 1) * 100, 1)}%)</dd>
           <dt>HMA {DEFAULT_PARAMS.hma}</dt><dd className={s.hmaDown ? "warn" : ""}>{s.hmaDown ? "caindo" : "subindo"}{s.turnDown ? " (virou hoje)" : ""}</dd>
           <dt>Volatilidade 30d</dt><dd>{fmt((s.vol ?? 0) * 100, 0)}% ao ano</dd>
-          <dt>Exposicao alvo</dt><dd>{fmt(s.expo * 100, 0)}% = {fmtQty(d.targetQty)} {coin}</dd>
-          <dt>Fatia do robo</dt><dd>${fmt(capital)}</dd>
+          <dt>Exposição alvo</dt><dd>{fmt(s.expo * 100, 0)}% = {fmtQty(d.targetQty)} {coin}</dd>
+          <dt>Fatia do robô</dt><dd>${fmt(capital)}</dd>
         </dl>
         {l.events?.length ? (
           <ul className="events">
@@ -763,7 +763,7 @@ function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppConfig; pr
             ))}
           </ul>
         ) : null}
-        <p className="muted small">% na venda = variacao do preco desde a entrada (sem o tamanho da posicao).</p>
+        <p className="muted small">% na venda = variação do preço desde a entrada (sem o tamanho da posição).</p>
       </details>
     </section>
   );
@@ -782,7 +782,7 @@ function TradeForm({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[
     const l = latest.find((x) => x.symbol === symbol);
     const p = Number(price.replace(",", ".")) || (l ? currentPrice(l, prices).price : 0);
     if (!(q > 0)) return setMsg("Informe a quantidade.");
-    if (!(p > 0)) return setMsg("Informe o preco.");
+    if (!(p > 0)) return setMsg("Informe o preço.");
     const { pos: next, avg: nextAvg, realized } = applyTrade(
       { pos: cfg.positions[symbol] ?? 0, avg: cfg.avgPrice?.[symbol] ?? 0, realized: cfg.realized?.[symbol] ?? 0 }, side, q, p);
     await addDoc(collection(db(), "trades"), { symbol, side, qty: q, price: p, t: Date.now() } satisfies TradeDoc);
@@ -791,18 +791,18 @@ function TradeForm({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[
       { merge: true });
     setQty("");
     setPrice("");
-    setMsg(`Registrado. Posicao em ${symbol}: ${fmtQty(next)}${next > 0 ? ` a preco medio ${fmtPx(nextAvg)}` : ""}.`);
+    setMsg(`Registrado. Posição em ${symbol}: ${fmtQty(next)}${next > 0 ? ` a preço médio ${fmtPx(nextAvg)}` : ""}.`);
   }
 
   return (
     <section className="card">
-      <h2>Registrar operacao manual</h2>
-      <p className="muted small">So para o que voce faz fora das carteiras cadastradas (o saldo delas ja entra sozinho).</p>
+      <h2>Registrar operação manual</h2>
+      <p className="muted small">Só para o que você faz fora das carteiras cadastradas (o saldo delas já entra sozinho).</p>
       <div className="row wrap-row">
         <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>{symbols.map((s) => <option key={s} value={s}>{s.replace("USDT", "")}</option>)}</select>
         <select value={side} onChange={(e) => setSide(e.target.value as "compra" | "venda")}><option value="compra">compra</option><option value="venda">venda</option></select>
         <input placeholder="quantidade" value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" />
-        <input placeholder="preco (vazio = atual)" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" />
+        <input placeholder="preço (vazio = atual)" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" />
         <button onClick={save}>Registrar</button>
       </div>
       {msg && <p className="muted small">{msg}</p>}
@@ -840,9 +840,9 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
     const clean = (m: Record<string, number> = {}) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, round8(v)]));
     const wallets = [...new Set(walletText.split(/[\s,;]+/).map((a) => a.trim()).filter(Boolean))];
     const bad = wallets.filter((a) => !isEvmAddress(a) && !isSolAddress(a));
-    if (bad.length) return setErr(`Endereco invalido: ${bad.join(", ")} (EVM = 0x + 40 caracteres; Solana = 32 a 44 caracteres).`);
-    if (draft.lighter?.enabled && !wallets.some(isEvmAddress)) return setErr("Para importar da Lighter, informe um endereco EVM (0x...).");
-    if ((draft.capitalFromWallet || draft.walletPositions) && !wallets.length) return setErr("Informe pelo menos uma carteira para usar o patrimonio ou o saldo dela.");
+    if (bad.length) return setErr(`Endereço inválido: ${bad.join(", ")} (EVM = 0x + 40 caracteres; Solana = 32 a 44 caracteres).`);
+    if (draft.lighter?.enabled && !wallets.some(isEvmAddress)) return setErr("Para importar da Lighter, informe um endereço EVM (0x...).");
+    if ((draft.capitalFromWallet || draft.walletPositions) && !wallets.length) return setErr("Informe pelo menos uma carteira para usar o patrimônio ou o saldo dela.");
     setSaving(true);
     await setDoc(doc(db(), "config/main"), {
       ...draft, wallet: wallets.find(isEvmAddress) ?? "", wallets,
@@ -866,7 +866,7 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
   return (
     <section className="cfg">
       <div className="modal-head">
-        <h2>Configuracao</h2>
+        <h2>Configuração</h2>
         <button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button>
       </div>
 
@@ -875,7 +875,7 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
         <div className="choice">
           <label className="radio">
             <input type="radio" checked={!!draft.capitalFromWallet} onChange={() => setDraft({ ...draft, capitalFromWallet: true })} />
-            <span><b>Patrimonio das carteiras</b><small>o total lido nas carteiras abaixo (recomendado)</small></span>
+            <span><b>Patrimônio das carteiras</b><small>o total lido nas carteiras abaixo (recomendado)</small></span>
           </label>
           <label className="radio">
             <input type="radio" checked={!draft.capitalFromWallet} onChange={() => setDraft({ ...draft, capitalFromWallet: false })} />
@@ -886,30 +886,30 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
           )}
         </div>
         <div className="split">
-          <label>Nucleo (robo BTC/ETH/SOL) %<NumInput value={round8(alloc.core * 100)} onChange={setCore} /></label>
-          <label>Satelite (rompimento em outros tokens) %<NumInput value={round8(alloc.satellite * 100)} onChange={(v) => setCore(100 - v)} /></label>
+          <label>Núcleo (robô BTC/ETH/SOL) %<NumInput value={round8(alloc.core * 100)} onChange={setCore} /></label>
+          <label>Satélite (rompimento em outros tokens) %<NumInput value={round8(alloc.satellite * 100)} onChange={(v) => setCore(100 - v)} /></label>
         </div>
-        <p className="hint">O robo usa so o nucleo; o satelite tem ate 5 tokens. Satelite 0% desliga o rompimento.</p>
+        <p className="hint">O robô usa só o núcleo; o satélite tem até 5 tokens. Satélite 0% desliga o rompimento.</p>
       </fieldset>
 
       <fieldset>
         <legend>2. Carteiras</legend>
-        <label>Enderecos publicos, um por linha (EVM 0x... da Rabby/Phantom e Solana da Phantom)
+        <label>Endereços públicos, um por linha (EVM 0x... da Rabby/Phantom e Solana da Phantom)
           <textarea rows={3} value={walletText} placeholder={"0x... (Rabby)\n7xKX... (Phantom Solana)"} spellCheck={false}
             onChange={(e) => setWalletText(e.target.value)} />
         </label>
         <label className="check">
           <input type="checkbox" checked={!!draft.walletPositions} onChange={(e) => setDraft({ ...draft, walletPositions: e.target.checked })} />
-          A posicao do robo vem do saldo das carteiras (cbBTC, WETH, stETH, JitoSOL... contam como BTC/ETH/SOL)
+          A posição do robô vem do saldo das carteiras (cbBTC, WETH, stETH, JitoSOL... contam como BTC/ETH/SOL)
         </label>
-        <p className="hint">So leitura pelo endereco publico: nunca pede chave nem assinatura.</p>
+        <p className="hint">Só leitura pelo endereço público: nunca pede chave nem assinatura.</p>
       </fieldset>
 
       <fieldset>
-        <legend>3. Robo (BTC, ETH, SOL)</legend>
+        <legend>3. Robô (BTC, ETH, SOL)</legend>
         <div className="table-scroll">
           <table className="cfg-table">
-            <thead><tr><th>Moeda</th><th>Peso no nucleo (%)</th>{!draft.walletPositions && <th>Preco medio (para o lucro)</th>}</tr></thead>
+            <thead><tr><th>Moeda</th><th>Peso no núcleo (%)</th>{!draft.walletPositions && <th>Preço médio (para o lucro)</th>}</tr></thead>
             <tbody>
               {symbols.map((s) => (
                 <tr key={s}>
@@ -921,29 +921,29 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
             </tbody>
           </table>
         </div>
-        {draft.walletPositions && <p className="hint">Preco medio: vem da lista &quot;Meus tokens&quot; (aba Carteira), automatico ou digitado la.</p>}
+        {draft.walletPositions && <p className="hint">Preço médio: vem da lista &quot;Meus tokens&quot; (aba Carteira), automático ou digitado la.</p>}
         {Math.abs(totalWeight - 1) > 0.011 && <p className="warn small">Os pesos somam {fmt(totalWeight * 100, 0)}%: o normal e 100%.</p>}
         <label className="check">
           <input type="checkbox" checked={draft.reentry} onChange={(e) => setDraft({ ...draft, reentry: e.target.checked })} />
-          Reentrada no repique (meia posicao quando o preco volta a SMA com a HMA caindo)
+          Reentrada no repique (meia posição quando o preço volta a SMA com a HMA caindo)
         </label>
       </fieldset>
 
       <fieldset>
         <legend>4. Tokens</legend>
-        <label>Tokens extras para acompanhar nas fichas (separados por virgula)
+        <label>Tokens extras para acompanhar nas fichas (separados por vírgula)
           <input value={watchText} placeholder="HYPE, PENDLE, JUP" spellCheck={false} onChange={(e) => setWatchText(e.target.value)} />
         </label>
-        <p className="hint">Os tokens das suas carteiras e uma lista padrao de projetos grandes ja entram sozinhos. Os da lista padrao sao so para acompanhar: nao geram aviso de compra. Digitando um deles aqui, ele passa a seguir a regra completa.</p>
+        <p className="hint">Os tokens das suas carteiras e uma lista padrão de projetos grandes já entram sozinhos. Os da lista padrão são só para acompanhar: não geram aviso de compra. Digitando um deles aqui, ele passa a seguir a regra completa.</p>
       </fieldset>
 
       <details className="cfg-more">
-        <summary>Posicoes manuais (fora das carteiras)</summary>
-        <p className="hint">So para o que nao esta nas carteiras cadastradas. Registrar uma operacao atualiza estes valores sozinho.
-          {draft.walletPositions ? " Com a posicao vindo das carteiras, estes valores sao ignorados." : ""}</p>
+        <summary>Posições manuais (fora das carteiras)</summary>
+        <p className="hint">Só para o que não está nas carteiras cadastradas. Registrar uma operação atualiza estes valores sozinho.
+          {draft.walletPositions ? " Com a posição vindo das carteiras, estes valores são ignorados." : ""}</p>
         <div className="table-scroll">
           <table className="cfg-table">
-            <thead><tr><th>Moeda</th><th>Posicao (moedas)</th></tr></thead>
+            <thead><tr><th>Moeda</th><th>Posição (moedas)</th></tr></thead>
             <tbody>
               {symbols.map((s) => (
                 <tr key={s}>
@@ -957,14 +957,14 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
       </details>
 
       <details className="cfg-more" open={!!draft.lighter?.enabled}>
-        <summary>Lighter (perpetuos)</summary>
+        <summary>Lighter (perpétuos)</summary>
         <label className="check">
           <input type="checkbox" checked={!!draft.lighter?.enabled}
             onChange={(e) => setDraft({ ...draft, lighter: { enabled: e.target.checked, since: draft.lighter?.since ?? Date.now() - 30 * 86_400_000 } })} />
-          Importar posicoes e operacoes da Lighter
+          Importar posições e operações da Lighter
         </label>
         {draft.lighter?.enabled && (
-          <label className="inline">Operacoes a partir de
+          <label className="inline">Operações a partir de
             <input type="date" value={new Date(draft.lighter.since).toISOString().slice(0, 10)}
               onChange={(e) => e.target.value && setDraft({ ...draft, lighter: { enabled: true, since: Date.parse(`${e.target.value}T00:00:00Z`) } })} />
           </label>
@@ -978,7 +978,7 @@ function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => void }) {
           <button className="primary" onClick={save} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
           <button className="ghost" onClick={onClose}>Cancelar</button>
         </div>
-        <p className="hint">Depois de salvar, clique em &quot;Atualizar&quot; (Cripto) para recalcular com a nova configuracao.</p>
+        <p className="hint">Depois de salvar, clique em &quot;Atualizar&quot; (Cripto) para recalcular com a nova configuração.</p>
       </div>
     </section>
   );
@@ -1013,8 +1013,8 @@ const toLocalInput = (t: number) => {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 };
 
-const RECALC_NOTE = "A posicao, o preco medio e o realizado da moeda serao refeitos a partir de TODAS as operacoes registradas dela " +
-  "(ajustes feitos a mao na Configuracao serao substituidos).";
+const RECALC_NOTE = "A posição, o preço médio e o realizado da moeda serão refeitos a partir de TODAS as operações registradas dela " +
+  "(ajustes feitos à mão na Configuração serão substituídos).";
 
 type Editing = { id: string; symbol: string; side: TradeDoc["side"]; qty: string; price: string; when: string };
 
@@ -1048,16 +1048,16 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
     const q = Number(editing.qty.replace(",", "."));
     const p = Number(editing.price.replace(",", "."));
     const t = new Date(editing.when).getTime();
-    if (!(q > 0) || !(p > 0) || !Number.isFinite(t)) return setMsg("Quantidade, preco e data precisam ser validos.");
-    if (!await ask(`Salvar a alteracao?\n\n${RECALC_NOTE}`)) return;
+    if (!(q > 0) || !(p > 0) || !Number.isFinite(t)) return setMsg("Quantidade, preço e data precisam ser válidos.");
+    if (!await ask(`Salvar a alteração?\n\n${RECALC_NOTE}`)) return;
     try {
       const books = await saveTradeChange(trades, {
         id: editing.id, next: { symbol: editing.symbol, side: editing.side, qty: round8(q), price: round8(p), t },
       });
       setEditing(null);
-      setMsg(`Operacao alterada. Posicao agora: ${summary(books)}.`);
+      setMsg(`Operação alterada. Posição agora: ${summary(books)}.`);
     } catch (e) {
-      setMsg(`Nao foi possivel salvar: ${String(e)}`);
+      setMsg(`Não foi possível salvar: ${String(e)}`);
     }
   }
 
@@ -1066,18 +1066,18 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
     if (!await ask(`Excluir a ${what}?\n\n${RECALC_NOTE}`)) return;
     try {
       const books = await saveTradeChange(trades, { id: t.id, next: null });
-      setMsg(`Operacao excluida. Posicao agora: ${summary(books)}.`);
+      setMsg(`Operação excluída. Posição agora: ${summary(books)}.`);
     } catch (e) {
-      setMsg(`Nao foi possivel excluir: ${String(e)}`);
+      setMsg(`Não foi possível excluir: ${String(e)}`);
     }
   }
 
   return (
     <section className="card">
       <div className="row between wrap-row trades-head">
-        <h2>Operacoes registradas</h2>
+        <h2>Operações registradas</h2>
         <div className="row wrap-row">
-          <input type="search" placeholder="Buscar (data, moeda, preco...)" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input type="search" placeholder="Buscar (data, moeda, preço...)" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select value={coin} onChange={(e) => setCoin(e.target.value)} aria-label="Moeda">
             <option value="">Todas as moedas</option>
             {coins.map((c) => <option key={c} value={c}>{c.replace("USDT", "")}</option>)}
@@ -1092,12 +1092,12 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
       {!trades.length ? (
         <p className="muted">Nenhuma ainda.</p>
       ) : !rows.length ? (
-        <p className="muted">Nenhuma operacao encontrada com esses filtros.</p>
+        <p className="muted">Nenhuma operação encontrada com esses filtros.</p>
       ) : (
         <>
           <div className="table-scroll">
             <table className="stack">
-              <thead><tr><th>Data</th><th>Moeda</th><th>Lado</th><th>Qtd</th><th>Preco</th><th>Valor (USDT)</th><th /></tr></thead>
+              <thead><tr><th>Data</th><th>Moeda</th><th>Lado</th><th>Qtd</th><th>Preço</th><th>Valor (USDT)</th><th /></tr></thead>
               <tbody>
                 {shown.map((t) => editing?.id === t.id ? (
                   <tr key={t.id} className="editing">
@@ -1126,7 +1126,7 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
                     <td data-label="Moeda">{t.symbol.replace("USDT", "")}{t.source === "lighter" && <span className="tag">Lighter</span>}</td>
                     <td data-label="Lado" className={t.side === "compra" ? "pos" : "neg"}>{t.side}{t.note ? ` (${t.note})` : ""}</td>
                     <td data-label="Qtd">{fmtQty(t.qty)}</td>
-                    <td data-label="Preco">{fmtPx(t.price)}</td>
+                    <td data-label="Preço">{fmtPx(t.price)}</td>
                     <td data-label="Valor (USDT)">{fmt(t.qty * t.price)}</td>
                     <td className="actions">{t.source === "lighter" ? <span className="muted small" title="Importada da Lighter: edite la">auto</span> : <>
                       <button className="ghost icon" title="Editar" aria-label="Editar"
@@ -1145,12 +1145,12 @@ function TradesTable({ trades }: { trades: TradeRow[] }) {
           {msg && <p className="muted small">{msg}</p>}
           <div className="row between pager">
             <span className="muted small">
-              {rows.length} operac{rows.length === 1 ? "ao" : "oes"}{rows.length !== trades.length ? ` (de ${trades.length})` : ""}
+              {rows.length} opera{rows.length === 1 ? "ção" : "ções"}{rows.length !== trades.length ? ` (de ${trades.length})` : ""}
             </span>
             <div className="row">
               <button className="ghost" onClick={() => setPage(cur - 1)} disabled={cur === 0}>Anterior</button>
-              <span className="small">Pagina {cur + 1} de {pages}</span>
-              <button className="ghost" onClick={() => setPage(cur + 1)} disabled={cur >= pages - 1}>Proxima</button>
+              <span className="small">Página {cur + 1} de {pages}</span>
+              <button className="ghost" onClick={() => setPage(cur + 1)} disabled={cur >= pages - 1}>Próxima</button>
             </div>
           </div>
         </>
@@ -1168,18 +1168,18 @@ function MemberConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => voi
   const save = async () => {
     const wallets = [...new Set(walletText.split(/[\s,;]+/).map((a) => a.trim()).filter(Boolean))];
     const bad = wallets.filter((a) => !isEvmAddress(a) && !isSolAddress(a));
-    if (bad.length) return setErr(`Endereco invalido: ${bad.join(", ")} (EVM = 0x + 40 caracteres; Solana = 32 a 44 caracteres).`);
+    if (bad.length) return setErr(`Endereço inválido: ${bad.join(", ")} (EVM = 0x + 40 caracteres; Solana = 32 a 44 caracteres).`);
     setSaving(true);
     try {
       await setDoc(doc(db(), P("config/main")), { wallets, wallet: wallets.find(isEvmAddress) ?? "" }, { merge: true });
       onClose();
-    } catch (e) { setSaving(false); setErr(`Nao salvou: ${String(e)}`); }
+    } catch (e) { setSaving(false); setErr(`Não salvou: ${String(e)}`); }
   };
   return (
     <section className="cfg">
       <div className="modal-head"><h2>Suas carteiras</h2><button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button></div>
-      <p className="muted small">Enderecos publicos das suas carteiras (Rabby, Phantom...), um por linha. So leitura: o site nunca pede frase secreta nem movimenta nada.</p>
-      <textarea className="wallets" rows={4} value={walletText} onChange={(e) => setWalletText(e.target.value)} placeholder="0x... ou endereco Solana" />
+      <p className="muted small">Endereços públicos das suas carteiras (Rabby, Phantom...), um por linha. Só leitura: o site nunca pede frase secreta nem movimenta nada.</p>
+      <textarea className="wallets" rows={4} value={walletText} onChange={(e) => setWalletText(e.target.value)} placeholder="0x... ou endereço Solana" />
       {err && <p className="error small">{err}</p>}
       <div className="row"><button className="primary" disabled={saving} onClick={save}>{saving ? "Salvando..." : "Salvar"}</button>
         <button className="ghost" onClick={onClose}>Cancelar</button></div>
@@ -1196,25 +1196,25 @@ function MembersAdmin({ onClose }: { onClose: () => void }) {
   const [err, setErr] = useState("");
   useEffect(() => onSnapshot(collection(db(), "access"), (s) => setList(s.docs.filter((d) => (d.data() as { role?: string }).role === "member")
     .map((d) => ({ email: d.id, ...(d.data() as { name?: string; at?: number }) })).sort((a, b) => (b.at ?? 0) - (a.at ?? 0))),
-    (e) => setErr(e.message.includes("permission") ? "As regras do Firestore ainda nao foram atualizadas (veja firestore.rules)." : e.message)), []);
+    (e) => setErr(e.message.includes("permission") ? "As regras do Firestore ainda não foram atualizadas (veja firestore.rules)." : e.message)), []);
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     const em = email.trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return setErr("E-mail invalido.");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return setErr("E-mail inválido.");
     setErr("");
     try {
       await setDoc(doc(db(), "access", em), { role: "member", at: Date.now(), ...(name.trim() ? { name: name.trim() } : {}) });
       setEmail(""); setName("");
-    } catch (x) { setErr(`Nao salvou: ${String(x)}`); }
+    } catch (x) { setErr(`Não salvou: ${String(x)}`); }
   };
   const remove = async (em: string) => {
-    if (!(await ask(`Remover o acesso de ${em}? Os dados dele continuam guardados; ele so nao entra mais.`))) return;
+    if (!(await ask(`Remover o acesso de ${em}? Os dados dele continuam guardados; ele só não entra mais.`))) return;
     await deleteDoc(doc(db(), "access", em));
   };
   return (
     <section className="cfg">
       <div className="modal-head"><h2>Membros</h2><button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button></div>
-      <p className="muted small">So entra quem estiver nesta lista (o e-mail da conta Google). Cada membro tem os proprios dados; ninguem ve os seus nem os de outro membro.</p>
+      <p className="muted small">Só entra quem estiver nesta lista (o e-mail da conta Google). Cada membro tem os próprios dados; ninguém vê os seus nem os de outro membro.</p>
       <form className="row wrapline" onSubmit={add}>
         <label className="grow">E-mail Google<input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="membro@gmail.com" /></label>
         <label>Nome (opcional)<input value={name} onChange={(e) => setName(e.target.value)} /></label>
@@ -1238,14 +1238,14 @@ function MembersAdmin({ onClose }: { onClose: () => void }) {
 function MyAccount({ user, onClose }: { user: User; onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const wipe = async () => {
-    if (!(await ask("Apagar todos os seus dados do site (lancamentos, cartoes, investimentos, carteiras)? Nao da para desfazer."))) return;
+    if (!(await ask("Apagar todos os seus dados do site (lançamentos, cartões, investimentos, carteiras)? Não dá para desfazer."))) return;
     setBusy(true);
     try {
       const res = await fetch("/api/account", { method: "DELETE", headers: { Authorization: `Bearer ${await user.getIdToken()}` } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await tell("Seus dados foram apagados.");
       location.reload();
-    } catch (e) { setBusy(false); await tell(`Nao apagou: ${String(e)}`); }
+    } catch (e) { setBusy(false); await tell(`Não apagou: ${String(e)}`); }
   };
   return (
     <section className="cfg">
@@ -1253,9 +1253,9 @@ function MyAccount({ user, onClose }: { user: User; onClose: () => void }) {
       <p className="small">Entrou como <b>{user.email}</b>.</p>
       <h3>Privacidade</h3>
       <ul className="small privacy">
-        <li>Seus dados ficam guardados no banco do site (Google Firebase), num espaco so seu: pelo site, ninguem alem de voce consegue ver.</li>
-        <li>Carteiras cripto: so o endereco publico, lido em modo leitura. Nunca peca nem informe frase secreta ou chave privada.</li>
-        <li>Nada aqui e recomendacao de investimento: e uma ferramenta educacional de organizacao.</li>
+        <li>Seus dados ficam guardados no banco do site (Google Firebase), num espaço só seu: pelo site, ninguém além de você consegue ver.</li>
+        <li>Carteiras cripto: só o endereço público, lido em modo leitura. Nunca peça nem informe frase secreta ou chave privada.</li>
+        <li>Nada aqui é recomendação de investimento: é uma ferramenta educacional de organização.</li>
       </ul>
       <div className="row"><button className="danger" disabled={busy} onClick={wipe}>{busy ? "Apagando..." : "Apagar meus dados"}</button></div>
     </section>

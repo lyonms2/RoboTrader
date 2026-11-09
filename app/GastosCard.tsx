@@ -10,7 +10,7 @@ import { CardPayForm } from "./CardsLoans";
 import { RecvSelect, linkRecv, receive } from "./Receivables";
 import {
   catLabel, CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, parcelSiblings, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, splitGasto, parcelSiblings, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
   type Bill, type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
@@ -149,6 +149,17 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     if (key && target) await saveSetup({ invRules: { ...(setup.invRules ?? {}), [key]: target } });
   };
   const [editing, setEditing] = useState<string | null>(null);
+  const [splitting, setSplitting] = useState<string | null>(null);
+  // Desfaz a divisao: volta o lancamento original, onde quer que as partes estejam
+  const unsplit = async (g: Gasto) => {
+    const orig = Object.values(months).flatMap((md) => md.items).find((x) => x.splitId === g.splitId && x.splitOrig)?.splitOrig;
+    if (!orig || !(await ask(`Desfazer a divisão e voltar a "${orig.desc}" (${brl(orig.v)})?`))) return;
+    const target = monthOf(orig.d);
+    await Promise.all(Object.entries(months).filter(([k, md]) => k === target || md.items.some((x) => x.splitId === g.splitId)).map(([k, md]) => {
+      const rest = md.items.filter((x) => x.splitId !== g.splitId);
+      return saveMonth(k, k === target ? [...rest, orig] : rest);
+    }));
+  };
   const removeItem = async (g: Gasto) => {
     if (!await ask(`Apagar "${g.desc}" (${brl(g.v)})?`)) return;
     await saveMonth(m, items.filter((x) => x.id !== g.id));
@@ -456,9 +467,13 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                         )}
                       </span></td>
                       <td data-label="Valor" className={g.tipo === "receita" ? "pos" : g.tipo === "neutro" && !isFaturaOut(g) ? "v-move" : "v-out"}>{g.tipo === "receita" || (g.tipo === "neutro" && dirOf(g) > 0) ? "+" : "-"}{brl(g.v)}</td>
-                      <td className="actions"><button className="link" onClick={() => setEditing(editing === g.id ? null : g.id)}>alterar</button>
+                      <td className="actions"><button className="link" onClick={() => { setSplitting(null); setEditing(editing === g.id ? null : g.id); }}>alterar</button>
+                        {g.splitId
+                          ? <button className="link" onClick={() => unsplit(g)}>desfazer divisão</button>
+                          : <button className="link" onClick={() => { setEditing(null); setSplitting(splitting === g.id ? null : g.id); }}>dividir</button>}
                         <button className="ghost small-btn" onClick={() => removeItem(g)} aria-label="Apagar">apagar</button></td>
                     </tr>
+                    {splitting === g.id && <tr className="edit-row"><td colSpan={4}><SplitForm g={g} m={m} items={items} onDone={() => setSplitting(null)} /></td></tr>}
                     {editing === g.id && <tr className="edit-row"><td colSpan={4}><EditItem g={g} m={m} months={months} setup={setup} onDone={() => setEditing(null)} /></td></tr>}
                   </Fragment>);
                 })}
@@ -1511,6 +1526,52 @@ function EditItem({ g, m, months, setup, onDone }: { g: Gasto; m: string; months
       </div>
       {neutral && g.cat === TRANSFER_CAT && <p className="muted small">Transferência: &quot;saiu&quot; = desta conta para a conta escolhida em &quot;foi para&quot;; &quot;entrou&quot; = veio de la para esta.</p>}
       {!neutral && <p className="muted small">Gasto sempre sai e renda sempre entra; para mudar isso, troque a categoria.</p>}
+    </form>
+  );
+}
+
+// Dividir um lancamento (ex.: um Pix que pagou aluguel, agua, luz e internet): cada parte com a sua categoria
+function SplitForm({ g, m, items, onDone }: { g: Gasto; m: string; items: Gasto[]; onDone: () => void }) {
+  type Line = { desc: string; cat: string; v: string };
+  const [lines, setLines] = useState<Line[]>([{ desc: "", cat: g.cat, v: "" }, { desc: "", cat: g.cat, v: "" }]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const sum = Math.round(lines.reduce((t, l) => t + num(l.v), 0) * 100) / 100;
+  const left = Math.round((g.v - sum) * 100) / 100;
+  const set = (i: number, p: Partial<Line>) => setLines(lines.map((l, k) => (k === i ? { ...l, ...p } : l)));
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const parts = lines.filter((l) => num(l.v) > 0);
+    if (parts.length < 2) return setErr("Preencha pelo menos 2 partes com valor.");
+    if (parts.some((l) => !l.desc.trim())) return setErr("Dê um nome para cada parte.");
+    if (Math.abs(left) > 0.004) return setErr(left > 0 ? `Faltam ${brl(left)} para fechar o total.` : `Passou ${brl(-left)} do total.`);
+    setBusy(true);
+    try {
+      const list = splitGasto(g, parts.map((l) => ({ desc: l.desc.trim(), cat: l.cat, v: Math.round(num(l.v) * 100) / 100 })), newId);
+      await saveMonth(m, [...items.filter((x) => x.id !== g.id), ...list]);
+      onDone();
+    } catch (x) { setBusy(false); setErr(`Não salvou: ${String(x)}`); }
+  };
+  return (
+    <form className="fin-form loan-pay" onSubmit={save}>
+      <p className="small"><b>Dividir {brl(g.v)}</b> <span className="muted">{g.desc.slice(0, 70)}</span></p>
+      {lines.map((l, i) => (
+        <div className="row wrapline" key={i}>
+          <label className="grow">Parte {i + 1}<input value={l.desc} onChange={(e) => set(i, { desc: e.target.value })} placeholder="Aluguel, água, luz, internet..." /></label>
+          <label>Categoria<CatSelect value={l.cat} onChange={(c) => set(i, { cat: c })} /></label>
+          <label>Valor (R$)<input value={l.v} inputMode="decimal" onChange={(e) => set(i, { v: e.target.value })} placeholder="0,00" /></label>
+          {left > 0.004 && !l.v && <button type="button" className="link" onClick={() => set(i, { v: fmt(left) })}>usar o restante</button>}
+          {lines.length > 2 && <button type="button" className="link" onClick={() => setLines(lines.filter((_, k) => k !== i))}>tirar</button>}
+        </div>
+      ))}
+      <p className={Math.abs(left) <= 0.004 ? "small pos" : "small warn"}>{Math.abs(left) <= 0.004 ? "Fechou o total." : left > 0 ? `Falta distribuir ${brl(left)}` : `Passou ${brl(-left)} do total`}</p>
+      {err && <p className="error small">{err}</p>}
+      <div className="row">
+        <button className="ghost small-btn" type="button" onClick={() => setLines([...lines, { desc: "", cat: g.cat, v: "" }])}>+ parte</button>
+        <button className="primary" type="submit" disabled={busy}>{busy ? "Salvando..." : "Dividir"}</button>
+        <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
+      </div>
+      <p className="muted small">A soma das partes tem de ser igual ao total. O saldo da conta não muda e o extrato não será importado de novo.</p>
     </form>
   );
 }

@@ -23,6 +23,8 @@ export type Gasto = {
   acc?: string; // conta (PicPay, Nubank...) por onde passou; sem cartao e sem conta = a primeira conta
   payCard?: string; // pagamento de fatura feito pela conta: qual cartao foi pago
   toAcc?: string; // transferencia entre contas: a outra conta (para onde foi / de onde veio). Um lancamento move as duas
+  splitId?: string; // parte de um lancamento dividido (todas as partes tem o mesmo id)
+  splitOrig?: Gasto; // na primeira parte: o lancamento original, para desfazer
   sub?: string; // cobranca de assinatura do cartao (gerada a partir de Card.subs; nao fica gravada no mes)
   by?: string; // pago por outra pessoa (id da conta com ela em "A receber"): e seu gasto, mas nao saiu da sua conta; abate o que ela te deve
 };
@@ -339,6 +341,16 @@ export function parcelSiblings(months: Record<string, MonthDoc>, g: Gasto) {
     for (const x of md.items)
       if (x.id === g.id || (g.card && g.parc && x.parc && x.card === g.card && x.parc[1] === g.parc[1] && descKey(x.desc) === descKey(g.desc) && Math.abs(x.v - g.v) < 0.01)) out.push({ m, x });
   return out;
+}
+// Divide um lancamento em partes: a soma nao muda, entao o saldo da conta tambem nao. A 1a parte guarda o id do extrato
+// (para nao importar de novo) e o original (para desfazer)
+export function splitGasto(g: Gasto, parts: { desc: string; cat: string; v: number }[], newId: () => string): Gasto[] {
+  const io = g.io ?? (dirOf(g) > 0 ? "in" as const : "out" as const);
+  const { ext, ref: _r, parc: _p, inv: _i, toAcc: _t, payCard: _c, splitId: _s, splitOrig: _o, ...base } = g;
+  void _r; void _p; void _i; void _t; void _c; void _s; void _o;
+  const splitId = newId();
+  return parts.map((p, k) => ({ ...base, id: k === 0 ? g.id : newId(), desc: p.desc, cat: p.cat, v: p.v, tipo: tipoOfCat(p.cat) ?? g.tipo, io, splitId,
+    ...(k === 0 ? { splitOrig: g, ...(ext ? { ext } : {}) } : {}) }));
 }
 export function subValue(s: CardSub, m: string) {
   let v = s.v;

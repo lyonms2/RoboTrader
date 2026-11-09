@@ -6,6 +6,7 @@ import {
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardForm, CatSelect, LoanForm, QuickAdd, saveMonth, saveSetup } from "./GastosCard";
+import { bestBuy } from "@/lib/alerts";
 import ReceivablesPart, { RecvSelect } from "./Receivables";
 import { ask, askText, tell } from "./Dialog";
 
@@ -314,6 +315,7 @@ function FaturaView({ card, st, fm, months, setup }: {
   card: Card; st: ReturnType<typeof cardStatus>; fm: string; months: Record<string, MonthDoc>; setup: GastosSetup;
 }) {
   const f = st.all.find((x) => x.m === fm);
+  const best = bestBuy(card);
   const [paying, setPaying] = useState(false);
   const list = faturaItems(card, months, fm);
   const total = f?.v ?? 0;
@@ -344,6 +346,7 @@ function FaturaView({ card, st, fm, months, setup }: {
       <div className="kpis compact">
         <div><span>Total da fatura</span><b>{brl(total)}</b><small className="muted">{futuro > 0 ? `inclui ${brl(futuro)} de parcelas previstas` : `${list.length} compras`}</small></div>
         {f && f.status !== "paga" && <div><span>Falta pagar</span><b className={f.status === "vencida" ? "warn" : ""}>{brl(f.rest)}</b></div>}
+        {best && <div><span>Melhor dia para comprar</span><b>Dia {best.day}</b><small className="muted">próximo: {dm(best.d)}, fatura de {monthLabel(best.fm)}, paga em {dm(best.due)} ({best.prazo} dias)</small></div>}
         {card.limit && <div><span>Limite usado</span><b>{fmt((st.open / card.limit) * 100, 0)}%</b><small className="muted">{brl(st.open, 0)} de {brl(card.limit, 0)}</small></div>}
       </div>
       {card.budget ? (

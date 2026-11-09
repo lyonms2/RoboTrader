@@ -91,6 +91,7 @@ export type GastosSetup = {
   invRules?: Record<string, string>; // descricao -> investimento escolhido (lembrado para as proximas)
   accRules?: Record<string, string>; // descricao -> conta de destino de transferencias
   recvs?: Recv[]; // a receber (alguem te deve em parcelas)
+  dismissed?: Record<string, string>; // avisos dispensados: id -> mes (AAAA-MM) em que vale
 };
 export const EMPTY_SETUP: GastosSetup = { cards: [], loans: [], fixos: [], rules: {} };
 

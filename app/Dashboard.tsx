@@ -19,7 +19,8 @@ import FichasCard from "./FichasCard";
 import CandidatesCard from "./CandidatesCard";
 const SHOW_CANDIDATES = false;
 import FinanceCard, { MonthAndUpcoming, NetWorthBlock, PatrimonioCard, type Sub as FinSub } from "./FinanceCard";
-import { debts, reviewCount, upcoming } from "./GastosCard";
+import { debts, reviewCount, saveSetup, upcoming } from "./GastosCard";
+import { buildAlerts } from "@/lib/alerts";
 import { budgetAlerts } from "./CardsLoans";
 import type { NetWorthDoc } from "@/lib/patrimonio";
 import { EMPTY_SETUP, setCardsReg, accountBalance, avgMonthly, fixoActive, recvStatus, fixoReajPending, investFlows, setCustomCats, type GastosSetup, type MonthDoc } from "@/lib/gastos";
@@ -427,6 +428,7 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
   sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub | "loans" | "recv") => void;
 }) {
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
+  const [allTodo, setAllTodo] = useState(false);
   // Posicoes do robo e lucro aberto
   let open = 0;
   let invested = 0;
@@ -446,7 +448,7 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
   const realized = Object.values(cfg.realized ?? {}).reduce((a, b) => a + b, 0);
 
   // O que fazer hoje: sinais do robo, acoes das fichas e avisos da carteira
-  type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId; fin?: FinSub | "loans" | "recv" };
+  type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId; fin?: FinSub | "loans" | "recv"; prio?: number; id?: string };
   const todo: Todo[] = [];
   for (const l of member ? [] : [...latest].sort((a, b) => SYMBOLS.indexOf(a.symbol) - SYMBOLS.indexOf(b.symbol))) {
     const coin = l.symbol.replace("USDT", "");
@@ -473,8 +475,11 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
   if (unknown && !member) todo.push({ tone: "info", who: "Robô", text: "há posição sem preço médio: informe-o em Carteira > Meus tokens para ver o lucro", tab: "sinais" });
   if (sync?.shorts.length) todo.push({ tone: "warn", who: "Lighter", text: `posição vendida (${sync.shorts.join(", ")}) fica fora da conta`, tab: "carteira" });
   // Financas: pagamentos vencidos e pontos para revisar
-  for (const p of upcoming(money.months, money.setup).filter((x) => x.late))
-    todo.push({ tone: "warn", who: "Pagar", text: `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : p.card ? "cards" : "lanc" });
+  const upList = upcoming(money.months, money.setup);
+  for (const p of upList.filter((x) => x.late))
+    todo.push({ tone: "warn", who: "Pagar", prio: 1, id: `late:${p.desc}:${p.d}`, text: !p.loan && !p.card
+      ? `${p.desc} costuma sair até o dia ${p.d.slice(8, 10)} e ainda não veio no extrato (R$ ${fmt(p.v)})`
+      : `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : p.card ? "cards" : "lanc" });
   for (const r of money.setup.recvs ?? []) {
     const st = recvStatus(r, money.months);
     if (st.late) todo.push({ tone: "warn", who: "Receber", text: `${r.name}: ${st.late} ${st.late > 1 ? "parcelas atrasadas" : "parcela atrasada"} (R$ ${fmt(st.lateV)})`, tab: "financas", fin: "recv" });
@@ -489,6 +494,25 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
   const rc = reviewCount(money.months, money.setup);
   if (rc) todo.push({ tone: "info", who: "Finanças", text: `${rc} ${rc > 1 ? "pontos" : "ponto"} para revisar nos lançamentos (para os números ficarem certos)`, tab: "financas", fin: "lanc" });
 
+  // Avisos inteligentes das financas
+  const acctNow = accountBalance(money.months, money.setup);
+  const summary = financeSummary(money.cfg.finance ?? [], money.fin, money.wallet, money.spend?.value ?? money.cfg.monthlyCost, acctNow?.value, investFlows(money.months));
+  for (const x of buildAlerts({ months: money.months, setup: money.setup, up: upList, saldo: acctNow?.value ?? null, avg: money.spend, reserve: summary.reserve, reserveMonths: summary.reserveMonths, hist: money.nwHist }))
+    todo.push({ tone: x.tone, who: x.who, text: x.text, tab: "financas", fin: x.fin, prio: x.prio, id: x.id });
+  // Contra poluicao: tira os dispensados neste mes, os mais urgentes primeiro, no maximo 5 (o resto em "ver mais")
+  const nowMonth = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 7);
+  const idOf = (t: Todo) => t.id ?? (t.tab === "financas" ? `${t.who}:${t.text}` : null);
+  const dismissed = money.setup.dismissed ?? {};
+  const prioOf = (t: Todo) => t.prio ?? (t.tab !== "financas" ? (t.tone === "info" ? 3 : 0) : 2);
+  const visible = todo.filter((t) => { const i = idOf(t); return !i || dismissed[i] !== nowMonth; }).map((t, i) => ({ t, i })).sort((x, y) => prioOf(x.t) - prioOf(y.t) || x.i - y.i).map((x) => x.t);
+  const shownTodo = allTodo ? visible : visible.slice(0, 5);
+  const dismiss = async (t: Todo) => {
+    const i = idOf(t);
+    if (!i) return;
+    const keep = Object.fromEntries(Object.entries(dismissed).filter(([, v]) => v === nowMonth));
+    await saveSetup({ dismissed: { ...keep, [i]: nowMonth } });
+  };
+
   const total = wallet && wallet.address === walletKey(walletAddresses(cfg)) ? wallet.total : null;
   const blocks = total !== null && wallet ? allocationBlocks(wallet, cfg, latest, fichas) : [];
   const alloc = allocOf(cfg);
@@ -502,14 +526,19 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
 
       <section className="card">
         <h2>O que fazer hoje</h2>
-        {todo.length ? (
+        {visible.length ? (
+          <>
           <ul className="todo">
-            {todo.map((t, i) => (
+            {shownTodo.map((t, i) => (
               <li key={i} className={`todo-${t.tone}`} onClick={() => go(t)}>
-                <b>{t.who}</b><span>{t.text}</span><i aria-hidden="true">&rsaquo;</i>
+                <b>{t.who}</b><span>{t.text}</span>
+                {idOf(t) ? <button className="link todo-x" title="Dispensar até o mês que vem" onClick={(e) => { e.stopPropagation(); dismiss(t); }}>dispensar</button> : <em />}
+                <i aria-hidden="true">&rsaquo;</i>
               </li>
             ))}
           </ul>
+          {visible.length > 5 && <button className="link" onClick={() => setAllTodo(!allTodo)}>{allTodo ? "ver menos" : `ver mais ${visible.length - 5}`}</button>}
+          </>
         ) : (
           <p className="muted">Nada a fazer: nenhum sinal novo, nenhum pagamento vencido e nenhum aviso.</p>
         )}

@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   CARD_PAY_CAT, RECV_OUT_CAT, accountsOf, addMonths, cardStatus, dayIn, descKey, commitments, debts, faturaItems, faturaMonth, loanDue, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
-  type Card, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
+  subValue, type Card, type CardSub, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardForm, CatSelect, LoanForm, QuickAdd, saveMonth, saveSetup } from "./GastosCard";
@@ -111,6 +111,7 @@ function CardsPart({ months, setup, invest, entry, setEntry, owed, com }: {
           <FaturaView card={card} st={st} fm={fm} months={months} setup={setup} />
         </section>
       )}
+      {card && <SubsList key={`subs-${card.id}`} card={card} setup={setup} />}
       {card && st && <FaturasList key={card.id} card={card} st={st} fm={fm} setFm={setFm} months={months} setup={setup} />}
 
       <CommitmentsChart data={com} which="cards" />
@@ -375,14 +376,16 @@ function FaturaView({ card, st, fm, months, setup }: {
             <tbody>
               {list.map(({ m, g }) => (<Fragment key={g.id}>
                 <tr>
-                  <td><span className="cell">{g.desc}<small className="muted">{[dm(g.d), g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null].filter(Boolean).join(" - ")}</small></span></td>
-                  <td data-label="Categoria"><span className="cell"><CatSelect value={g.cat} onChange={(c) => setCat(m, g.id, c)} />
-                    {g.cat === RECV_OUT_CAT && <RecvSelect g={g} m={m} months={months} setup={setup} />}</span></td>
+                  <td><span className="cell">{g.desc}<small className="muted">{[dm(g.d), g.sub ? "assinatura" : null, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null].filter(Boolean).join(" - ")}</small></span></td>
+                  <td data-label="Categoria">{g.sub ? g.cat : <span className="cell"><CatSelect value={g.cat} onChange={(c) => setCat(m, g.id, c)} />
+                    {g.cat === RECV_OUT_CAT && <RecvSelect g={g} m={m} months={months} setup={setup} />}</span>}</td>
                   <td data-label="Valor" className={g.tipo === "receita" ? "pos" : ""}>{g.tipo === "receita" ? "+" : "-"}{brl(g.v)}</td>
                   <td className="actions"><button className="link" onClick={() => setEditId(editId === g.id ? null : g.id)}>alterar</button>
-                    <button className="ghost small-btn" onClick={() => remove(m, g.id, g.desc)}>apagar</button></td>
+                    {!g.sub && <button className="ghost small-btn" onClick={() => remove(m, g.id, g.desc)}>apagar</button>}</td>
                 </tr>
-                {editId === g.id && <tr className="edit-row"><td colSpan={4}><EditBuy g={g} months={months} setup={setup} onDone={() => setEditId(null)} /></td></tr>}
+                {editId === g.id && <tr className="edit-row"><td colSpan={4}>{g.sub
+                  ? (card.subs ?? []).filter((x) => x.id === g.sub).map((x) => <EditSub key={x.id} sub={x} card={card} setup={setup} onDone={() => setEditId(null)} />)
+                  : <EditBuy g={g} months={months} setup={setup} onDone={() => setEditId(null)} />}</td></tr>}
               </Fragment>))}
             </tbody>
           </table>
@@ -722,6 +725,82 @@ function EditBuy({ g, months, setup, onDone }: { g: Gasto; months: Record<string
         <button className="primary" type="submit" disabled={busy}>Salvar</button>
         <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
         {many && <button className="ghost small-btn" type="button" onClick={removeAll}>apagar a compra inteira ({siblings.length} parcelas)</button>}
+      </div>
+    </form>
+  );
+}
+
+// Assinaturas do cartao: cobradas sozinhas em cada fatura ate cancelar
+function SubsList({ card, setup }: { card: Card; setup: GastosSetup }) {
+  const [edit, setEdit] = useState<string | null>(null);
+  const subs = card.subs ?? [];
+  if (!subs.length) return null;
+  const cur = monthOf(todayBR());
+  const ativas = subs.filter((s) => !s.end || s.end >= cur);
+  return (
+    <section className="card">
+      <div className="card-head"><h2>Assinaturas</h2><span className="muted small">{brl(ativas.reduce((t, s) => t + subValue(s, cur), 0))} por mes</span></div>
+      <ul className="pend small">
+        {subs.map((s) => (
+          <li key={s.id} className={s.end && s.end < cur ? "muted" : ""}>
+            <span className="muted">dia {s.day}</span> <b>{s.desc}</b> <span className="muted">{s.cat} - desde {monthLabel(s.start)}</span>
+            {s.end && <span className="tag">{s.end < cur ? "cancelada" : "ate"} {monthLabel(s.end)}</span>}
+            <span>{brl(subValue(s, cur))}</span>
+            <button className="link" onClick={() => setEdit(edit === s.id ? null : s.id)}>alterar</button>
+            {edit === s.id && <div className="sub-edit"><EditSub sub={s} card={card} setup={setup} onDone={() => setEdit(null)} /></div>}
+          </li>
+        ))}
+      </ul>
+      <p className="muted small">Para cadastrar outra: em &quot;Compra no cartao&quot;, marque &quot;Assinatura&quot;. Mudar o valor vale do mes atual em diante; as faturas antigas ficam como estao.</p>
+    </section>
+  );
+}
+
+function EditSub({ sub, card, setup, onDone }: { sub: CardSub; card: Card; setup: GastosSetup; onDone: () => void }) {
+  const cur = monthOf(todayBR());
+  const curV = subValue(sub, cur);
+  const [desc, setDesc] = useState(sub.desc);
+  const [v, setV] = useState(fmt(curV));
+  const [day, setDay] = useState(String(sub.day));
+  const [cat, setCat] = useState(sub.cat);
+  const [end, setEnd] = useState(sub.end ?? "");
+  const [busy, setBusy] = useState(false);
+  const num = (x: string) => Number(x.replace(/\./g, "").replace(",", ".")) || 0;
+  const write = async (subs: CardSub[]) => { await saveSetup({ cards: setup.cards.map((c) => (c.id === card.id ? { ...c, subs: JSON.parse(JSON.stringify(subs)) } : c)) }); onDone(); };
+  const others = (card.subs ?? []).filter((x) => x.id !== sub.id);
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = Math.round(num(v) * 100) / 100;
+    if (!desc.trim() || !(val > 0)) return;
+    setBusy(true);
+    const { end: _e, ...rest } = sub;
+    void _e;
+    const steps = Math.abs(val - curV) > 0.005 ? [...(sub.steps ?? []).filter((x) => x.from !== cur), { from: cur, v: val }] : sub.steps;
+    await write([...others, { ...rest, desc: desc.trim(), cat, day: Math.max(1, Math.min(31, Math.round(num(day)) || sub.day)), ...(steps ? { steps } : {}), ...(end ? { end } : {}) }]);
+  };
+  const remove = async () => {
+    if (await ask(`Apagar a assinatura ${sub.desc}? Ela sai tambem das faturas passadas. Para so parar de cobrar, use "Ultimo mes".`)) await write(others);
+  };
+  const opts = Array.from({ length: 25 }, (_, i) => addMonths(cur, i - 6)).filter((m) => m >= sub.start);
+  return (
+    <form className="fin-form loan-pay" onSubmit={save}>
+      <div className="row wrapline">
+        <label className="grow">Descricao<input value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
+        <label>Valor por mes (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
+        <label>Dia<input value={day} inputMode="numeric" onChange={(e) => setDay(e.target.value)} style={{ width: 60 }} /></label>
+        <label>Categoria<CatSelect value={cat} onChange={setCat} /></label>
+        <label>Ultimo mes
+          <select value={end} onChange={(e) => setEnd(e.target.value)}>
+            <option value="">sem fim (ativa)</option>
+            {end && !opts.includes(end) && <option value={end}>{monthLabel(end)}</option>}
+            {opts.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="row">
+        <button className="primary" type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</button>
+        <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
+        <button className="ghost small-btn" type="button" onClick={remove}>apagar assinatura</button>
       </div>
     </form>
   );

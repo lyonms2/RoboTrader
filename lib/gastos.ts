@@ -23,6 +23,7 @@ export type Gasto = {
   acc?: string; // conta (PicPay, Nubank...) por onde passou; sem cartao e sem conta = a primeira conta
   payCard?: string; // pagamento de fatura feito pela conta: qual cartao foi pago
   toAcc?: string; // transferencia entre contas: a outra conta (para onde foi / de onde veio). Um lancamento move as duas
+  sub?: string; // cobranca de assinatura do cartao (gerada a partir de Card.subs; nao fica gravada no mes)
   by?: string; // pago por outra pessoa (id da conta com ela em "A receber"): e seu gasto, mas nao saiu da sua conta; abate o que ela te deve
 };
 // Conta bancaria: saldo conferido numa data (ancora). O saldo em qualquer outro dia sai dos lancamentos
@@ -33,10 +34,13 @@ export type Account = {
   noStatement?: boolean;
 };
 export type MonthDoc = { items: Gasto[] };
+// Assinatura no cartao. v = valor inicial; steps = novo valor a partir de um mes (faturas antigas nao mudam); end = ultimo mes cobrado
+export type CardSub = { id: string; desc: string; v: number; cat: string; day: number; start: string; end?: string; steps?: { from: string; v: number }[] };
 export type Card = {
   id: string; name: string; closeDay: number; dueDay: number; limit?: number; budget?: number; // budget = planejado por fatura
   // Pagamentos feitos pelo botao "pagar": fatura (mes de vencimento), data, valor e o lancamento criado na conta
   pays?: { id: string; fm: string; d: string; v: number; gid?: string; gm?: string }[];
+  subs?: CardSub[]; // assinaturas: cobradas todo mes, sem numero de parcelas, ate cancelar
 };
 // A receber: alguem te deve e paga em parcelas (voce emprestou, ou vendeu/prestou servico parcelado)
 export type Recv = {
@@ -322,8 +326,27 @@ export function summarize(items: Gasto[], ctx?: { m: string; months: Record<stri
 }
 
 // Compras de uma fatura (cartao c, fatura que vence no mes fm), em qualquer mes de lancamento
-export function faturaItems(c: Card, months: Record<string, MonthDoc>, fm: string) {
+export function subValue(s: CardSub, m: string) {
+  let v = s.v;
+  for (const x of [...(s.steps ?? [])].sort((a, b) => a.from.localeCompare(b.from))) if (x.from <= m) v = x.v;
+  return v;
+}
+// Cobrancas das assinaturas do cartao em faturas ate "upto" (inclusive)
+export function subCharges(c: Card, upto: string): Gasto[] {
+  const out: Gasto[] = [];
+  for (const s of c.subs ?? []) {
+    for (let m = s.start, guard = 0; guard < 600 && (!s.end || m <= s.end); m = addMonths(m, 1), guard++) {
+      const d = dayIn(m, s.day);
+      if (faturaMonth(c, d) > upto) break;
+      out.push({ id: `sub_${s.id}_${m}`, d, desc: s.desc, v: subValue(s, m), tipo: tipoOfCat(s.cat) === "neutro" ? "neutro" : "gasto", io: "out", cat: s.cat, src: "manual", card: c.id, sub: s.id });
+    }
+  }
+  return out;
+}
+export function faturaItems(c: Card, months: Record<string, MonthDoc>, fm: string, today = todayBR()) {
   const out: { m: string; g: Gasto }[] = [];
+  // assinaturas: ate a fatura em aberto (as seguintes sao so previsao)
+  if (fm <= faturaMonth(c, today)) for (const g of subCharges(c, fm)) if (faturaMonth(c, g.d) === fm) out.push({ m: monthOf(g.d), g });
   for (const [m, md] of Object.entries(months))
     for (const g of md.items) if (g.card === c.id && !isCardCredit(g) && faturaMonth(c, g.d) === fm) out.push({ m, g });
   return out.sort((a, b) => b.g.d.localeCompare(a.g.d));
@@ -335,7 +358,10 @@ export function commitments(months: Record<string, MonthDoc>, setup: GastosSetup
   const st = setup.cards.map((c) => cardStatus(c, months));
   return Array.from({ length: n }, (_, k) => {
     const m = addMonths(start, k);
-    const cards = st.reduce((s, x) => s + (x.all.find((f) => f.m === m)?.rest ?? 0), 0);
+    // assinaturas das faturas seguintes a aberta entram so nesta previsao (nao contam como divida)
+    const subs = setup.cards.reduce((t, c) => m > faturaMonth(c, todayBR())
+      ? t + subCharges(c, m).filter((g) => faturaMonth(c, g.d) === m).reduce((a, g) => a + g.v, 0) : t, 0);
+    const cards = subs + st.reduce((s, x) => s + (x.all.find((f) => f.m === m)?.rest ?? 0), 0);
     const loans = setup.loans.reduce((s, l) => s + (loanInstallment(l, m) ? l.parcela : 0), 0);
     return { m, cards, loans };
   });
@@ -785,6 +811,7 @@ export function cardStatus(c: Card, months: Record<string, MonthDoc>, today = to
         if (!prev || prev.parc![0] < g.parc[0]) lastParc.set(key, g);
       }
     }
+  for (const g of subCharges(c, faturaMonth(c, today))) { const fm = faturaMonth(c, g.d); fat[fm] = (fat[fm] ?? 0) + g.v; }
   // Parcelas futuras: da ultima parcela vista ate a ultima, uma por fatura
   const future: Record<string, number> = {};
   for (const g of lastParc.values()) {

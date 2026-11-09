@@ -671,3 +671,4 @@ textarea.wallets { width: 100%; background: var(--bg); color: var(--text); borde
 .toolbar .subtabs:not(.inner) { position: static; margin: 0; padding: 0; min-height: 0; background: none; backdrop-filter: none; }
 .subtabs.inner { position: sticky; top: calc(var(--topbar-h) + var(--sub-h)); z-index: 14; background: color-mix(in srgb, var(--bg) 94%, transparent);
   backdrop-filter: blur(8px); margin: -12px -16px 12px; padding: 6px 16px 8px; border-bottom: 1px solid var(--line); }
+.sub-edit { flex-basis: 100%; width: 100%; grid-column: 1 / -1; }

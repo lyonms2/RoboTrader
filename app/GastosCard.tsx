@@ -865,6 +865,7 @@ export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta", o
   const card = src.startsWith("card:") ? src.slice(5) : "";
   const acc = src.startsWith("acc:") ? src.slice(4) : "";
   const [n, setN] = useState("1");
+  const [rec, setRec] = useState(false); // assinatura: todo mes, sem numero de parcelas
   const [busy, setBusy] = useState(false);
   const auto = categorize(desc, entrada, setup.rules);
   const finalCat = cat ?? auto.cat;
@@ -878,6 +879,16 @@ export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta", o
     const total = num(v);
     if (!desc.trim() || !(total > 0)) return;
     setBusy(true);
+    if (rec && card) {
+      const c = setup.cards.find((x) => x.id === card);
+      const sub = { id: newId(), desc: desc.trim(), v: Math.round(total * 100) / 100, cat: finalCat, day: Number(d.slice(8, 10)), start: monthOf(d) };
+      await saveSetup({ cards: setup.cards.map((x) => (x.id === card ? { ...x, subs: [...(x.subs ?? []), sub] } : x)) });
+      if (cat && descKey(desc)) await saveSetup({ rules: { ...setup.rules, [descKey(desc)]: cat } });
+      if (c) setDone(`Assinatura ${sub.desc} (${brl(sub.v)} por mes, todo dia ${sub.day}) cadastrada no ${c.name}, a partir da fatura de ${monthLabel(faturaMonth(c, d))}.`);
+      onAdded?.(card, d);
+      setDesc(""); setV(""); setCat(null); setRec(false); setBusy(false);
+      return;
+    }
     const tipo: Tipo = tipoOfCat(finalCat) ?? (entrada ? "receita" : "gasto");
     const parcels = card && !entrada ? Math.max(1, Math.min(48, Math.round(num(n)) || 1)) : 1;
     const each = Math.round((total / parcels) * 100) / 100;
@@ -919,10 +930,11 @@ export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta", o
             {mode === "cartao" && setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>{c.name}</option>)}
           </select>
         </label>
-        {card && !entrada && <label>Parcelas<input value={n} inputMode="numeric" onChange={(e) => setN(e.target.value)} style={{ width: 70 }} /></label>}
+        {card && !entrada && !rec && <label>Parcelas<input value={n} inputMode="numeric" onChange={(e) => setN(e.target.value)} style={{ width: 70 }} /></label>}
         <button type="submit" className="primary" disabled={busy || !desc.trim() || !(num(v) > 0)}>Lancar</button>
       </div>
-      {card && num(n) > 1 && num(v) > 0 && <p className="muted small">{Math.round(num(n))}x de {brl(num(v) / Math.round(num(n)))} - uma parcela em cada mes.</p>}
+      {card && !entrada && <label className="check small"><input type="checkbox" checked={rec} onChange={(e) => setRec(e.target.checked)} /> Assinatura: cobra todo mes, sem numero de parcelas, ate cancelar</label>}
+      {card && !rec && num(n) > 1 && num(v) > 0 && <p className="muted small">{Math.round(num(n))}x de {brl(num(v) / Math.round(num(n)))} - uma parcela em cada mes.</p>}
       {done && <p className="small pos">{done}</p>}
     </form>
   );

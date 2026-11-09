@@ -61,6 +61,23 @@ async function bcb(code: number, query: string) {
   return (await getJson(`${BCB}.${code}/dados${query}${query.includes("?") ? "&" : "?"}formato=json`)) as { data: string; valor: string }[];
 }
 
+// Dolar PTAX (venda): a serie 1 do SGS as vezes responde 304 sem dados; nesse caso usa o servico PTAX (Olinda), tambem do Banco Central
+export async function usdPtax() {
+  try {
+    const v = Number((await bcb(1, "/ultimos/1"))[0].valor);
+    if (v > 0) return v;
+    throw new Error("sem valor");
+  } catch (first) {
+    const mdy = (d: Date) => `${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}-${d.getUTCFullYear()}`;
+    const to = new Date(), from = new Date(to.getTime() - 10 * 86_400_000);
+    const url = `https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@a,dataFinalCotacao=@b)?@a='${mdy(from)}'&@b='${mdy(to)}'&$top=1&$orderby=dataHoraCotacao%20desc&$format=json`;
+    const r = (await getJson(url)) as { value: { cotacaoVenda: number }[] };
+    const v = Number(r.value[0]?.cotacaoVenda);
+    if (!(v > 0)) throw first;
+    return v;
+  }
+}
+
 // CDI diario dos ultimos ~2 anos (para estimar o rendimento do cofrinho desde a data do saldo informado)
 async function cdiSeries() {
   const to = new Date();
@@ -116,7 +133,7 @@ export async function refreshFinance({ force, base = "" }: { force: boolean; bas
   const tesouroStale = !prev?.tesouro || Date.now() - prev.tesouro.at > TESOURO_MS;
   const [cdi, ptax, ipca, tesouro] = await Promise.all([
     cdiSeries().catch((e) => { errors.push(`CDI (Banco Central): ${String(e)}`); return prev?.cdi ?? { d: [], v: [] }; }),
-    bcb(1, "/ultimos/1").then((r) => Number(r[0].valor)).catch((e) => { errors.push(`Dolar (Banco Central): ${String(e)}`); return prev?.usdbrl ?? null; }),
+    usdPtax().catch((e) => { errors.push(`Dolar (Banco Central): ${String(e)}`); return prev?.usdbrl ?? null; }),
     bcb(13522, "/ultimos/1").then((r) => ({ v: Number(r[0].valor) / 100, ref: r[0].data.slice(3) }))
       .catch(() => (prev?.ipca12m != null ? { v: prev.ipca12m, ref: prev.ipcaRef ?? "" } : null)),
     needTesouro && tesouroStale

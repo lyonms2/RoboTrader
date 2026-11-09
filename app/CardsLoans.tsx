@@ -343,8 +343,8 @@ function FaturaView({ card, st, fm, months, setup }: {
       <p className="small">
         Fecha em <b>{f ? dm(f.close) : "-"}</b>, vence em <b>{f ? dm(f.due) : "-"}</b> - {f ? STATUS[f.status] : "sem compras"}
         {f && f.paid > 0.005 && <span className="muted"> - pago {brl(f.paid)}</span>}
-        {f && f.status !== "paga" && <button className={paying ? "primary small-pay" : "ghost small-btn small-pay"} onClick={() => setPaying(!paying)}>Pagar fatura</button>}
       </p>
+      {f && f.status !== "paga" && <button className="primary pay-cta" onClick={() => setPaying(!paying)}>{paying ? "Fechar pagamento" : `Pagar fatura - ${brl(f.rest)}`}</button>}
       {paying && f && <CardPayForm key={fm} card={card} fm={fm} rest={f.rest} due={f.due} months={months} setup={setup} onDone={() => setPaying(false)} />}
       <div className="kpis compact">
         <div><span>Total da fatura</span><b>{brl(total)}</b><small className="muted">{futuro > 0 ? `inclui ${brl(futuro)} de parcelas previstas` : `${list.length} compras`}</small></div>

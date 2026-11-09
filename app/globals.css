@@ -683,3 +683,4 @@ textarea.wallets { width: 100%; background: var(--bg); color: var(--text); borde
 
 .support-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; border-color: var(--accent); color: var(--text); }
 .support-bar button { margin-left: auto; }
+.pay-cta { display: block; width: 100%; max-width: 320px; padding: 11px 18px; font-weight: 700; font-size: 15px; margin: 4px 0 12px; }

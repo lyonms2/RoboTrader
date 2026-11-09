@@ -6,7 +6,7 @@ import { P } from "@/lib/paths";
 import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
 import { INVEST_CAT, recvStatus, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type Gasto, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
-import GastosCard, { AccountForm, AccountsPanel, CardForm, DebtsBlock, FixoForm, Fixos, ImportPanel, LoanForm, QuickAdd, monthSnapshot, saveSetup, upcoming } from "./GastosCard";
+import GastosCard, { guardWrite, AccountForm, AccountsPanel, CardForm, DebtsBlock, FixoForm, Fixos, ImportPanel, LoanForm, QuickAdd, monthSnapshot, saveSetup, upcoming } from "./GastosCard";
 import NetWorthChart from "./NetWorthChart";
 import CardsLoans, { type CardsEntry } from "./CardsLoans";
 import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
@@ -89,6 +89,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost, acct?.value, investFlows(months));
 
   async function save(list: FinItem[], fetchQuotes: boolean) {
+    guardWrite();
     await setDoc(doc(db(), P("config/main")), { finance: JSON.parse(JSON.stringify(list)) }, { merge: true });
     if (fetchQuotes) onChanged();
   }

@@ -6,3 +6,7 @@ let BASE = "";
 export const setDataBase = (b: string) => { BASE = b; };
 export const P = (path: string) => BASE + path;
 export const memberBase = (uid: string) => `users/${uid}/`;
+// Modo suporte: o dono esta vendo a conta de um membro, so leitura
+let READ_ONLY = false;
+export const setReadOnly = (v: boolean) => { READ_ONLY = v; };
+export const isReadOnly = () => READ_ONLY;

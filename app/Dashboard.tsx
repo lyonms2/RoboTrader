@@ -3,7 +3,7 @@ import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type 
 import { addDoc, collection, deleteDoc, doc, documentId, getDoc, getDocs, limitToLast, onSnapshot, orderBy, query, setDoc, where, writeBatch } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
-import { P, memberBase, setDataBase } from "@/lib/paths";
+import { P, memberBase, setDataBase, setReadOnly } from "@/lib/paths";
 import { applyTrade, rebuild } from "@/lib/ledger";
 import { performance } from "@/lib/performance";
 import { DEFAULT_ALLOC, allocOf, effectiveConfig } from "@/lib/positions";
@@ -103,6 +103,11 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const [notice, setNotice] = useState("");
   const [showCfg, setShowCfg] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  // Modo suporte: o dono le a conta de um membro que autorizou (so leitura)
+  const [support, setSupport] = useState<{ uid: string; email: string; until: number } | null>(null);
+  const clearData = () => { setCfg(DEFAULT_CONFIG); setWallet(null); setWalletHistory([]); setFinance(null); setMonths({}); setGSetup(EMPTY_SETUP); setNwHist([]); setTrades([]); setSync(null); setFichas(null); setCandidates(null); };
+  const enterSupport = (x: { uid: string; email: string; until: number }) => { clearData(); setDataBase(memberBase(x.uid)); setReadOnly(true); setSupport(x); setShowAdmin(false); setTabState("geral"); };
+  const exitSupport = () => { clearData(); setDataBase(""); setReadOnly(false); setSupport(null); };
   const [showAccount, setShowAccount] = useState(false);
   const [busy, setBusy] = useState(false);
   // Aba aberta, lembrada neste navegador
@@ -151,7 +156,13 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     })();
     return () => { alive = false; };
   }, [user, demo]);
-  const member = role === "member";
+  const member = role === "member" || !!support;
+  // a autorizacao expira sozinha
+  useEffect(() => {
+    if (!support) return;
+    const id = setTimeout(exitSupport, Math.max(0, support.until - Date.now()));
+    return () => clearTimeout(id);
+  }, [support]);
   // altura do topo (muda no celular): as sub-abas ficam ancoradas logo abaixo dele
   useEffect(() => {
     const h = document.querySelector("header.topbar");
@@ -168,7 +179,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   useEffect(() => {
     if (!user || demo || (role !== "owner" && role !== "member")) return;
     const onErr = (e: Error) => setError(e.message.includes("permission") ? "Este e-mail não tem acesso (veja firestore.rules)." : e.message);
-    const owner = role === "owner";
+    const owner = role === "owner" && !support;
     const none = () => undefined;
     const u1 = onSnapshot(doc(db(), P("config/main")), (s) => s.exists() && setCfg({ ...DEFAULT_CONFIG, ...(s.data() as AppConfig) }), onErr);
     const u2 = onSnapshot(collection(db(), "latest"), (s) => setLatest(s.docs.map((d) => d.data() as LatestDoc)), onErr);
@@ -195,7 +206,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     const u11 = onSnapshot(query(collection(db(), P("patrimonio_history")), orderBy("t"), limitToLast(1500)),
       (s) => setNwHist(s.docs.map((d) => d.data() as NetWorthDoc)), onErr);
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); u11(); };
-  }, [user, demo, role]);
+  }, [user, demo, role, support]);
 
   // Financas (cotacoes, CDI, Tesouro) numa chamada separada: o arquivo do Tesouro e grande e nao pode atrasar os sinais
   async function refreshFinance() {
@@ -331,8 +342,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             </div>
           </div>
           <div className="row">
-            {role === "owner" && !demo && <button className="ghost" onClick={() => setShowAdmin(true)}>Membros</button>}
-            {member && <button className="ghost" onClick={() => setShowAccount(true)}>Minha conta</button>}
+            {role === "owner" && !demo && !support && <button className="ghost" onClick={() => setShowAdmin(true)}>Membros</button>}
+            {member && !support && <button className="ghost" onClick={() => setShowAccount(true)}>Minha conta</button>}
             <button className="ghost" onClick={() => signOut(auth())}>Sair</button>
           </div>
         </div>
@@ -347,6 +358,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       </header>
 
       <main className="wrap">
+        {support && <p className="banner support-bar"><b>Modo suporte:</b> vendo a conta de {support.email}, só leitura, até {new Date(support.until).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}.
+          <button className="primary small-btn" onClick={exitSupport}>Sair do suporte</button></p>}
         {error && <p className="banner error">{error}</p>}
         {notice && <p className="banner">{notice}</p>}
 
@@ -362,7 +375,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
                 <button key={x.id} role="tab" aria-selected={tab === x.id} className={tab === x.id ? "pill on" : "pill"} onClick={() => setTab(x.id)}>{x.label}</button>
               ))}
             </nav>
-            <div className="toolbar-actions">
+            {!support && <div className="toolbar-actions">
               <button onClick={refresh} disabled={busy} className="primary small-btn" title="Sinais do robô, carteiras, fichas dos tokens e cotações">
                 {busy ? "Atualizando..." : "Atualizar"}
               </button>
@@ -372,7 +385,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
               </svg>
               </button>
-            </div>
+            </div>}
           </div>
         )}
         {tab === "sinais" && (
@@ -391,7 +404,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         )}
         {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup}
           onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }}
-          onQuotes={async () => { const p = await refreshFinance(); if (p.length) setError(p.join("; ")); else setNotice(`Cotações atualizadas às ${new Date().toLocaleTimeString("pt-BR")}.`); }} />}
+          onQuotes={support ? undefined : async () => { const p = await refreshFinance(); if (p.length) setError(p.join("; ")); else setNotice(`Cotações atualizadas às ${new Date().toLocaleTimeString("pt-BR")}.`); }} />}
         {tab === "carteira" && <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} />}
         {tab === "tokens" && !member && <FichasCard fichas={fichas} />}
         {tab === "operacoes" && !member && (
@@ -410,7 +423,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
           {member ? <MemberConfigForm cfg={cfg} onClose={() => setShowCfg(false)} /> : <ConfigForm cfg={cfg} onClose={() => setShowCfg(false)} />}
         </Modal>
       )}
-      {showAdmin && <Modal onClose={() => setShowAdmin(false)}><MembersAdmin onClose={() => setShowAdmin(false)} /></Modal>}
+      {showAdmin && <Modal onClose={() => setShowAdmin(false)}><MembersAdmin onClose={() => setShowAdmin(false)} onSupport={enterSupport} /></Modal>}
       {showAccount && user && <Modal onClose={() => setShowAccount(false)}><MyAccount user={user} onClose={() => setShowAccount(false)} /></Modal>}
     </>
   );
@@ -1218,7 +1231,9 @@ function MemberConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => voi
 }
 
 // Administracao (so o dono): quem pode entrar
-function MembersAdmin({ onClose }: { onClose: () => void }) {
+function MembersAdmin({ onClose, onSupport }: { onClose: () => void; onSupport: (x: { uid: string; email: string; until: number }) => void }) {
+  const [grants, setGrants] = useState<{ uid: string; email: string; until: number }[]>([]);
+  useEffect(() => onSnapshot(collection(db(), "support"), (s) => setGrants(s.docs.map((d) => ({ uid: d.id, ...(d.data() as { email: string; until: number }) }))), () => undefined), []);
   const [list, setList] = useState<{ email: string; name?: string; at?: number }[] | null>(null);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -1255,6 +1270,8 @@ function MembersAdmin({ onClose }: { onClose: () => void }) {
           {list.map((m) => (
             <li key={m.email}><b>{m.email}</b>{m.name && <span className="muted">{m.name}</span>}
               <span className="muted">{m.at ? `desde ${new Date(m.at).toLocaleDateString("pt-BR")}` : ""}</span>
+              {(() => { const g = grants.find((x) => x.email === m.email && x.until > Date.now()); return g
+                ? <button className="primary small-btn" onClick={() => onSupport(g)}>Ver conta (suporte)</button> : <span className="muted">sem suporte liberado</span>; })()}
               <button className="link" onClick={() => remove(m.email)}>remover</button></li>
           ))}
         </ul>
@@ -1265,6 +1282,18 @@ function MembersAdmin({ onClose }: { onClose: () => void }) {
 
 // Minha conta (membro): privacidade e apagar os dados
 function MyAccount({ user, onClose }: { user: User; onClose: () => void }) {
+  const [until, setUntil] = useState<number | null>(null);
+  useEffect(() => {
+    try { return onSnapshot(doc(db(), "support", user.uid), (s) => setUntil(s.exists() ? (s.data() as { until: number }).until : null), () => undefined); }
+    catch { return undefined; }
+  }, [user.uid]);
+  const active = until !== null && until > Date.now();
+  const allow = async () => {
+    if (!(await ask("Permitir suporte por 24 horas? O SeuBitico poderá VER seus dados do site (lançamentos, cartões, investimentos, carteiras), sem poder alterar nada. Você pode encerrar quando quiser."))) return;
+    try { await setDoc(doc(db(), "support", user.uid), { email: (user.email ?? "").toLowerCase(), until: Date.now() + 86_400_000, at: Date.now() }); }
+    catch (e) { await tell(`Não foi possível liberar: ${String(e)}`); }
+  };
+  const stop = async () => { try { await deleteDoc(doc(db(), "support", user.uid)); } catch (e) { await tell(`Não foi possível encerrar: ${String(e)}`); } };
   const [busy, setBusy] = useState(false);
   const wipe = async () => {
     if (!(await ask("Apagar todos os seus dados do site (lançamentos, cartões, investimentos, carteiras)? Não dá para desfazer."))) return;
@@ -1280,9 +1309,15 @@ function MyAccount({ user, onClose }: { user: User; onClose: () => void }) {
     <section className="cfg">
       <div className="modal-head"><h2>Minha conta</h2><button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button></div>
       <p className="small">Entrou como <b>{user.email}</b>.</p>
+      <h3>Suporte</h3>
+      {active
+        ? <p className="small"><b className="warn">Suporte liberado</b> até {new Date(until!).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. O SeuBitico pode ver seus dados, sem alterar nada.
+            <button className="ghost small-btn" onClick={stop}>Encerrar agora</button></p>
+        : <p className="small muted">Se precisar de ajuda, você pode liberar a leitura da sua conta por 24 horas. Só você libera e pode encerrar quando quiser.
+            <button className="ghost small-btn" onClick={allow}>Permitir suporte por 24 horas</button></p>}
       <h3>Privacidade</h3>
       <ul className="small privacy">
-        <li>Seus dados ficam guardados no banco do site (Google Firebase), num espaço só seu: pelo site, ninguém além de você consegue ver.</li>
+        <li>Seus dados ficam guardados no banco do site (Google Firebase), num espaço só seu: pelo site, ninguém além de você consegue ver, exceto se você liberar o suporte acima.</li>
         <li>Carteiras cripto: só o endereço público, lido em modo leitura. Nunca peça nem informe frase secreta ou chave privada.</li>
         <li>Nada aqui é recomendação de investimento: é uma ferramenta educacional de organização.</li>
       </ul>

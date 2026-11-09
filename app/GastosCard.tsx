@@ -2,7 +2,7 @@
 import { doc, setDoc } from "firebase/firestore";
 import { Fragment, useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
-import { P } from "@/lib/paths";
+import { P, isReadOnly } from "@/lib/paths";
 import { CARD_PAY_CAT, GENERIC_CATS, INVEST_CAT, TRANSFER_CAT, customCats, setCustomCats, accNameFromDesc, looksDuplicate, suggestCard, suggestToAcc, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardPayForm } from "./CardsLoans";
@@ -24,9 +24,20 @@ function num(s: string) {
   else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
   return Number(t) || 0;
 }
-export const saveMonth = (m: string, items: Gasto[]) =>
-  setDoc(doc(db(), P("config"), `gastos-${m}`), { items: clean([...items].sort((a, b) => a.d.localeCompare(b.d))) });
-export const saveSetup = (s: Partial<GastosSetup>) => setDoc(doc(db(), P("config"), "gastos-setup"), clean(s), { merge: true });
+// Modo suporte e so leitura: avisa e nao grava (as regras do banco tambem bloqueiam)
+export function guardWrite() {
+  if (!isReadOnly()) return;
+  void tell("Modo suporte: só leitura. Nada foi alterado.");
+  throw new Error("modo suporte: so leitura");
+}
+export const saveMonth = async (m: string, items: Gasto[]) => {
+  guardWrite();
+  return setDoc(doc(db(), P("config"), `gastos-${m}`), { items: clean([...items].sort((a, b) => a.d.localeCompare(b.d))) });
+};
+export const saveSetup = async (s: Partial<GastosSetup>) => {
+  guardWrite();
+  return setDoc(doc(db(), P("config"), "gastos-setup"), clean(s), { merge: true });
+};
 
 // Grava lancamentos que podem cair em meses diferentes (parcelas, importacao)
 async function addItems(months: Record<string, MonthDoc>, list: Gasto[]) {

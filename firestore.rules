@@ -29,9 +29,20 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.token.email.lower() == email;
       allow write: if isOwner();
     }
-    // Espaco de cada membro
+    // Espaco de cada membro. O dono so LE, e so enquanto o proprio membro tiver autorizado o suporte
     match /users/{uid}/{document=**} {
       allow read, write: if isMember() && request.auth.uid == uid;
+      allow read: if isOwner()
+        && exists(/databases/$(database)/documents/support/$(uid))
+        && get(/databases/$(database)/documents/support/$(uid)).data.until > request.time.toMillis();
+    }
+    // Modo suporte: so o proprio membro libera (no maximo 24 h) ou encerra; o dono apenas consulta
+    match /support/{uid} {
+      allow read: if isOwner() || (request.auth != null && request.auth.uid == uid);
+      allow delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if isMember() && request.auth.uid == uid
+        && request.resource.data.until is int
+        && request.resource.data.until <= request.time.toMillis() + 86460000;
     }
     // Sinais do robo: membros veem como estudo
     match /latest/{symbol} {

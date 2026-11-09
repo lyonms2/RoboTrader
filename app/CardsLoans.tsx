@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   CARD_PAY_CAT, RECV_OUT_CAT, accountsOf, addMonths, cardStatus, dayIn, descKey, commitments, debts, faturaItems, faturaMonth, loanDue, loanStatus, prepaidSlots, monthLabel, monthOf, newId, tipoOfCat, todayBR,
-  catLabel, subValue, type Card, type CardSub, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
+  catLabel, parcelSiblings, subValue, type Card, type CardSub, type Gasto, type GastosSetup, type Loan, type LoanRow, type MonthDoc,
 } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardForm, CatSelect, LoanForm, QuickAdd, saveMonth, saveSetup } from "./GastosCard";
@@ -325,10 +325,13 @@ function FaturaView({ card, st, fm, months, setup }: {
   const maxCat = Math.max(...cats.map(([, v]) => v), 0);
   const futuro = f?.futuro ?? 0;
   const later = st.all.filter((x) => x.m > fm).slice(0, 6);
-  const setCat = async (m: string, id: string, cat: string) => {
-    const md = months[m];
+  // Vale para todas as parcelas da compra (cada parcela fica gravada no mes dela)
+  const setCat = async (g: Gasto, cat: string) => {
+    const by: Record<string, Set<string>> = {};
+    for (const { m, x } of parcelSiblings(months, g)) (by[m] ??= new Set()).add(x.id);
     // compra que vira "nao conta" (ex.: Emprestei dinheiro) continua sendo compra: saiu
-    await saveMonth(m, md.items.map((x) => (x.id === id ? { ...x, cat, tipo: tipoOfCat(cat) ?? x.tipo, ...(tipoOfCat(cat) === "neutro" ? { io: x.io ?? "out" } : {}) } : x)));
+    await Promise.all(Object.entries(by).map(([m, ids]) => saveMonth(m, months[m].items.map((x) => (ids.has(x.id)
+      ? { ...x, cat, tipo: tipoOfCat(cat) ?? x.tipo, ...(tipoOfCat(cat) === "neutro" ? { io: x.io ?? "out" } : {}) } : x)))));
   };
   const [editId, setEditId] = useState<string | null>(null);
   const remove = async (m: string, id: string, desc: string) => {
@@ -380,7 +383,7 @@ function FaturaView({ card, st, fm, months, setup }: {
               {list.map(({ m, g }) => (<Fragment key={g.id}>
                 <tr>
                   <td><span className="cell">{g.desc}<small className="muted">{[dm(g.d), g.sub ? "assinatura" : null, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null].filter(Boolean).join(" - ")}</small></span></td>
-                  <td data-label="Categoria">{g.sub ? catLabel(g.cat) : <span className="cell"><CatSelect value={g.cat} onChange={(c) => setCat(m, g.id, c)} />
+                  <td data-label="Categoria">{g.sub ? catLabel(g.cat) : <span className="cell"><CatSelect value={g.cat} onChange={(c) => setCat(g, c)} />
                     {g.cat === RECV_OUT_CAT && <RecvSelect g={g} m={m} months={months} setup={setup} />}</span>}</td>
                   <td data-label="Valor" className={g.tipo === "receita" ? "pos" : ""}>{g.tipo === "receita" ? "+" : "-"}{brl(g.v)}</td>
                   <td className="actions"><button className="link" onClick={() => setEditId(editId === g.id ? null : g.id)}>alterar</button>

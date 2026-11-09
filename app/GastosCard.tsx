@@ -9,7 +9,7 @@ import { CardPayForm } from "./CardsLoans";
 import { RecvSelect, linkRecv, receive } from "./Receivables";
 import {
   catLabel, CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, parcelSiblings, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
   type Bill, type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
@@ -599,10 +599,16 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
   let invMissing = 0;
   let payMissing = 0;
   let recat = 0;
+  let parcFix = 0;
   const rf = recvFixes(months, setup);
   for (const f of rf) fixes.push({ m: f.m, id: f.id, patch: f.patch });
   for (const [m, md] of Object.entries(months))
     for (const g of md.items) {
+      // parcela que ficou em Outros, mas outra parcela da mesma compra ja tem categoria
+      if (GENERIC_CATS.includes(g.cat) && g.card && g.parc) {
+        const irma = parcelSiblings(months, g).find(({ x }) => !GENERIC_CATS.includes(x.cat))?.x;
+        if (irma) { parcFix++; fixes.push({ m, id: g.id, patch: { cat: irma.cat, tipo: irma.tipo, ...(irma.io ? { io: irma.io } : {}) } }); }
+      }
       // em Outros/Outras entradas mas o texto diz o que e (ex.: "Dinheiro resgatado do cofrinho" = Investimento)
       if (GENERIC_CATS.includes(g.cat) && !g.card) {
         const io = g.io ?? (dirOf(g) > 0 ? "in" : "out");
@@ -661,9 +667,10 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
         {payMissing > 0 && <li>{payMissing} {payMissing > 1 ? "pagamentos" : "pagamento"} de fatura sem cartão: a fatura continua aparecendo como dívida.</li>}
         {rf.length > 0 && <li>{rf.length} {rf.length > 1 ? "recebimentos" : "recebimento"} de quem te deve ({[...new Set(rf.map((x) => x.who))].join(", ")}) achados no extrato: ligar a parcela
           {rf.some((x) => x.patch.tipo === "neutro") ? " e tirar da renda (e dinheiro seu voltando)" : ""}.</li>}
+        {parcFix > 0 && <li>{parcFix} {parcFix > 1 ? "parcelas ficaram" : "parcela ficou"} em &quot;Outros&quot;, mas outra parcela da mesma compra já tem categoria.</li>}
         {recat > 0 && <li>{recat} {recat > 1 ? "lançamentos" : "lançamento"} em Outros/Outras entradas que o texto já diz o que é (ex.: resgate de cofrinho = Investimento).</li>}
         {fixes.length > 0 && <li><button className="primary small-btn" disabled={busy} onClick={applyFixes}>{busy ? "Arrumando..." : `Arrumar ${fixes.length} automaticamente`}</button>
-          {fixes.length < invMissing + payMissing + recat + rf.length && <span className="muted"> os outros: escolha na lista de lançamentos</span>}</li>}
+          {fixes.length < invMissing + payMissing + recat + rf.length + parcFix && <span className="muted"> os outros: escolha na lista de lançamentos</span>}</li>}
         {wrongDir.length > 0 && (
           <li className="warn">{wrongDir.length} {wrongDir.length > 1 ? "lançamentos de gasto foram gravados" : "lançamento de gasto foi gravado"} como entrada na conta
             ({wrongDir.slice(0, 3).map((x) => `${x.g.desc.slice(0, 20)} ${brl(x.g.v)}`).join(", ")}{wrongDir.length > 3 ? "..." : ""}): o saldo da conta soma em vez de descontar.

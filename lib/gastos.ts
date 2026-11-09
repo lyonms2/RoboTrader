@@ -332,6 +332,14 @@ export function summarize(items: Gasto[], ctx?: { m: string; months: Record<stri
 }
 
 // Compras de uma fatura (cartao c, fatura que vence no mes fm), em qualquer mes de lancamento
+// Todas as parcelas da mesma compra no cartao (mesmo cartao, descricao, valor e numero de parcelas), onde quer que estejam gravadas
+export function parcelSiblings(months: Record<string, MonthDoc>, g: Gasto) {
+  const out: { m: string; x: Gasto }[] = [];
+  for (const [m, md] of Object.entries(months))
+    for (const x of md.items)
+      if (x.id === g.id || (g.card && g.parc && x.parc && x.card === g.card && x.parc[1] === g.parc[1] && descKey(x.desc) === descKey(g.desc) && Math.abs(x.v - g.v) < 0.01)) out.push({ m, x });
+  return out;
+}
 export function subValue(s: CardSub, m: string) {
   let v = s.v;
   for (const x of [...(s.steps ?? [])].sort((a, b) => a.from.localeCompare(b.from))) if (x.from <= m) v = x.v;

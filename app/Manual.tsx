@@ -8,7 +8,7 @@ const START: string[] = [
   "Importe o extrato do banco do mês (Lançamentos → Importar extrato).",
   "Resolva o que aparecer em \"Para revisar\": é o que deixa os números certos.",
   "Cadastre seus cartões e as compras parceladas e assinaturas (Cartões e empréstimos).",
-  "Cadastre os gastos fixos: aluguel, luz, internet (Lançamentos → Gasto fixo).",
+  "Cadastre as contas: aluguel, luz, internet (Lançamentos → Contas a pagar → Todo mês).",
   "Cadastre investimentos e bens (Investimentos).",
   "Pronto: a Visão geral passa a mostrar patrimônio, avisos e o que vence.",
 ];
@@ -48,13 +48,13 @@ const TOPICS: { group: string; items: Topic[] }[] = [
   ] },
   { group: "Contas do mês e gastos fixos", items: [
     { title: "Cadastrar um gasto fixo", steps: [
-      "Em Lançamentos, clique em \"Gasto fixo\".",
+      "Em Lançamentos, clique em \"Contas a pagar\" e escolha \"Todo mês\".",
       "Informe descrição, valor, dia, categoria e o mês em que começa.",
       "Se o valor muda todo mês (luz, água), marque essa opção: a previsão usa a média.",
       "Se tem reajuste anual (aluguel), escolha o mês: o site avisa quando chegar.",
     ], tips: ["Mudou o valor? Altere o fixo e diga a partir de quando: os meses anteriores ficam com o valor antigo."] },
     { title: "Lançar uma conta a pagar (ainda não paga)", steps: [
-      "Em Lançamentos, clique em \"Conta a pagar\".",
+      "Em Lançamentos, clique em \"Contas a pagar\" e escolha \"Uma vez só\".",
       "Informe descrição, valor, vencimento e categoria.",
       "Ela aparece em \"Contas do mês\" como a pagar e entra nos avisos, mas só conta como gasto quando você pagar.",
       "Quando pagar, ligue ao lançamento do extrato ou diga com que conta pagou, como num gasto fixo.",

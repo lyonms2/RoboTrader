@@ -505,7 +505,7 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
   {
     const cm = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 7);
     for (const f of money.setup.fixos) if (fixoActive(f, cm) && fixoReajPending(f, cm))
-      todo.push({ tone: "info", who: "Fixo", text: `${f.desc} reajusta este mês: atualize o novo valor (Lançamentos > Gasto fixo)`, tab: "financas", fin: "lanc" });
+      todo.push({ tone: "info", who: "Fixo", text: `${f.desc} reajusta este mês: atualize o novo valor (Lançamentos > Contas a pagar)`, tab: "financas", fin: "lanc" });
   }
   const rc = reviewCount(money.months, money.setup);
   if (rc) todo.push({ tone: "info", who: "Finanças", text: `${rc} ${rc > 1 ? "pontos" : "ponto"} para revisar nos lançamentos (para os números ficarem certos)`, tab: "financas", fin: "lanc" });

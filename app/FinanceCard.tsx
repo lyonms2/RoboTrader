@@ -869,7 +869,7 @@ export function NetWorthBlock({ cfg, fin, wallet, months, setup, nwHist }: Ctx &
 export type EntryType = "mov" | "import" | "inv" | "bem" | "fixo" | "pagar" | "conta";
 const ENTRY_TYPES: { id: EntryType; label: string }[] = [
   { id: "mov", label: "Gasto ou entrada" }, { id: "import", label: "Importar extrato" },
-  { id: "fixo", label: "Gasto fixo" }, { id: "pagar", label: "Conta a pagar" }, { id: "conta", label: "Conta / saldo" },
+  { id: "fixo", label: "Contas a pagar" }, { id: "conta", label: "Conta / saldo" },
 ];
 
 function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, onRemoveInv }: {
@@ -890,11 +890,16 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   const accounts = accountsOf(setup);
   // Itens existentes de cada tipo (para alterar ou remover)
   const existing: Record<string, { id: string; label: string }[]> = {
-    fixo: setup.fixos.filter((f) => !f.once).map((f) => ({ id: f.id, label: f.desc })),
-    pagar: setup.fixos.filter((f) => f.once).map((f) => ({ id: f.id, label: `${f.desc} (vence ${f.due ? `${f.due.slice(8, 10)}/${f.due.slice(5, 7)}` : "-"})` })),
+    // contas a pagar: as que repetem todo mes (fixos) e as de uma vez so
+    fixo: [...setup.fixos.filter((f) => !f.once).map((f) => ({ id: f.id, label: `${f.desc} (todo mês)` })),
+      ...setup.fixos.filter((f) => f.once).map((f) => ({ id: f.id, label: `${f.desc} (uma vez, vence ${f.due ? `${f.due.slice(8, 10)}/${f.due.slice(5, 7)}` : "-"})` }))],
     conta: accounts.map((a) => ({ id: a.id, label: a.name })),
   };
-  const opts = existing[type];
+  const opts = existing[type === "pagar" ? "fixo" : type];
+  // Contas a pagar: repete todo mes (fixo) ou uma vez so; ao alterar, vale o tipo da conta escolhida
+  const [onceMode, setOnceMode] = useState(type === "pagar");
+  const cur = setup.fixos.find((f) => f.id === id) ?? null;
+  const isOnce = cur ? !!cur.once : onceMode;
   const saveAccounts = async (list: Account[], m: string) => {
     try { await saveSetup({ accounts: JSON.parse(JSON.stringify(list)), account: null } as Partial<GastosSetup>); done(m); }
     catch { setMsg(""); await tell("Não salvou (sem conexão?). Tente de novo."); }
@@ -906,7 +911,7 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
         <p className="small entry-q">O que você quer lançar?</p>
         <div className="kind-pick entry-types">
           {ENTRY_TYPES.map((t) => (
-            <button key={t.id} type="button" className={open && type === t.id ? "pill on" : "pill"} onClick={() => { setMsg(""); setEntry({ type: t.id, id: null }); setOpen(true); }}>{t.label}</button>
+            <button key={t.id} type="button" className={open && (type === t.id || (t.id === "fixo" && type === "pagar")) ? "pill on" : "pill"} onClick={() => { setMsg(""); setEntry({ type: t.id, id: null }); setOpen(true); }}>{t.label}</button>
           ))}
         </div>
         {open && <button type="button" className="link entry-close" onClick={() => setOpen(false)}>fechar</button>}
@@ -924,8 +929,14 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
       {type === "mov" && <QuickAdd months={months} setup={setup} invest={invest} defaultDate={todayBR()} />}
       {type === "import" && <ImportPanel months={months} setup={setup} invest={invest} onDone={() => setEntry({ type: "mov", id: null })} />}
       {msg && <p className="small pos entry-msg">&#10003; {msg}</p>}
-      {type === "fixo" && <FixoForm key={`${id ?? "novo"}-${n}`} setup={setup} fixo={setup.fixos.find((f) => f.id === id) ?? null} onDone={done} />}
-      {type === "pagar" && <PayableForm key={`${id ?? "novo"}-${n}`} setup={setup} fixo={setup.fixos.find((f) => f.id === id && f.once) ?? null} onDone={done} />}
+      {(type === "fixo" || type === "pagar") && !cur && (
+        <div className="kind-pick" role="radiogroup" aria-label="Repete?">
+          <button type="button" role="radio" aria-checked={!onceMode} className={!onceMode ? "pill on" : "pill"} onClick={() => setOnceMode(false)}>Todo mês (aluguel, internet, luz)</button>
+          <button type="button" role="radio" aria-checked={onceMode} className={onceMode ? "pill on" : "pill"} onClick={() => setOnceMode(true)}>Uma vez só (boleto, conserto, IPVA)</button>
+        </div>
+      )}
+      {(type === "fixo" || type === "pagar") && !isOnce && <FixoForm key={`${id ?? "novo"}-${n}`} setup={setup} fixo={cur} onDone={done} />}
+      {(type === "fixo" || type === "pagar") && isOnce && <PayableForm key={`${id ?? "novo"}-${n}-once`} setup={setup} fixo={cur} onDone={done} />}
       {type === "conta" && (
         <AccountForm key={`${id ?? "novo"}-${n}`} acc={accounts.find((a) => a.id === id) ?? null}
           canRemove={!!id && accounts.length > 1 && !usedAcc.has(id)}

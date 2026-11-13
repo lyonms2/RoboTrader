@@ -6,6 +6,7 @@ import {
 } from "@/lib/gastos";
 import { CatSelect, saveMonth, saveSetup } from "./GastosCard";
 import { ask, askText, tell } from "./Dialog";
+import Note from "./Note";
 void tell;
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -63,8 +64,8 @@ export default function ReceivablesPart({ months, setup, openId }: { months: Rec
             <small className="muted">{nx ? `${nx.r.name} ${nx.st.nextK! + 1}/${nx.r.n} - ${nx.st.next! < today ? "venceu" : "dia"} ${dm(nx.st.next!)}/${nx.st.next!.slice(2, 4)}` : "nenhuma"}</small></div>
           <div><span>Já recebido</span><b>{brl(got)}</b><small className="muted">soma das parcelas recebidas</small></div>
         </div>
-        <p className="muted small">Pix com o nome da pessoa no extrato é reconhecido sozinho como parcela recebida. Recebeu e não aparece? Use &quot;recebi&quot;.
-          Dinheiro que você emprestou volta como &quot;Devolução de empréstimo&quot; (não é renda); venda ou serviço parcelado entra como renda.</p>
+        <Note>Pix com o nome da pessoa no extrato é reconhecido sozinho como parcela recebida. Recebeu e não aparece? Use &quot;recebi&quot;.
+          Dinheiro que você emprestou volta como &quot;Devolução de empréstimo&quot; (não é renda); venda ou serviço parcelado entra como renda.</Note>
       </section>
 
       <section className="card">

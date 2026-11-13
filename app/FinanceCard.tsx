@@ -12,6 +12,7 @@ import CardsLoans, { type CardsEntry } from "./CardsLoans";
 import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
 import { ask, askText, tell } from "./Dialog";
 
+import Note from "./Note";
 // Resumo = ver como esta; Lancamentos = unico lugar onde o dinheiro se move; Contas e bens = unico lugar com saldos e cadastros
 // O resumo (patrimonio, mes, proximos pagamentos, evolucao) fica na Visao geral
 export type Sub = "lanc" | "invest" | "cards" | "bens";
@@ -145,9 +146,9 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
           {debt.recv > 0 && <div><span>A receber</span><b className="pos">{brl(debt.recv)}</b><small className="muted">o que te devem</small></div>}
           <div><span>Líquido sem bens</span><b>{brl(fin0 + debt.recv - debt.total)}</b><small className="muted">{s.bens > 0 ? `com bens: ${brl(fin0 + debt.recv + s.bens - debt.total)}` : debt.recv > 0 ? "tem + a receber - deve" : "tem - deve"}</small></div>
         </div>
-        <p className="muted small">Aqui só se vê: para lançar ou alterar, use Lançamentos (contas e fixos), Investimentos (investimentos e bens),
+        <Note>Aqui só se vê: para lançar ou alterar, use Lançamentos (contas e fixos), Investimentos (investimentos e bens),
           Cartões e empréstimos, ou o link &quot;alterar&quot; de cada item.
-          A cripto fica na aba Carteira{crypto > 0 ? ` (${brl(crypto, 0)})` : ""}; o patrimônio total da Visão geral soma tudo.</p>
+          A cripto fica na aba Carteira{crypto > 0 ? ` (${brl(crypto, 0)})` : ""}; o patrimônio total da Visão geral soma tudo.</Note>
       </section>
 
       <h3 className="bal-title">O que você tem</h3>
@@ -316,11 +317,11 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
         ) : (
           <p className="muted">Nenhum investimento cadastrado. Clique em &quot;+ novo investimento&quot; para incluir cofrinho, Tesouro, ações, FIIs ou outros.</p>
         )}
-        <p className="muted small">
+        <Note>
           Automático: cotação e proventos (Yahoo Finance), preço do Tesouro (Tesouro Transparente, 1 vez por dia), CDI, IPCA e dólar
           (Banco Central). À mão: quantidades, saldo do cofrinho e preços médios, porque bancos e a B3 não tem API aberta para ler sua
           posição. Valores brutos, antes de IR e taxas.
-        </p>
+        </Note>
       </section>
 
       <CdiCard rows={rows} fin={fin} />
@@ -372,11 +373,11 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
           </div>
         ) : <p className="muted small">Nenhum aporte ou resgate nos últimos 12 meses.</p>}
         {moves.length > 8 && <button className="link" onClick={() => setAllMoves(!allMoves)}>{allMoves ? "ver menos" : `ver todos (${moves.length})`}</button>}
-        <p className="muted small">
-          Aportes e resgates vem do extrato (categoria Investimento, em Lançamentos). Ligados a um cofrinho ou &quot;outro&quot;, eles somam e
+        {unlinked > 0 && <p className="warn small">{unlinked} {unlinked === 1 ? "movimento está" : "movimentos estão"} sem destino: escolha o investimento em Lançamentos.</p>}
+        <Note>
+          Aportes e resgates vêm do extrato (categoria Investimento, em Lançamentos). Ligados a um cofrinho ou &quot;outro&quot;, eles somam e
           descontam o saldo sozinhos. Tesouro e ações: atualize a quantidade aqui depois de comprar ou vender.
-          {unlinked > 0 && <b className="warn"> {unlinked} {unlinked === 1 ? "movimento está" : "movimentos estão"} sem destino: escolha o investimento em Lançamentos.</b>}
-        </p>
+        </Note>
       </section>
 
       <Dividends rows={rows} fin={fin} />
@@ -408,8 +409,8 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
             })}
           </ul>
         ) : <p className="muted small">Nenhum bem cadastrado.</p>}
-        <p className="muted small">Imóveis, terrenos e veículos: entram no patrimônio &quot;com bens&quot;, separados do financeiro, e não somam no
-          &quot;Investido hoje&quot; acima. O valor anda sozinho se você informar quanto valoriza ou deprecia por ano.</p>
+        <Note>Imóveis, terrenos e veículos: entram no patrimônio &quot;com bens&quot;, separados do financeiro, e não somam no
+          &quot;Investido hoje&quot; acima. O valor anda sozinho se você informar quanto valoriza ou deprecia por ano.</Note>
       </section>
     </>
   );
@@ -510,7 +511,8 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
         ...(Number.isFinite(r) && r !== 0 ? { rate: r } : {}), ...(counts ? {} : { ignore: true }) };
     } else {
       if (!name.trim()) return setErr("De um nome (ex.: Previdência, Poupança).");
-      it = { ...base, name: name.trim(), value: parse(value), valueAt: Date.now(), reserva };
+      const valueAt = initial?.kind === "outro" && initial.value === parse(value) && initial.valueAt ? initial.valueAt : Date.now();
+      it = { ...base, name: name.trim(), value: parse(value), valueAt, reserva };
     }
     onSave(it);
   };
@@ -542,11 +544,11 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
                 <label>% do CDI dessa parte<input value={p2pct} inputMode="decimal" onChange={(e) => setP2pct(e.target.value)} placeholder="120" /></label>
               </>
             )}
-            <p className="muted small full">Depósitos e resgates lançados em Lançamentos (categoria Investimento) depois dessa data somam
-              e descontam sozinhos. Ao mudar o saldo, a data vira hoje sozinha (a menos que você escolha outra).</p>
-            <p className="muted small full">Imposto: o site calcula o rendimento bruto, antes do IR. Se o app do banco mostra o valor já sem IR
+            <Note>Depósitos e resgates lançados em Lançamentos (categoria Investimento) depois dessa data somam
+              e descontam sozinhos. Ao mudar o saldo, a data vira hoje sozinha (a menos que você escolha outra).</Note>
+            <Note>Imposto: o site calcula o rendimento bruto, antes do IR. Se o app do banco mostra o valor já sem IR
               (comum no Mercado Pago), o site fica um pouco acima. Para chegar perto, baixe o % do CDI: com 100% do CDI, use ~78% nos
-              primeiros 6 meses, ~80% até 1 ano, ~83% até 2 anos e ~85% depois (IR de 22,5%, 20%, 17,5% e 15% sobre o rendimento).</p>
+              primeiros 6 meses, ~80% até 1 ano, ~83% até 2 anos e ~85% depois (IR de 22,5%, 20%, 17,5% e 15% sobre o rendimento).</Note>
           </>
         )}
         {kind === "tesouro" && (
@@ -696,11 +698,11 @@ function CdiCard({ rows, fin }: { rows: FinRow[]; fin: FinanceDoc | null }) {
       )}
       {missing.length > 0 && <p className="small">Para comparar, informe o preço médio e a data da compra (em &quot;alterar&quot;): <b>{names(missing)}</b>.</p>}
       {old.length > 0 && first && <p className="small muted">Comprados antes de {dBR(first)}, início do histórico do CDI guardado: {names(old)}.</p>}
-      <p className="muted small">
+      <Note>
         Valores brutos, antes de IR e taxas. Se comprou em várias datas, a conta usa o preço médio como se tudo tivesse sido comprado
         na data informada, então é aproximada. Proventos contam com a quantidade de hoje; cupons do Tesouro com juros semestrais não
         entram. Cofrinhos não aparecem aqui porque já rendem um % do CDI. Comparar menos de 3 meses diz pouco. Não é recomendação de investimento.
-      </p>
+      </Note>
     </section>
   );
 }
@@ -718,7 +720,8 @@ function Dividends({ rows, fin }: { rows: FinRow[]; fin: FinanceDoc | null }) {
   });
   const list = papers.map((r) => {
     const q = fin!.quotes[(r.item.ticker ?? "").toUpperCase()];
-    const last12 = q.divs.filter((d) => d.t > Date.now() - 365 * 86_400_000);
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1).getTime();
+    const last12 = q.divs.filter((d) => d.t >= start && d.t <= Date.now());
     for (const d of last12) {
       const dt = new Date(d.t);
       const m = months.find((x) => x.key === `${dt.getFullYear()}-${dt.getMonth()}`);
@@ -769,10 +772,10 @@ function Dividends({ rows, fin }: { rows: FinRow[]; fin: FinanceDoc | null }) {
         </table>
       </div>
       {none.length > 0 && <p className="muted small">Sem proventos nos últimos 12 meses: {none.join(", ")}.</p>}
-      <p className="muted small">
+      <Note>
         Proventos = dividendos + JCP, por data com (Yahoo Finance; JCP aparece bruto, antes dos 15% de IR). Dividend yield alto sozinho
         não diz muito: muitas vezes vem de uma ação que caiu. Olhe a constância dos pagamentos ao longo dos anos.
-      </p>
+      </Note>
     </section>
   );
 }

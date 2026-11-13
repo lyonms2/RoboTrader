@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { GROUPS } from "@/lib/financeMath";
 import type { NetWorthDoc } from "@/lib/patrimonio";
 
+import Note from "./Note";
 const fmt = (v: number, d = 0) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 0) => `R$ ${fmt(v, d)}`;
 const date = (t: number) => new Date(t).toLocaleDateString("pt-BR");
@@ -143,10 +144,10 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
           <li key={g.key}><i className={`g-${g.key}`} />{g.label} <b>{brl(cur.byGroup[g.key])}</b></li>
         ))}
       </ul>
-      <p className="muted small">
+      <Note>
         Uma foto por dia, gravada pelo agendador (ou quando você clica em &quot;Atualizar&quot;, em Cripto); o último ponto e o valor de agora.
         {cur.partial?.length ? ` Neste dia ficou de fora: ${cur.partial.join(", ")}.` : ""}
-      </p>
+      </Note>
     </section>
   );
 }

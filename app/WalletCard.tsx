@@ -6,6 +6,7 @@ import { walletAddresses, walletKey } from "@/lib/addresses";
 import { AllocationBar, HistoryLine, ProtocolBars } from "./WalletCharts";
 import HoldingsCard, { holdings, holdingsSummary } from "./HoldingsCard";
 
+import Note from "./Note";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const signed = (v: number, d = 2) => `${v > 0 ? "+" : ""}${fmt(v, d)}`;
 const pnlClass = (v: number) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
@@ -122,7 +123,7 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
             </tbody>
           </table>
         </div>
-        <p className="muted small">Alvo = exposição do último fechamento x peso da moeda x capital do núcleo. Inclui saldo a vista e perpétuos.</p>
+        <Note>Alvo = exposição do último fechamento x peso da moeda x capital do núcleo. Inclui saldo a vista e perpétuos.</Note>
       </section>
 
       {lt && lt.perps.length > 0 && (
@@ -145,9 +146,9 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
           <p className="muted small">Margem ${fmt(lt.value)}, livre ${fmt(lt.available)}.</p>
         </section>
       )}
-      <p className="muted small">
+      <Note>
         Fontes: EVM pela Zerion (+ Lighter); Solana pela RPC pública + Jupiter (só tokens na carteira, sem posições DeFi da Solana). Só leitura.
-      </p>
+      </Note>
     </>
   );
 }

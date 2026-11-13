@@ -30,10 +30,11 @@ import type { CandidatesDoc } from "@/lib/candidates";
 import { usePrices, type Prices } from "./usePrices";
 import { ask, askText, tell } from "./Dialog";
 
+import Note from "./Note";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 // Sem arredondar: quantidades com ate 8 casas (precisao da corretora) e precos com 2 a 8 casas
 const fmtQty = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 8 });
-const fmtPx = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 8 });
+const fmtPx = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: v >= 100 ? 2 : v >= 1 ? 4 : 6 });
 const day = (t: number) => new Date(t).toLocaleDateString("pt-BR", { timeZone: "UTC" });
 const ago = (t: number) => {
   const m = Math.max(0, Math.round((Date.now() - t) / 60000));
@@ -466,34 +467,30 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
   // O que fazer hoje: sinais do robo, acoes das fichas e avisos da carteira
   type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId; fin?: FinSub | "loans" | "recv"; prio?: number; id?: string };
   const todo: Todo[] = [];
+  // Sinais do robo: uma linha so (os detalhes ficam na aba Robo). Previas nao entram aqui
+  const sigs: { coin: string; sell: boolean; usd: number }[] = [];
   for (const l of member ? [] : [...latest].sort((a, b) => SYMBOLS.indexOf(a.symbol) - SYMBOLS.indexOf(b.symbol))) {
-    const coin = l.symbol.replace("USDT", "");
     const capital = cfg.capitalUsdt * (cfg.weights[l.symbol] ?? 0);
     const d = decide(l.state, capital, cfg.positions[l.symbol] ?? 0, params);
-    if (d.qty > 0) {
-      const sell = d.kind === "VENDER_TUDO" || d.kind === "VENDER_PARTE";
-      const since = new Date(l.state.t + 86_400_000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-      todo.push({ tone: sell ? "sell" : "buy", who: coin, text: `${d.label}: ${fmtQty(d.qty)} ${coin} (~$${fmt(d.qty * l.state.close)}) - sinal oficial desde ${since}`, tab: "sinais" });
-    }
-    const ps = l.preview?.state;
-    if (ps) {
-      const pd = decide(ps, capital, cfg.positions[l.symbol] ?? 0, params);
-      if (pd.kind !== d.kind) todo.push({ tone: "info", who: coin, text: `prévia (não é sinal): se hoje fechar como está, ${pd.label}`, tab: "sinais" });
-    }
+    if (d.qty > 0) sigs.push({ coin: l.symbol.replace("USDT", ""), sell: d.kind === "VENDER_TUDO" || d.kind === "VENDER_PARTE", usd: d.qty * l.state.close });
   }
-  for (const f of fichas?.items ?? []) {
-    if (SYMBOLS.includes(`${f.symbol}USDT`) || !f.situacao) continue;
-    const c = f.situacao.code;
-    if (["entrada", "entrada_metade", "saida", "reduzir", "sem_vaga"].includes(c) || f.action)
-      todo.push({ tone: c === "saida" ? "sell" : c === "reduzir" || c === "sem_vaga" ? "warn" : "buy", who: f.symbol, text: `${f.situacao.label}${f.action ? `: ${f.action}` : ""}`, tab: "tokens" });
+  if (sigs.length) {
+    const part = (sell: boolean) => { const x = sigs.filter((s) => s.sell === sell); return x.length ? `${sell ? "vender" : "comprar"} ${x.map((s) => s.coin).join(", ")} (~$${fmt(x.reduce((t, s) => t + s.usd, 0))})` : ""; };
+    todo.push({ tone: sigs.every((s) => s.sell) ? "sell" : sigs.every((s) => !s.sell) ? "buy" : "warn", who: "Robô", prio: 2,
+      text: `${sigs.length} ${sigs.length > 1 ? "sinais" : "sinal"} no fechamento das 21:00: ${[part(true), part(false)].filter(Boolean).join("; ")}`, tab: "sinais" });
   }
-  if (wallet) for (const n of walletNotices(wallet)) if (n.level !== "info") todo.push({ tone: "warn", who: "Carteira", text: n.text, tab: "carteira" });
-  if (unknown && !member) todo.push({ tone: "info", who: "Robô", text: "há posição sem preço médio: informe-o em Carteira > Meus tokens para ver o lucro", tab: "sinais" });
-  if (sync?.shorts.length) todo.push({ tone: "warn", who: "Lighter", text: `posição vendida (${sync.shorts.join(", ")}) fica fora da conta`, tab: "carteira" });
+  // Fichas dos tokens: uma linha so
+  const acts = (fichas?.items ?? []).filter((f) => !SYMBOLS.includes(`${f.symbol}USDT`) && f.situacao
+    && (["entrada", "entrada_metade", "saida", "reduzir", "sem_vaga"].includes(f.situacao.code) || f.action));
+  if (acts.length) todo.push({ tone: "info", who: "Tokens", prio: 3, tab: "tokens",
+    text: acts.slice(0, 4).map((f) => `${f.symbol}: ${f.situacao!.label.toLowerCase()}`).join(" - ") + (acts.length > 4 ? ` e mais ${acts.length - 4}` : "") });
+  if (wallet) for (const n of walletNotices(wallet)) if (n.level !== "info") todo.push({ tone: "warn", who: "Carteira", prio: 3, text: n.text, tab: "carteira" });
+  if (unknown && !member) todo.push({ tone: "info", who: "Robô", prio: 3, text: "há posição sem preço médio: informe-o em Carteira > Meus tokens para ver o lucro", tab: "sinais" });
+  if (sync?.shorts.length) todo.push({ tone: "warn", who: "Lighter", prio: 3, text: `posição vendida (${sync.shorts.join(", ")}) fica fora da conta`, tab: "carteira" });
   // Financas: pagamentos vencidos e pontos para revisar
   const upList = upcoming(money.months, money.setup);
   for (const p of upList.filter((x) => x.late))
-    todo.push({ tone: "warn", who: "Pagar", prio: 1, id: `late:${p.desc}:${p.d}`, text: !p.loan && !p.card
+    todo.push({ tone: "warn", who: "Pagar", prio: 1, id: `late:${p.desc}:${p.d}`, text: !p.loan && !p.card && !p.once
       ? `${p.desc} costuma sair até o dia ${p.d.slice(8, 10)} e ainda não veio no extrato (R$ ${fmt(p.v)})`
       : `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : p.card ? "cards" : "lanc" });
   for (const r of money.setup.recvs ?? []) {
@@ -558,7 +555,8 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
         ) : (
           <p className="muted">Nada a fazer: nenhum sinal novo, nenhum pagamento vencido e nenhum aviso.</p>
         )}
-        <p className="muted small">{member ? "Clique num item para ver os detalhes." : "Sinais oficiais só no fechamento diário (21:00 de Brasília). Clique num item para ver os detalhes."}</p>
+        <Note>Os mais urgentes primeiro, no máximo 5 (o resto em &quot;ver mais&quot;). Clique num item para ver os detalhes; &quot;dispensar&quot;
+          esconde o aviso até o mês que vem.{member ? "" : " Sinais do robô valem só no fechamento diário (21:00 de Brasília)."}</Note>
       </section>
 
       {hasMoney && <MonthAndUpcoming months={money.months} setup={money.setup} onLanc={() => onFin("lanc")} onBens={() => onFin("bens")} />}
@@ -577,7 +575,9 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
       </section>
 
 
-      {!member && <div className="two-col">
+      {!member && <details className="more-block">
+        <summary>Alocação e posições do robô</summary>
+        <div className="two-col">
         <section className="card">
           <h2>Alocação</h2>
           {blocks.length ? (
@@ -601,7 +601,7 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
           ) : (
             <p className="muted">Cadastre as carteiras na engrenagem de Cripto e clique em &quot;Atualizar&quot;.</p>
           )}
-          <p className="muted small">Divisão: núcleo {fmt(alloc.core * 100, 0)}% / satélite {fmt(alloc.satellite * 100, 0)}% (engrenagem em Cripto).</p>
+          <Note>Divisão: núcleo {fmt(alloc.core * 100, 0)}% / satélite {fmt(alloc.satellite * 100, 0)}% (engrenagem em Cripto).</Note>
         </section>
 
         <section className="card">
@@ -626,7 +626,8 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
           )}
           <p className="muted small">Preço {prices.at ? `ao vivo (${ago(prices.at)})` : "do último cálculo"}.</p>
         </section>
-      </div>}
+        </div>
+      </details>}
     </>
   );
 }
@@ -655,11 +656,11 @@ function Performance({ cfg, latest, trades, prices }: { cfg: AppConfig; latest: 
       </div>
       <PerfChart points={perf.points} />
       <p className="legend small"><i className="k-real" /> seu resultado <i className="k-strat" /> estratégia a risca</p>
-      <p className="muted small">
+      <Note>
         A estratégia usa o capital configurado de cada moeda ({fmt(perf.capital)} USDT) e opera no fechamento das 21:00.
         A diferença mostra atraso, preço e tamanho diferentes dos sinais. Sem taxas e funding nos dois.
         {perf.clipped ? " As operações mais antigas que o gráfico (240 dias) entram no primeiro dia." : ""}
-      </p>
+      </Note>
     </section>
   );
 }
@@ -776,10 +777,10 @@ function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppConfig; pr
               </li>
             ))}
           </ul>
-          <p className="muted small">
+          <Note>
             Desde {day(stats.since)} ({fmt(stats.years, 1)} anos de gráficos disponíveis), seguindo o robô a risca com a fatia cheia, a vista e 0,1% de taxa.
             &quot;Teste&quot; = backtest até 07/2024. A estratégia para de fazer sentido se a queda ou as perdas seguidas passarem bem do teste.
-          </p>
+          </Note>
         </div>
       )}
 
@@ -808,7 +809,7 @@ function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppConfig; pr
             ))}
           </ul>
         ) : null}
-        <p className="muted small">% na venda = variação do preço desde a entrada (sem o tamanho da posição).</p>
+        <Note>% na venda = variação do preço desde a entrada (sem o tamanho da posição).</Note>
       </details>
     </section>
   );

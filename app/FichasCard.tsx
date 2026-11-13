@@ -2,6 +2,7 @@
 import { Fragment, useState } from "react";
 import type { FichaDoc, TokenFicha } from "@/lib/types";
 
+import Note from "./Note";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 // Valores grandes abreviados (mi = milhoes, bi = bilhoes)
 const big = (v: number | null) =>
@@ -92,13 +93,13 @@ export default function FichasCard({ fichas }: { fichas: FichaDoc | null }) {
           </div>
           {fichas.missing.length > 0 && <p className="muted small">Não encontrados na CoinGecko: {fichas.missing.join(", ")}.</p>}
           {fichas.errors.map((e) => <p key={e} className="error small">{e}</p>)}
-          <p className="muted small">
+          <Note>
             Situação: BTC, ETH e SOL seguem o robô; os outros tokens, o rompimento 55/20 (entra ao fechar na máxima de 55 dias com o
             BTC em alta, sai ao fechar na mínima de 20 dias). &quot;Com metade&quot; quando há alerta de entrada; &quot;Reduzir&quot; quando você
             tem o token e aparece alerta de saída. Os alertas sozinhos não mandam comprar: no backtest não melhoraram o momento.
             Operar só em carteira própria (DEX); a Binance é usada apenas como fonte de preços.
             Fontes: Binance (só preços), CoinGecko e DefiLlama, gratuitas. Clique numa linha para ver os detalhes.
-          </p>
+          </Note>
         </>
       )}
     </section>

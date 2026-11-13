@@ -4,7 +4,7 @@ import type { FinanceDoc, FinItem, WalletDoc } from "./types";
 // Contas das financas (roda no navegador): valor de cada investimento em R$, rendimento estimado e composicao
 export type FinGroup = "reserva" | "conta" | "rendafixa" | "acoes" | "fiis" | "outro" | "cripto" | "dolar" | "bens";
 export const GROUPS: { key: FinGroup; label: string }[] = [
-  { key: "reserva", label: "Reserva" }, { key: "conta", label: "Conta corrente" }, { key: "rendafixa", label: "Renda fixa" }, { key: "acoes", label: "Ações e ETFs" },
+  { key: "reserva", label: "Reserva" }, { key: "rendafixa", label: "Renda fixa" }, { key: "conta", label: "Conta corrente" }, { key: "acoes", label: "Ações e ETFs" },
   { key: "fiis", label: "FIIs" }, { key: "cripto", label: "Cripto" }, { key: "dolar", label: "Dólar (cripto)" },
   { key: "outro", label: "Outros" }, { key: "bens", label: "Bens (imóveis, veículos)" },
 ];

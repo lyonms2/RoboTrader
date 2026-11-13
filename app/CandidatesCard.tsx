@@ -1,6 +1,7 @@
 "use client";
 import type { CandidatesDoc, CandidateRow } from "@/lib/candidates";
 
+import Note from "./Note";
 const fmt = (v: number, d = 0) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const pct = (v: number) => `${v > 0 ? "+" : ""}${fmt(v * 100)}%`;
 const pnlClass = (v: number) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
@@ -59,11 +60,11 @@ export default function CandidatesCard({ doc }: { doc: CandidatesDoc | null }) {
           </p>
         </details>
       )}
-      <p className="muted small">
+      <Note>
         &quot;Candidata&quot; = lucro nas duas metades do período, pior queda no máximo 70% da de só segurar, queda menor que 55% e
         retorno/risco (retorno ao ano / pior queda) pelo menos igual ao da pior moeda atual. Mesmas condições do robô
         (reentrada {doc.reentry ? "ligada" : "desligada"}, a vista, 0,1% de taxa), só com os gráficos disponíveis (~2,3 anos).
-      </p>
+      </Note>
       <p className="warn small">
         Cuidado: escolher moeda pelo resultado passado e viés de retrospecto. No teste de 2018-2026 (RESUMO 5q), as melhores de um
         período quase nunca repetiram no seguinte; só a SOL foi bem nos dois. Use como pista para estudar, não como ordem de troca.

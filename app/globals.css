@@ -287,7 +287,7 @@ td button.link.small { margin: 0 0 0 6px; }
 tr.cand-row td { background: color-mix(in srgb, var(--buy) 5%, transparent); }
 
 /* Financas: cores categoricas por grupo (ordem fixa, validadas no fundo escuro) */
-:root { --g-reserva: #3987e5; --g-rendafixa: #d95926; --g-acoes: #199e70; --g-fiis: #c98500; --g-cripto: #d55181; --g-dolar: #008300; --g-outro: #9085e9; }
+:root { --g-reserva: #3987e5; --g-rendafixa: #d95926; --g-acoes: #199e70; --g-fiis: #c98500; --g-cripto: #d55181; --g-dolar: #008300; --g-outro: #a3a9b4; }
 .g-reserva { fill: var(--g-reserva); background: var(--g-reserva); } .g-rendafixa { fill: var(--g-rendafixa); background: var(--g-rendafixa); }
 .g-acoes { fill: var(--g-acoes); background: var(--g-acoes); } .g-fiis { fill: var(--g-fiis); background: var(--g-fiis); }
 .g-cripto { fill: var(--g-cripto); background: var(--g-cripto); } .g-dolar { fill: var(--g-dolar); background: var(--g-dolar); }
@@ -401,7 +401,7 @@ button.link { background: none; border: 0; color: var(--accent); padding: 0 0 0 
 .k-net { background: var(--move); } .k-bens { background: var(--muted); }
 
 /* Conta corrente (8o tom da paleta categorica validada) e saldo em conta */
-:root { --g-conta: #e66767; }
+:root { --g-conta: #9085e9; } /* violeta: conta corrente nao e prejuizo (vermelho) */
 .g-conta { fill: var(--g-conta); background: var(--g-conta); }
 .acct { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 .acct b { font-size: 15px; }
@@ -732,3 +732,23 @@ tr.selected td { background: color-mix(in srgb, var(--accent) 9%, transparent); 
 .small-btn.on { border-color: var(--accent); color: var(--accent); }
 .card-head .small-btn { margin-left: 8px; }
 .sim .kind-pick { flex-wrap: nowrap; }
+
+/* "como funciona": explicacao fechada no fim do quadro */
+.note { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.note summary { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; list-style: none; user-select: none; }
+.note summary::-webkit-details-marker { display: none; }
+.note summary:hover { color: var(--accent); }
+.note-i { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid currentColor;
+  font: italic 600 11px/1 Georgia, serif; }
+.note[open] summary { color: var(--accent); margin-bottom: 6px; }
+.note-body { line-height: 1.5; padding: 8px 10px; border-left: 2px solid var(--line); }
+.wrapline > .note { flex-basis: 100%; }
+
+/* bloco recolhido (Visao geral: alocacao e posicoes do robo) */
+.more-block { margin-bottom: 16px; }
+.more-block > summary { cursor: pointer; list-style: none; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--card); font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+.more-block > summary::-webkit-details-marker { display: none; }
+.more-block > summary::after { content: "mostrar \203A"; color: var(--accent); font-weight: 500; font-size: 13px; }
+.more-block[open] > summary { margin-bottom: 12px; }
+.more-block[open] > summary::after { content: "esconder"; }

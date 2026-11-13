@@ -10,6 +10,7 @@ import { bestBuy } from "@/lib/alerts";
 import ReceivablesPart, { RecvSelect } from "./Receivables";
 import { ask, askText, tell } from "./Dialog";
 
+import Note from "./Note";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
@@ -89,7 +90,7 @@ function CardsPart({ months, setup, invest, entry, setEntry, owed, com }: {
           <div><span>Planejado nos cartões</span><b>{planned ? brl(planned, 0) : "-"}</b>
             <small className={planned && usedNow > planned ? "warn" : "muted"}>{planned ? `usado ${brl(usedNow, 0)} nas faturas abertas (${fmt((usedNow / planned) * 100, 0)}%)` : "defina no cadastro do cartão"}</small></div>
         </div>
-        <p className="muted small">As compras no cartão são controladas aqui. Em Lançamentos (o extrato da conta), a fatura entra como uma saída só, no dia em que você paga.</p>
+        <Note>As compras no cartão são controladas aqui. Em Lançamentos (o extrato da conta), a fatura entra como uma saída só, no dia em que você paga.</Note>
       </section>
 
       <section className="card entry-card">
@@ -149,8 +150,8 @@ function LoansPart({ months, setup, entry, owed, com }: {
           <div><span>Livre de empréstimos em</span><b>{lastEnd ? monthLabel(lastEnd, true) : "-"}</b><small className="muted">última parcela</small></div>
           {saved > 0.005 && <div><span>Economizou adiantando</span><b className="pos">{brl(saved)}</b></div>}
         </div>
-        <p className="muted small">Abra o empréstimo para ver as parcelas. Parcela paga pelo extrato e reconhecida sozinha;
-          se pagou e não aparece, use &quot;pagar&quot;. Parcela vencida sem pagamento fica como atrasada.</p>
+        <Note>Abra o empréstimo para ver as parcelas. Parcela paga pelo extrato e reconhecida sozinha;
+          se pagou e não aparece, use &quot;pagar&quot;. Parcela vencida sem pagamento fica como atrasada.</Note>
       </section>
 
       <section className="card">
@@ -427,7 +428,7 @@ function CommitmentsChart({ data, which }: { data: Com; which: "cards" | "loans"
           ))}
         </div>
       </figure>
-      <p className="muted small">{which === "cards" ? "Faturas futuras somam as parcelas que ainda vem; compras novas aumentam esses valores." : "Parcelas adiantadas já saem daqui. Para mudar quais meses o adiantamento cobre, use \"Adiantar parcelas\"."}</p>
+      <Note>{which === "cards" ? "Faturas futuras somam as parcelas que ainda vem; compras novas aumentam esses valores." : "Parcelas adiantadas já saem daqui. Para mudar quais meses o adiantamento cobre, use \"Adiantar parcelas\"."}</Note>
     </section>
   );
 }
@@ -757,7 +758,7 @@ function SubsList({ card, setup }: { card: Card; setup: GastosSetup }) {
           </li>
         ))}
       </ul>
-      <p className="muted small">Para cadastrar outra: em &quot;Compra no cartão&quot;, marque &quot;Assinatura&quot;. Mudar o valor vale do mês atual em diante; as faturas antigas ficam como estão.</p>
+      <Note>Para cadastrar outra: em &quot;Compra no cartão&quot;, marque &quot;Assinatura&quot;. Mudar o valor vale do mês atual em diante; as faturas antigas ficam como estão.</Note>
     </section>
   );
 }

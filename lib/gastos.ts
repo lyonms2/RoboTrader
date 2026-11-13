@@ -334,7 +334,9 @@ export function summarize(items: Gasto[], ctx?: { m: string; months: Record<stri
   }
   if (ctx) {
     const o = cardForOthers(ctx.months, ctx.m);
-    if (o > 0) { s.gastos = Math.max(0, s.gastos - o); s.byCat[CARD_PAY_CAT] = Math.max(0, (s.byCat[CARD_PAY_CAT] ?? 0) - o); s.forOthers = o; }
+    // so desconta ate o que foi pago de fatura neste mes (sem fatura paga no mes, nao ha o que descontar)
+    const take = Math.min(o, s.byCat[CARD_PAY_CAT] ?? 0);
+    if (take > 0) { s.gastos -= take; s.byCat[CARD_PAY_CAT] = (s.byCat[CARD_PAY_CAT] ?? 0) - take; s.forOthers = take; }
   }
   return s;
 }
@@ -464,15 +466,21 @@ export type Bill = {
   fixo?: boolean; once?: boolean; paid?: Gasto; how?: BillHow;
 };
 // Conta a pagar avulsa: aparece no mes do vencimento; se ficou sem pagar, continua no mes atual (atrasada) ate ser paga
-function onceSettled(f: Fixo, setup: GastosSetup, months?: Record<string, MonthDoc>) {
+function onceSettled(f: Fixo, setup: GastosSetup, months: Record<string, MonthDoc> | undefined, before: string) {
   if (!months || !f.start) return false;
-  if (Object.values(months).some((md) => md.items.some((g) => g.ref === f.id))) return true;
-  return monthBills(f.start, months[f.start]?.items ?? [], { ...setup, fixos: [f], loans: [] }, months).some((b) => b.paid);
+  if (Object.entries(months).some(([k, md]) => k < before && md.items.some((g) => g.ref === f.id))) return true;
+  // paga (ligada ou reconhecida) em algum mes entre o vencimento e o mes anterior a "before"
+  for (let m = f.start; m < before; m = addMonths(m, 1)) {
+    const one = { ...setup, fixos: [{ ...f, start: m, end: m }], loans: [] };
+    if (monthBills(m, months[m]?.items ?? [], one, months).some((b) => b.paid)) return true;
+  }
+  return false;
 }
 export function billActive(f: Fixo, m: string, setup: GastosSetup, months?: Record<string, MonthDoc>) {
   if (!f.once) return fixoActive(f, m);
   if (m === f.start) return true;
-  return !!f.start && m > f.start && m === monthOf(todayBR()) && !onceSettled(f, setup, months);
+  // sem pagamento: continua nos meses seguintes ate o atual (no mes em que foi paga aparece como paga)
+  return !!f.start && m > f.start && m <= monthOf(todayBR()) && !onceSettled(f, setup, months, m);
 }
 const nameWords = (s: string) => plain(s).split(" ").filter((w) => w.length > 3 && !/^(conta|pagamento|parcela|boleto)$/.test(w));
 export function monthBills(m: string, items: Gasto[], setup: GastosSetup, months?: Record<string, MonthDoc>): Bill[] {
@@ -896,10 +904,9 @@ export function cardStatus(c: Card, months: Record<string, MonthDoc>, today = to
   }
   for (const p of [...cardPayments(c, months), ...extra]) {
     let left = p.v;
-    // da fatura fechada mais recente para a mais antiga
-    for (const f of [...list].reverse()) {
+    // primeiro as faturas ja fechadas, da mais antiga para a mais nova; o que sobrar (pagou antes de fechar) vai para as abertas
+    for (const f of [...list.filter((x) => x.close <= p.d), ...list.filter((x) => x.close > p.d)]) {
       if (left <= 0.005) break;
-      if (f.close > p.d) continue;
       const take = Math.min(left, f.v - f.paid);
       if (take > 0.005) { f.paid += take; left -= take; }
     }
@@ -909,7 +916,8 @@ export function cardStatus(c: Card, months: Record<string, MonthDoc>, today = to
   const pend = faturas.filter((f) => f.status !== "paga");
   const open = pend.reduce((s, f) => s + f.rest, 0);
   const overdue = pend.filter((f) => f.status === "vencida");
-  return { faturas: pend.map((f) => ({ ...f, v: f.rest })), all: faturas, open, next: pend.find((f) => f.status !== "vencida") ?? null, overdue };
+  const rest = pend.map((f) => ({ ...f, v: f.rest }));
+  return { faturas: rest, all: faturas, open, next: rest.find((f) => f.status !== "vencida") ?? null, overdue };
 }
 
 
@@ -930,6 +938,21 @@ export function accountsOf(setup: GastosSetup): Account[] {
 export const accIdOf = (g: Gasto, accounts: Account[]) =>
   g.card || g.by ? null : g.acc && accounts.some((a) => a.id === g.acc) ? g.acc : accounts[0].id;
 
+// Transferencia entre suas contas com os dois lados no extrato (saiu de A com destino B e entrou em B): o lado de B ja esta
+// no extrato de B, entao o "espelho" (creditar B pelo lancamento de A) nao pode contar de novo. Devolve os ids sem espelho
+export function transferTwins(months: Record<string, MonthDoc>, accounts: Account[]) {
+  const all = Object.values(months).flatMap((md) => md.items).filter((g) => g.cat === TRANSFER_CAT && !g.card);
+  const skip = new Set<string>();
+  for (const g of all) {
+    if (!g.toAcc) continue;
+    const src = accIdOf(g, accounts);
+    const twin = all.find((h) => h.id !== g.id && accIdOf(h, accounts) === g.toAcc && dirOf(h) === -dirOf(g) && Math.abs(h.v - g.v) <= 0.01
+      && Math.abs(Date.parse(h.d) - Date.parse(g.d)) <= 3 * 86_400_000 && (!h.toAcc || h.toAcc === src));
+    if (twin) skip.add(g.id);
+  }
+  return skip;
+}
+
 // Saldo da conta no fim do dia "date". Com saldo conferido (B no dia A): para frente B + movimentos depois de A,
 // para tras B - movimentos entre a data e A. Sem saldo conferido: soma dos movimentos desde o primeiro (comeca do zero).
 // Conta tudo que passa pela conta: gastos, entradas, cofrinho, pagamento de fatura. Compras no cartao ficam de fora.
@@ -937,10 +960,11 @@ export function balanceAt(months: Record<string, MonthDoc>, accounts: Account[],
   const acc = accounts.find((a) => a.id === accId)!;
   const anchored = acc.balance !== undefined && !!acc.at;
   let v = anchored ? acc.balance! : 0;
+  const twins = transferTwins(months, accounts);
   for (const md of Object.values(months))
     for (const g of md.items) {
       // na conta do lancamento: o sentido dele; na conta de destino da transferencia: o contrario
-      const f = accIdOf(g, accounts) === accId ? dirOf(g) * g.v : g.toAcc === accId && !g.card ? -dirOf(g) * g.v : null;
+      const f = accIdOf(g, accounts) === accId ? dirOf(g) * g.v : g.toAcc === accId && !g.card && !twins.has(g.id) ? -dirOf(g) * g.v : null;
       if (f === null) continue;
       if (anchored) {
         if (g.d > acc.at! && g.d <= date) v += f;
@@ -953,11 +977,12 @@ export function balanceAt(months: Record<string, MonthDoc>, accounts: Account[],
 // Movimentos de uma conta entre dois dias (para conferir o saldo linha a linha): + entrou, - saiu
 export function accountMoves(months: Record<string, MonthDoc>, accounts: Account[], accId: string, from: string, to: string) {
   const out: { g: Gasto; v: number; via: "propria" | "transferencia" }[] = [];
+  const twins = transferTwins(months, accounts);
   for (const md of Object.values(months))
     for (const g of md.items) {
       if (g.d <= from || g.d > to) continue;
       if (accIdOf(g, accounts) === accId) out.push({ g, v: dirOf(g) * g.v, via: "propria" });
-      else if (g.toAcc === accId && !g.card) out.push({ g, v: -dirOf(g) * g.v, via: "transferencia" });
+      else if (g.toAcc === accId && !g.card && !twins.has(g.id)) out.push({ g, v: -dirOf(g) * g.v, via: "transferencia" });
     }
   return out.sort((a, b) => a.g.d.localeCompare(b.g.d));
 }

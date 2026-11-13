@@ -15,6 +15,7 @@ import {
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
 
+import Note from "./Note";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
@@ -77,7 +78,7 @@ export function DebtsBlock({ months, setup, onEdit }: { months: Record<string, M
 export function upcoming(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const today = todayBR();
   const limit = new Date(Date.parse(`${today}T12:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10);
-  const out: { d: string; desc: string; v: number; late: boolean; loan?: boolean; card?: boolean }[] = [];
+  const out: { d: string; desc: string; v: number; late: boolean; loan?: boolean; card?: boolean; once?: boolean }[] = [];
   for (const c of setup.cards) {
     const st = cardStatus(c, months);
     for (const f of st.overdue) out.push({ d: f.due, desc: `Fatura ${c.name} (${monthLabel(f.m)})`, v: f.rest, late: true, card: true });
@@ -86,7 +87,8 @@ export function upcoming(months: Record<string, MonthDoc>, setup: GastosSetup) {
   const m = monthOf(today);
   for (const mm of [m, addMonths(m, 1)])
     for (const p of pendingFor(mm, months[mm]?.items ?? [], setup, months))
-      if (p.d <= limit && !p.card) out.push({ d: p.d, desc: p.desc, v: p.v, late: p.d < today, loan: !!p.parc });
+      if (p.d <= limit && !p.card && !out.some((x) => x.once && x.desc === p.desc && x.d === p.d))
+        out.push({ d: p.d, desc: p.desc, v: p.v, late: p.d < today, loan: !!p.parc, once: p.once });
   // parcelas de emprestimo de meses anteriores que continuam sem pagamento
   for (const l of setup.loans)
     for (const r of loanStatus(l, today, { months, setup }).rows)
@@ -112,7 +114,8 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     else if (v.startsWith("acc:")) await receive(x.r, x.row.k, x.r.parcela, x.row.due < todayBR() ? todayBR() : x.row.due, v.slice(4), months, setup);
     else if (v === "mark") await receive(x.r, x.row.k, x.r.parcela, todayBR(), null, months, setup);
   };
-  const pending = bills.filter((b) => !b.paid);
+  // o que paga no cartao (assinatura, fixo no cartao) entra pela fatura: nao soma no "ainda a pagar" da conta
+  const pending = bills.filter((b) => !b.paid && !b.card);
   const pendingTotal = pending.reduce((a, p) => a + p.v, 0);
   const prevAvg = useMemo(() => {
     // media por categoria nos 3 meses anteriores ao mes aberto
@@ -512,7 +515,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
             </div>
           );
         })()}
-        <p className="muted small">Marque lançamentos para ver a soma deles (nada é salvo). Mudou a categoria de um lançamento? O site aplica aos iguais do mês e lembra para as próximas importações.</p>
+        <Note>Marque lançamentos para ver a soma deles (nada é salvo). Mudou a categoria de um lançamento? O site aplica aos iguais do mês e lembra para as próximas importações.</Note>
         <HowItWorks />
       </section>
     </>
@@ -1269,8 +1272,8 @@ export function Cards({ cards, setup, onEdit }: { cards: { c: Card; st: ReturnTy
           ) : st.open > 0 ? <p className="muted small">Em aberto (com parcelas futuras): {brl(st.open)}</p> : null}
         </div>
       )) : !form && <p className="muted small">Cadastre seus cartões para ver a fatura de cada um e as parcelas que ainda vem.</p>}
-      {cards.length > 0 && <p className="muted small">A dívida do cartão baixa quando o pagamento da fatura aparece no extrato da conta (ou na própria fatura).
-        Se pagar antes do vencimento, já sai da dívida no dia.</p>}
+      {cards.length > 0 && <Note>A dívida do cartão baixa quando o pagamento da fatura aparece no extrato da conta (ou na própria fatura).
+        Se pagar antes do vencimento, já sai da dívida no dia.</Note>}
     </section>
   );
 }
@@ -1393,8 +1396,8 @@ export function Fixos({ setup, months, onEdit }: { setup: GastosSetup; months?: 
           })}
         </ul>
       ) : <p className="muted small">Nenhum gasto fixo cadastrado.</p>}
-      <p className="muted small">Fixos aparecem em &quot;Previstos&quot; todo mês até o pagamento aparecer: lançamento ligado a ele, mesmo valor (2%) ou,
-        se o valor varia (luz, água), um gasto da mesma categoria perto da média.</p>
+      <Note>Fixos aparecem em &quot;Previstos&quot; todo mês até o pagamento aparecer: lançamento ligado a ele, mesmo valor (2%) ou,
+        se o valor varia (luz, água), um gasto da mesma categoria perto da média.</Note>
     </section>
   );
 }
@@ -1438,9 +1441,9 @@ export function PayableForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo:
         <button className="primary" type="submit" disabled={busy || !desc.trim() || !(num(v) > 0)}>{busy ? "Salvando..." : fixo ? "Salvar" : "Adicionar"}</button>
         {fixo && <button className="ghost" type="button" onClick={remove}>apagar</button>}
       </div>
-      <p className="muted small">Conta de uma vez só, ainda não paga. Ela fica em &quot;Contas do mês&quot; como a pagar e entra nos avisos de vencimento,
+      <Note>Conta de uma vez só, ainda não paga. Ela fica em &quot;Contas do mês&quot; como a pagar e entra nos avisos de vencimento,
         mas só conta como gasto quando for paga: ligue ao lançamento do extrato ou diga com que conta pagou. Se passar do mês sem pagar,
-        ela continua aparecendo como atrasada.</p>
+        ela continua aparecendo como atrasada.</Note>
     </form>
   );
 }
@@ -1597,8 +1600,8 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
         <button className="primary" type="submit" disabled={busy || !desc.trim() || !(num(v) > 0)}>{busy ? "Salvando..." : fixo ? "Salvar" : "Adicionar"}</button>
         {fixo && <button className="ghost" type="button" onClick={remove}>remover</button>}
       </div>
-      <p className="muted small">Todo mês ele aparece em &quot;Previstos&quot; até o pagamento aparecer num extrato. Mudou o valor (reajuste)? Altere aqui é
-        diga a partir de quando: os meses anteriores continuam com o valor antigo.</p>
+      <Note>Todo mês ele aparece em &quot;Previstos&quot; até o pagamento aparecer num extrato. Mudou o valor (reajuste)? Altere aqui é
+        diga a partir de quando: os meses anteriores continuam com o valor antigo.</Note>
     </form>
   );
 }
@@ -1757,7 +1760,7 @@ function BudgetCard({ months, setup, m }: { months: Record<string, MonthDoc>; se
           );
         })}
       </div>
-      <p className="muted small">Conta o que saiu da conta e também as compras no cartão feitas no mês (pela data da compra). Avisa na Visão geral aos 80% e quando passar.</p>
+      <Note>Conta o que saiu da conta e também as compras no cartão feitas no mês (pela data da compra). Avisa na Visão geral aos 80% e quando passar.</Note>
     </section>
   );
 }

@@ -6,6 +6,7 @@ import { P } from "@/lib/paths";
 import type { AppConfig, WalletDoc } from "@/lib/types";
 import { holdings, type Row } from "@/lib/holdings";
 
+import Note from "./Note";
 export { holdings };
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -125,11 +126,11 @@ export default function HoldingsCard({ wallet, cfg }: { wallet: WalletDoc; cfg: 
           )}
         </>
       )}
-      <p className="muted small">
+      <Note>
         Preço atual = valor / quantidade lidos nas carteiras. Preço médio &quot;auto&quot; vem do histórico da carteira na Zerion (FIFO, só redes EVM,
         atualizado a cada 6 h); clique no preço médio para digitar o seu (vale para todas as carteiras daquele token). Lucro sem taxas.
         Perpétuos da Lighter ficam no card próprio.
-      </p>
+      </Note>
     </section>
   );
 }

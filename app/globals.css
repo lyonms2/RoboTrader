@@ -690,3 +690,13 @@ textarea.wallets { width: 100%; background: var(--bg); color: var(--text); borde
 .entry-bar .entry-q { color: var(--accent); font-weight: 700; font-size: 14.5px; }
 .entry-bar .entry-types .pill { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 .entry-bar .entry-types .pill:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* manual (aba Ajuda) */
+.manual-start { border-left: 3px solid var(--accent); }
+.manual-steps { margin: 8px 0 4px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.45; }
+.manual-topic { border-top: 1px solid var(--line); padding: 10px 0; }
+.manual-topic:first-of-type { border-top: 0; }
+.manual-topic summary { cursor: pointer; font-weight: 600; }
+.manual-topic summary:hover { color: var(--accent); }
+.manual-topic[open] summary { color: var(--accent); margin-bottom: 4px; }
+.manual-tip { margin: 6px 0 0 22px; }

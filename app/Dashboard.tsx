@@ -21,6 +21,7 @@ const SHOW_CANDIDATES = false;
 import FinanceCard, { MonthAndUpcoming, NetWorthBlock, PatrimonioCard, type Sub as FinSub } from "./FinanceCard";
 import { debts, reviewCount, saveSetup, upcoming } from "./GastosCard";
 import { buildAlerts } from "@/lib/alerts";
+import Manual from "./Manual";
 import { budgetAlerts } from "./CardsLoans";
 import type { NetWorthDoc } from "@/lib/patrimonio";
 import { EMPTY_SETUP, setCardsReg, accountBalance, avgMonthly, fixoActive, recvStatus, fixoReajPending, investFlows, setCustomCats, type GastosSetup, type MonthDoc } from "@/lib/gastos";
@@ -312,6 +313,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     { id: "geral", label: "Visão geral" },
     { id: "financas", label: "Finanças" },
     { id: "cripto", label: "Cripto" },
+    { id: "ajuda", label: "Ajuda" },
   ] as const;
   const cryptoSubs = [
     { id: "sinais", label: "Robô" },
@@ -402,6 +404,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             {SHOW_CANDIDATES && <CandidatesCard doc={candidates} />}
           </>
         )}
+        {tab === "ajuda" && <Manual member={member} />}
         {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup}
           onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }}
           onQuotes={support ? undefined : async () => { const p = await refreshFinance(); if (p.length) setError(p.join("; ")); else setNotice(`Cotações atualizadas às ${new Date().toLocaleTimeString("pt-BR")}.`); }} />}
@@ -429,7 +432,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   );
 }
 
-type TabId = "geral" | "financas" | "sinais" | "carteira" | "tokens" | "operacoes";
+type TabId = "geral" | "financas" | "sinais" | "carteira" | "tokens" | "operacoes" | "ajuda";
 // Sub-abas de Cripto (continuam sendo "abas" por dentro, para os links da Visao geral abrirem direto a certa)
 const CRYPTO_TABS: TabId[] = ["sinais", "carteira", "tokens", "operacoes"];
 

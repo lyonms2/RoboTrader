@@ -418,7 +418,9 @@ function CommitmentsChart({ data, which }: { data: Com; which: "cards" | "loans"
     <section className="card">
       <h2>{which === "cards" ? "Faturas" : "Parcelas"} nos próximos 12 meses</h2>
       <figure className="viz">
-        <figcaption className="small muted">{h ? `${monthLabel(h.m)}: ${what} ${brl(val(h))}` : "passe o mouse para ver o valor do mês"}</figcaption>
+        <figcaption className="small muted">{h ? <>{monthLabel(h.m)}: {what} <b className="ink">{brl(val(h))}</b></>
+          : (() => { const top = data.reduce((a, b) => (val(b) > val(a) ? b : a)); const tot = data.reduce((t, x) => t + val(x), 0);
+            return <>Total em 12 meses <b className="ink">{brl(tot)}</b> - maior mês: {monthLabel(top.m)} ({brl(val(top))}). Toque ou passe o mouse numa barra.</>; })()}</figcaption>
         <div className="mbars twelve" onMouseLeave={() => setHover(null)}>
           {data.map((x, i) => (
             <div key={x.m} className={`mbar${hover !== null && hover !== i ? " dim" : ""}`} onMouseEnter={() => setHover(i)} title={`${monthLabel(x.m)}: ${brl(val(x))}`}>

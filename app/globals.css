@@ -752,3 +752,22 @@ tr.selected td { background: color-mix(in srgb, var(--accent) 9%, transparent); 
 .more-block > summary::after { content: "mostrar \203A"; color: var(--accent); font-weight: 500; font-size: 13px; }
 .more-block[open] > summary { margin-bottom: 12px; }
 .more-block[open] > summary::after { content: "esconder"; }
+
+/* evolucao do patrimonio: o que mais mudou */
+.nw-why { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 4px 0 8px; }
+.chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--card) 70%, var(--bg)); }
+
+/* ===== visual 2: tipografia, cabecalhos e numeros ===== */
+body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: radial-gradient(1100px 380px at 50% -160px, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%), var(--bg);
+  -webkit-font-smoothing: antialiased; }
+.card { padding: 18px; border-color: color-mix(in srgb, var(--line) 85%, transparent); }
+.card h2 { font-size: 17px; font-weight: 650; letter-spacing: -.005em; }
+/* marca laranja antes do titulo de cada quadro */
+.card > h2:first-child, .card-head > h2, .card-head > .month-nav h2 { display: flex; align-items: center; gap: 9px; }
+.card > h2:first-child::before, .card-head > h2::before { content: ""; width: 4px; height: 16px; border-radius: 2px; background: var(--accent); flex: none; }
+.kpis > div > span:first-child { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.kpis b { font-size: 22px; font-weight: 700; }
+.kpis.compact b { font-size: 18px; }
+.kpis small { line-height: 1.35; margin-top: 2px; }
+@media (max-width: 560px) { .kpis b { font-size: 18px; } .card { padding: 14px; } }

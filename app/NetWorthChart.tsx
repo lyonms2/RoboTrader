@@ -116,6 +116,21 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
           </div>
         )}
       </div>
+      {(() => {
+        // O que mais mexeu no patrimonio entre o primeiro ponto e o ponto mostrado (efeito no liquido)
+        const recv = (p: NetWorthDoc) => p.bens - Object.values(p.byGroup ?? {}).reduce((t, v) => t + v, 0);
+        const parts = [
+          ...GROUPS.map((g) => ({ k: g.label, v: (cur.byGroup?.[g.key] ?? 0) - (first.byGroup?.[g.key] ?? 0) })),
+          { k: "A receber", v: recv(cur) - recv(first) },
+          { k: "Dívidas", v: -(cur.dividas - first.dividas) },
+        ].filter((x) => Math.abs(x.v) >= 1).sort((a, b) => Math.abs(b.v) - Math.abs(a.v)).slice(0, 4);
+        if (!parts.length || cur === first) return null;
+        return (
+          <p className="nw-why small"><span className="muted">O que mais mudou desde {date(first.t)}:</span>
+            {parts.map((x) => <span key={x.k} className="chip"><span className="muted">{x.k === "Dívidas" ? (x.v < 0 ? "Dívidas a mais" : "Dívidas a menos") : x.k}</span> <b className={x.v >= 0 ? "pos" : "neg"}>{x.v >= 0 ? "+" : "-"}{brl(Math.abs(x.v))}</b></span>)}
+          </p>
+        );
+      })()}
       <figure className="viz" ref={box}>
         {hasDebt && (
           <figcaption className="small muted"><i className="key k-net" /> patrimônio líquido <i className="key k-bens" /> bens (sem descontar dívidas)</figcaption>
@@ -146,6 +161,8 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
       </ul>
       <Note>
         Uma foto por dia, gravada pelo agendador (ou quando você clica em &quot;Atualizar&quot;, em Cripto); o último ponto e o valor de agora.
+        A linha não mostra só ganho ou perda: cadastrar uma dívida, um cartão ou um investimento novo também muda o patrimônio daquele dia
+        em diante. &quot;O que mais mudou&quot; mostra de onde veio a diferença.
         {cur.partial?.length ? ` Neste dia ficou de fora: ${cur.partial.join(", ")}.` : ""}
       </Note>
     </section>

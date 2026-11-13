@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { WalletHistoryDoc, WalletItem } from "@/lib/types";
 import type { ClassTotals } from "@/lib/walletMath";
 
@@ -72,16 +72,27 @@ export function ProtocolBars({ rows, total }: { rows: { app: string; value: numb
 // Linha: patrimonio total ao longo do tempo (1 ponto por dia), com cursor e valor ao passar o mouse
 export function HistoryLine({ history }: { history: WalletHistoryDoc[] }) {
   const [idx, setIdx] = useState<number | null>(null);
+  // largura real (o texto do eixo nao encolhe no celular)
+  const box = useRef<HTMLElement>(null);
+  const [width, setWidth] = useState(640);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(Math.round(e.contentRect.width) || 640));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [history.length]);
   if (history.length < 2)
     return <p className="muted small">Evolução do patrimônio: o gráfico aparece a partir do 2o dia de leituras (1 ponto por dia).</p>;
-  const W = 640;
-  const H = 170;
+  const W = Math.max(280, width);
+  const H = W < 500 ? 160 : 170;
   const PADL = 4;
   const vals = history.map((h) => h.total);
   const lo = Math.min(...vals);
   const hi = Math.max(...vals);
   const pad = (hi - lo) * 0.1 || hi * 0.02 || 1;
-  const x = (i: number) => PADL + (i / (history.length - 1)) * (W - PADL * 2);
+  const t0 = history[0].t, t1 = history[history.length - 1].t;
+  const x = (i: number) => PADL + ((history[i].t - t0) / (t1 - t0 || 1)) * (W - PADL * 2);
   const y = (v: number) => H - 18 - ((v - (lo - pad)) / (hi - lo + pad * 2)) * (H - 30);
   const path = history.map((h, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(h.total).toFixed(1)}`).join("");
   const first = history[0];
@@ -92,10 +103,12 @@ export function HistoryLine({ history }: { history: WalletHistoryDoc[] }) {
   function move(e: React.MouseEvent<SVGSVGElement>) {
     const r = e.currentTarget.getBoundingClientRect();
     const fx = ((e.clientX - r.left) / r.width) * W;
-    setIdx(Math.max(0, Math.min(history.length - 1, Math.round(((fx - PADL) / (W - PADL * 2)) * (history.length - 1)))));
+    let best = 0;
+    for (let i = 1; i < history.length; i++) if (Math.abs(x(i) - fx) < Math.abs(x(best) - fx)) best = i;
+    setIdx(best);
   }
   return (
-    <figure className="viz">
+    <figure className="viz" ref={box}>
       <figcaption className="small muted">
         Evolução do patrimônio{" "}
         {cur ? <>- {date(cur.t)}: <b className="ink">{fmt(cur.total)} USD</b></> : <>desde {date(first.t)}: <b className={chg >= 0 ? "pos" : "neg"}>{chg >= 0 ? "+" : ""}{fmt(chg)} USD</b></>}

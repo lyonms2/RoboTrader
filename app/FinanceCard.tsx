@@ -801,7 +801,7 @@ export function PatrimonioCard({ cfg, fin, wallet, spend, debt, months, setup, o
         </div>
         <div className="kpis">
           <div><span>{s.bens > 0 ? "Patrimônio sem bens" : debt.total > 0 ? "Patrimônio líquido" : "Patrimônio total"}</span><b>{brl(s.totalNoBens + debt.recv - debt.total)}</b>
-            <small className="muted">{debt.total > 0 || debt.recv > 0 ? `${brl(s.totalNoBens, 0)}${debt.recv > 0 ? ` + ${brl(debt.recv, 0)} a receber` : ""}${debt.total > 0 ? ` - ${brl(debt.total, 0)} de dívidas` : ""}` : s.usd ? `~US$ ${fmt(s.total / s.usd)} - cripto incluída` : wallet ? "falta o dólar: Atualizar cotações em Investimentos" : "sem carteiras cripto"}</small></div>
+            <small className="muted">{debt.total > 0 || debt.recv > 0 ? `${brl(s.totalNoBens, 0)}${debt.recv > 0 ? ` + ${brl(debt.recv, 0)} a receber` : ""}${debt.total > 0 ? ` - ${brl(debt.total, 0)} de dívidas` : ""}` : s.usd && wallet ? `~US$ ${fmt(s.total / s.usd)} - cripto incluída` : wallet ? "falta o dólar: Atualizar cotações em Investimentos" : "sem carteiras cripto"}</small></div>
           {s.bens > 0 && <div><span>Patrimônio com bens</span><b>{brl(s.total + debt.recv - debt.total)}</b>
             <small className="muted">+ {brl(s.bens, 0)} em imóveis, veículos...</small></div>}
           <div><span>Reserva de emergência</span><b>{brl(s.reserve)}</b>

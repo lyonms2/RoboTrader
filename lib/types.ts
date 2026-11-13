@@ -36,6 +36,7 @@ export type FinItem = {
   title?: string; // tesouro: "Tesouro Selic|01/03/2029" (tipo|vencimento)
   ticker?: string; // acao/FII/ETF na B3, sem ".SA"
   qty?: number; avg?: number; // tesouro e acao: quantidade e preco medio por unidade (R$)
+  since?: number; // tesouro e acao: data da compra (opcional), para comparar com o CDI
   value?: number; valueAt?: number; // outro e bem: valor informado a mao
   // bem (imovel, terreno, veiculo): fica separado do patrimonio financeiro
   bemType?: "imovel" | "terreno" | "veiculo" | "outro";

@@ -23,13 +23,13 @@ async function getJson(url: string) {
   return r.json();
 }
 
-// Cotacao + proventos (2 anos) de um papel da B3
+// Cotacao + proventos (5 anos) de um papel da B3
 export async function quote(ticker: string): Promise<FinQuote> {
   let last = "";
   for (const base of YAHOO) {
     let r: Response;
     try {
-      r = await fetch(`${base}/v8/finance/chart/${encodeURIComponent(ticker)}.SA?range=2y&interval=1mo&events=div`,
+      r = await fetch(`${base}/v8/finance/chart/${encodeURIComponent(ticker)}.SA?range=5y&interval=1mo&events=div`,
         { headers: UA, cache: "no-store", signal: AbortSignal.timeout(15_000) });
     } catch (e) {
       last = String(e);
@@ -78,10 +78,10 @@ export async function usdPtax() {
   }
 }
 
-// CDI diario dos ultimos ~2 anos (para estimar o rendimento do cofrinho desde a data do saldo informado)
+// CDI diario dos ultimos ~5 anos (rendimento do cofrinho desde a data do saldo e comparacao dos investimentos com o CDI)
 async function cdiSeries() {
   const to = new Date();
-  const from = new Date(to.getTime() - 730 * 86_400_000);
+  const from = new Date(to.getTime() - 1826 * 86_400_000);
   const rows = await bcb(12, `?dataInicial=${iso2br(from)}&dataFinal=${iso2br(to)}`);
   return { d: rows.map((r) => br2iso(r.data)), v: rows.map((r) => Number(r.valor)) };
 }

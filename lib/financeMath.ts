@@ -137,6 +137,37 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
   };
 }
 
+// Comparacao com o CDI: o que o investimento rendeu desde a data da compra (valor de hoje + proventos recebidos)
+// contra o mesmo dinheiro aplicado na mesma data a 100% do CDI. So Tesouro e acoes com data e preco medio
+export type CdiCmp = {
+  row: FinRow; since: string; days: number; cost: number; now: number; divs: number;
+  ret: number; cdiRet: number; cdiValue: number; diff: number;
+};
+export function compareCdi(rows: FinRow[], f: FinanceDoc | null, today = Date.now()) {
+  const list: CdiCmp[] = [];
+  const missing: FinRow[] = [];
+  const old: FinRow[] = [];
+  const first = f?.cdi.d[0] ?? null;
+  for (const r of rows) {
+    const it = r.item;
+    if ((it.kind !== "acao" && it.kind !== "tesouro") || it.ignore || r.value === null) continue;
+    if (!it.since || !(r.cost !== null && r.cost > 0)) { missing.push(r); continue; }
+    if (!f || !first) continue;
+    const since = dayBR(it.since);
+    if (since < first) { old.push(r); continue; }
+    const fac = cdiFactor(f, since, 1);
+    const q = it.kind === "acao" ? f.quotes?.[(it.ticker ?? "").toUpperCase()] : undefined;
+    // proventos com data com depois da compra, com a quantidade de hoje
+    const divs = (q?.divs ?? []).filter((d) => dayBR(d.t) > since && d.t <= today).reduce((s, d) => s + d.v, 0) * (it.qty ?? 0);
+    const now = r.value + divs;
+    list.push({
+      row: r, since, days: Math.floor((today - it.since) / DAY), cost: r.cost, now, divs,
+      ret: now / r.cost - 1, cdiRet: fac - 1, cdiValue: r.cost * fac, diff: now - r.cost * fac,
+    });
+  }
+  return { list, missing, old, first };
+}
+
 // Patrimonio total em R$: investimentos + carteiras cripto (dolar -> real pela PTAX)
 // cash = saldo em conta (aba Entradas e saidas), entra como o grupo "Conta corrente"
 export function financeSummary(items: FinItem[], f: FinanceDoc | null, wallet: WalletDoc | null, monthlyCost?: number, cash?: number | null,

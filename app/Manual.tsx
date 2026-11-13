@@ -104,6 +104,11 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Escolha o tipo: cofrinho (saldo + % do CDI), Tesouro, ação/FII/ETF (código + quantidade) ou outro.",
       "Clique em \"Atualizar cotações\" para trazer preços e proventos.",
     ], tips: ["Aplicações e resgates do extrato (categoria Investimento) ligados a um cofrinho somam e descontam o saldo dele sozinhos."] },
+    { title: "Comparar seus investimentos com o CDI", steps: [
+      "Em Investimentos, clique em \"alterar\" no Tesouro ou na ação.",
+      "Informe o preço médio e a data da compra e salve.",
+      "O bloco \"Comparação com o CDI\" mostra quanto rendeu (com proventos) e quanto o mesmo dinheiro teria rendido a 100% do CDI.",
+    ], tips: ["Comprou em várias datas? Use a data da primeira compra: a comparação fica aproximada. Menos de 3 meses diz pouco."] },
     { title: "Cadastrar bens (imóvel, veículo)", steps: [
       "Em Investimentos → Bens, clique em \"+ novo bem\".",
       "Informe o valor estimado e, se quiser, quanto valoriza ou deprecia por ano.",

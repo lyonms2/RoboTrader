@@ -3,7 +3,7 @@ import { doc, setDoc } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { P } from "@/lib/paths";
-import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
+import { GROUPS, cdiYear, compareCdi, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
 import { INVEST_CAT, goalStatus, type Goal, recvStatus, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type Gasto, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
 import GastosCard, { guardWrite, AccountForm, AccountsPanel, CardForm, DebtsBlock, FixoForm, Fixos, ImportPanel, LoanForm, QuickAdd, monthSnapshot, saveSetup, upcoming } from "./GastosCard";
@@ -323,6 +323,8 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
         </p>
       </section>
 
+      <CdiCard rows={rows} fin={fin} />
+
       <section className="card">
         <div className="card-head"><h2>Aportes e resgates</h2><span className="muted small">últimos 12 meses<button className="link" onClick={onLanc}>ver lançamentos &rsaquo;</button></span></div>
         {moves.length > 0 && (() => {
@@ -453,6 +455,8 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [qty, setQty] = useState(initial?.qty !== undefined ? String(initial.qty).replace(".", ",") : "");
   const [avg, setAvg] = useState(initial?.avg !== undefined ? String(initial.avg).replace(".", ",") : "");
+  const [since, setSince] = useState(initial?.since ? new Date(initial.since - 3 * 3_600_000).toISOString().slice(0, 10) : "");
+  const sinceF = since ? { since: Date.parse(`${since}T12:00:00-03:00`) } : {};
   const [balance, setBalance] = useState(initial?.balance !== undefined ? String(initial.balance).replace(".", ",") : "");
   const [balanceAt, setBalanceAt] = useState(new Date(initial?.balanceAt ?? Date.now() - 3 * 3_600_000).toISOString().slice(0, 10));
   const [cdiPct, setCdiPct] = useState(String(initial?.cdiPct ?? 100));
@@ -479,12 +483,12 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
       if (!title) return setErr("Escolha o título.");
       if (!(parse(qty) > 0)) return setErr("Informe a quantidade de títulos (ex.: 0,35).");
       it = { ...base, name: title.replace("|", " ").replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3"), title, qty: parse(qty), reserva,
-        ...(parse(avg) > 0 ? { avg: parse(avg) } : {}) };
+        ...(parse(avg) > 0 ? { avg: parse(avg) } : {}), ...sinceF };
     } else if (kind === "acao") {
       const tk = ticker.trim().toUpperCase().replace(/\.SA$/, "");
       if (!/^[A-Z0-9]{4,7}$/.test(tk)) return setErr("Código inválido (ex.: TAEE11, ITSA4, MXRF11, IVVB11).");
       if (!(parse(qty) > 0)) return setErr("Informe a quantidade.");
-      it = { ...base, name: tk, ticker: tk, qty: parse(qty), ...(parse(avg) > 0 ? { avg: parse(avg) } : {}) };
+      it = { ...base, name: tk, ticker: tk, qty: parse(qty), ...(parse(avg) > 0 ? { avg: parse(avg) } : {}), ...sinceF };
     } else if (kind === "bem") {
       if (!name.trim()) return setErr("De um nome (ex.: Apartamento, Terreno Criciúma, Carro).");
       if (!(parse(value) > 0)) return setErr("Informe o valor estimado de hoje.");
@@ -538,6 +542,8 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
             </label>
             <label>Quantidade de títulos<input value={qty} inputMode="decimal" onChange={(e) => setQty(e.target.value)} placeholder="0,35" /></label>
             <label>Preço médio por título (R$, opcional)<input value={avg} inputMode="decimal" onChange={(e) => setAvg(e.target.value)} /></label>
+            <label>Data da compra (opcional)<input type="date" value={since} onChange={(e) => setSince(e.target.value)} /></label>
+            <p className="muted small full">Com preço médio e data da compra, o site compara o resultado com o CDI. Comprou em várias datas? Use a da primeira compra.</p>
           </>
         )}
         {kind === "acao" && (
@@ -545,6 +551,8 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
             <label>Código<input value={ticker} onChange={(e) => setTicker(e.target.value)} placeholder="TAEE11" autoCapitalize="characters" /></label>
             <label>Quantidade<input value={qty} inputMode="decimal" onChange={(e) => setQty(e.target.value)} /></label>
             <label>Preço médio (R$, opcional)<input value={avg} inputMode="decimal" onChange={(e) => setAvg(e.target.value)} /></label>
+            <label>Data da compra (opcional)<input type="date" value={since} onChange={(e) => setSince(e.target.value)} /></label>
+            <p className="muted small full">Com preço médio e data da compra, o site compara o resultado com o CDI. Comprou em várias datas? Use a da primeira compra.</p>
           </>
         )}
         {kind === "outro" && (
@@ -620,6 +628,58 @@ function FinBar({ byGroup }: { byGroup: Record<FinGroup, number> }) {
         ))}
       </ul>
     </figure>
+  );
+}
+
+// Comparacao com o CDI: o mesmo dinheiro, aplicado na mesma data, a 100% do CDI
+function CdiCard({ rows, fin }: { rows: FinRow[]; fin: FinanceDoc | null }) {
+  const { list, missing, old, first } = compareCdi(rows, fin);
+  if (!list.length && !missing.length && !old.length) return null;
+  const cost = list.reduce((s, c) => s + c.cost, 0);
+  const now = list.reduce((s, c) => s + c.now, 0);
+  const cdiV = list.reduce((s, c) => s + c.cdiValue, 0);
+  const diff = now - cdiV;
+  const names = (rs: FinRow[]) => rs.map((r) => r.item.name).join(", ");
+  const dBR = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
+  return (
+    <section className="card">
+      <div className="card-head"><h2>Comparação com o CDI</h2><span className="muted small">o mesmo dinheiro, na mesma data, a 100% do CDI</span></div>
+      {list.length > 0 && (
+        <>
+          <div className="kpis">
+            <div><span>Você aplicou</span><b>{brl(cost)}</b><small className="muted">{list.length} {list.length === 1 ? "investimento com data" : "investimentos com data"}</small></div>
+            <div><span>Vale hoje + proventos</span><b>{brl(now)}</b><small className={pnlClass(now - cost)}>{signed(now - cost)} ({pctS((now - cost) / cost)})</small></div>
+            <div><span>No CDI teria</span><b>{brl(cdiV)}</b><small className="muted">{signed(cdiV - cost)} ({pctS((cdiV - cost) / cost)})</small></div>
+            <div><span>Diferença</span><b className={pnlClass(diff)}>{signed(diff)}</b><small className="muted">{diff >= 0 ? "acima do CDI" : "abaixo do CDI"}</small></div>
+          </div>
+          <div className="table-scroll">
+            <table className="stack cdi-cmp">
+              <thead><tr><th>Investimento</th><th>Desde</th><th>Rendeu</th><th>CDI no período</th><th>Contra o CDI</th></tr></thead>
+              <tbody>
+                {[...list].sort((a, b) => b.diff - a.diff).map((c) => (
+                  <tr key={c.row.item.id}>
+                    <td><b>{c.row.item.name}</b> <span className="tag">{c.row.kindLabel}</span>
+                      {c.divs > 0 && <div className="muted small">inclui {brl(c.divs)} de proventos</div>}</td>
+                    <td data-label="Desde"><span className="cell">{dBR(c.since)}<small className="muted">{c.days >= 365 ? `${fmt(c.days / 365, 1)} anos` : `${c.days} dias`}</small></span></td>
+                    <td data-label="Rendeu" className={pnlClass(c.ret)}>{c.ret > 0 ? "+" : ""}{pctS(c.ret)}</td>
+                    <td data-label="CDI no período" className="muted">+{pctS(c.cdiRet)}</td>
+                    <td data-label="Contra o CDI"><span className="cell"><b className={pnlClass(c.diff)}>{signed(c.diff)}</b>
+                      <small className="muted">{c.days < 90 ? "período curto: diz pouco" : c.ret < 0 ? "perdeu dinheiro" : c.cdiRet > 0 ? `${fmt((c.ret / c.cdiRet) * 100, 0)}% do CDI` : ""}</small></span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {missing.length > 0 && <p className="small">Para comparar, informe o preço médio e a data da compra (em &quot;alterar&quot;): <b>{names(missing)}</b>.</p>}
+      {old.length > 0 && first && <p className="small muted">Comprados antes de {dBR(first)}, início do histórico do CDI guardado: {names(old)}.</p>}
+      <p className="muted small">
+        Valores brutos, antes de IR e taxas. Se comprou em várias datas, a conta usa o preço médio como se tudo tivesse sido comprado
+        na data informada, então é aproximada. Proventos contam com a quantidade de hoje; cupons do Tesouro com juros semestrais não
+        entram. Cofrinhos não aparecem aqui porque já rendem um % do CDI. Comparar menos de 3 meses diz pouco. Não é recomendação de investimento.
+      </p>
+    </section>
   );
 }
 

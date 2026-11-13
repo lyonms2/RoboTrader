@@ -326,9 +326,9 @@ label.inline input { width: 110px; padding: 3px 7px; }
 }
 .fin td, .divs td { white-space: nowrap; }
 .fin td:first-child, .divs td:first-child { white-space: normal; }
-.fin .cell, .divs .cell { display: inline-flex; flex-direction: column; line-height: 1.3; }
-.fin .cell small, .divs .cell small { font-size: 12px; }
-@media (max-width: 600px) { .fin .cell, .divs .cell { align-items: flex-end; } }
+.fin .cell, .divs .cell, .cdi-cmp .cell { display: inline-flex; flex-direction: column; line-height: 1.3; }
+.fin .cell small, .divs .cell small, .cdi-cmp .cell small { font-size: 12px; }
+@media (max-width: 600px) { .fin .cell, .divs .cell, .cdi-cmp .cell { align-items: flex-end; } }
 
 /* Gastos */
 .month-nav { display: flex; align-items: center; gap: 6px; }

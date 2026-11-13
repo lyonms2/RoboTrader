@@ -81,6 +81,8 @@ export type Fixo = {
   keys?: string[]; // descricoes do extrato ja ligadas a este fixo (aprende quando voce liga um lancamento)
   start?: string; end?: string; // AAAA-MM: primeiro e ultimo mes do gasto (sem start = desde sempre; sem end = sem fim)
   notIds?: string[]; // lancamentos que voce disse "nao e este" (nao contam como pagamento deste fixo)
+  // conta a pagar avulsa (uma vez so, ex.: boleto, conserto): start = end = mes do vencimento, due = data do vencimento
+  once?: boolean; due?: string;
 };
 // O fixo existe neste mes?
 export const fixoActive = (f: Fixo, m: string) => (!f.start || m >= f.start) && (!f.end || m <= f.end);
@@ -459,8 +461,19 @@ export const fixoReajPending = (f: Fixo, m: string) =>
 export type BillHow = "ligado" | "nome" | "valor-cat" | "valor";
 export type Bill = {
   ref: string; desc: string; v: number; cat: string; d: string; card?: string; parc?: [number, number]; varia?: boolean; reaj?: boolean;
-  fixo?: boolean; paid?: Gasto; how?: BillHow;
+  fixo?: boolean; once?: boolean; paid?: Gasto; how?: BillHow;
 };
+// Conta a pagar avulsa: aparece no mes do vencimento; se ficou sem pagar, continua no mes atual (atrasada) ate ser paga
+function onceSettled(f: Fixo, setup: GastosSetup, months?: Record<string, MonthDoc>) {
+  if (!months || !f.start) return false;
+  if (Object.values(months).some((md) => md.items.some((g) => g.ref === f.id))) return true;
+  return monthBills(f.start, months[f.start]?.items ?? [], { ...setup, fixos: [f], loans: [] }, months).some((b) => b.paid);
+}
+export function billActive(f: Fixo, m: string, setup: GastosSetup, months?: Record<string, MonthDoc>) {
+  if (!f.once) return fixoActive(f, m);
+  if (m === f.start) return true;
+  return !!f.start && m > f.start && m === monthOf(todayBR()) && !onceSettled(f, setup, months);
+}
 const nameWords = (s: string) => plain(s).split(" ").filter((w) => w.length > 3 && !/^(conta|pagamento|parcela|boleto)$/.test(w));
 export function monthBills(m: string, items: Gasto[], setup: GastosSetup, months?: Record<string, MonthDoc>): Bill[] {
   const used = new Set<string>();
@@ -481,14 +494,15 @@ export function monthBills(m: string, items: Gasto[], setup: GastosSetup, months
   };
   const out: Bill[] = [];
   for (const f of setup.fixos) {
-    if (!fixoActive(f, m)) continue;
+    if (!billActive(f, m, setup, months)) continue;
     const v = fixoExpected(f, m, months);
     const words = nameWords(f.desc);
     // pelo nome: descricao aprendida, ou o nome do fixo no texto do extrato; valor que varia aceita ate 50% de diferenca
     const name = (i: Gasto) => fixoLinked(f, i)
       || (words.length > 0 && words.some((w) => plain(i.desc).includes(w)) && Math.abs(i.v - v) <= v * (f.varia ? 0.5 : 0.1));
     const r = match(f.id, v, f.cat, undefined, { name, not: f.notIds });
-    out.push({ ref: f.id, desc: f.desc, v, cat: f.cat, d: dayIn(m, f.dia), card: f.card, varia: f.varia, reaj: fixoReajPending(f, m), fixo: true,
+    out.push({ ref: f.id, desc: f.desc, v, cat: f.cat, d: f.once && f.due ? f.due : dayIn(m, f.dia), card: f.card, varia: f.varia, reaj: fixoReajPending(f, m), fixo: true,
+      ...(f.once ? { once: true } : {}),
       ...(r ? { paid: r[0], how: r[1] } : {}) });
   }
   for (const l of setup.loans) {

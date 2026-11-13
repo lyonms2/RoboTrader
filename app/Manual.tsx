@@ -53,6 +53,17 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Se o valor muda todo mês (luz, água), marque essa opção: a previsão usa a média.",
       "Se tem reajuste anual (aluguel), escolha o mês: o site avisa quando chegar.",
     ], tips: ["Mudou o valor? Altere o fixo e diga a partir de quando: os meses anteriores ficam com o valor antigo."] },
+    { title: "Lançar uma conta a pagar (ainda não paga)", steps: [
+      "Em Lançamentos, clique em \"Conta a pagar\".",
+      "Informe descrição, valor, vencimento e categoria.",
+      "Ela aparece em \"Contas do mês\" como a pagar e entra nos avisos, mas só conta como gasto quando você pagar.",
+      "Quando pagar, ligue ao lançamento do extrato ou diga com que conta pagou, como num gasto fixo.",
+    ], tips: ["Se o mês virar sem pagar, ela continua aparecendo como atrasada no mês atual."] },
+    { title: "Somar alguns lançamentos ou simular valores", steps: [
+      "Somar: marque os lançamentos na lista. A barra embaixo mostra entradas, saídas e o total dos marcados.",
+      "Simular: clique em \"simular\" ao lado do mês e digite valores que ainda não aconteceram (- sai / + entra).",
+      "O site mostra como ficariam o saldo nas contas, o saldo depois de pagar o que falta e o que sobra no mês.",
+    ], tips: ["Nada disso é salvo: é só para fazer a conta na hora."] },
     { title: "Marcar uma conta do mês como paga", steps: [
       "No bloco \"Contas do mês\" (acima da lista de lançamentos), ache a conta \"a pagar\".",
       "Em \"pagar / ligar…\", escolha o lançamento que já veio no extrato, ou a conta com que pagou.",

@@ -713,3 +713,22 @@ textarea.wallets { width: 100%; background: var(--bg); color: var(--text); borde
 .goal .limit { margin: 0 0 4px; }
 .goal-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 @media (max-width: 640px) { .budget-row { grid-template-columns: 1fr auto; } .budget-row .limit { grid-column: 1 / -1; } }
+
+/* marcar e somar lancamentos */
+.sel-cell { display: inline-flex; align-items: flex-start; gap: 8px; }
+.sel-box { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--accent); cursor: pointer; flex: none; }
+th .sel-box { vertical-align: -3px; margin-right: 6px; }
+tr.selected td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.sel-bar { position: sticky; bottom: 8px; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin: 10px 0;
+  padding: 10px 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--card); box-shadow: 0 4px 16px rgba(0,0,0,.25); font-size: 14px; }
+/* simulacao */
+.sim { border: 1px dashed var(--accent); border-radius: 10px; padding: 12px; margin: 10px 0; }
+.sim .row { align-items: flex-end; }
+.sim-list { list-style: none; margin: 8px 0; padding: 0; }
+.sim-list li { display: flex; gap: 10px; align-items: center; padding: 4px 0; border-top: 1px solid var(--line); }
+.sim-list li span { flex: 1; }
+.sim-list .sim-tot { font-weight: 600; }
+.sim-res { margin-top: 8px; }
+.small-btn.on { border-color: var(--accent); color: var(--accent); }
+.card-head .small-btn { margin-left: 8px; }
+.sim .kind-pick { flex-wrap: nowrap; }

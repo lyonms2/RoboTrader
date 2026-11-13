@@ -1,6 +1,6 @@
 "use client";
 import { doc, setDoc } from "firebase/firestore";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { P, isReadOnly } from "@/lib/paths";
 import { negativeStarts } from "@/lib/alerts";
@@ -150,6 +150,11 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
   };
   const [editing, setEditing] = useState<string | null>(null);
   const [splitting, setSplitting] = useState<string | null>(null);
+  // Marcar lancamentos para somar (so na tela, nada e salvo) e simulacao de valores
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [sim, setSim] = useState(false);
+  useEffect(() => { setSel(new Set()); }, [m]);
+  const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   // Desfaz a divisao: volta o lancamento original, onde quer que as partes estejam
   const unsplit = async (g: Gasto) => {
     const orig = Object.values(months).flatMap((md) => md.items).find((x) => x.splitId === g.splitId && x.splitOrig)?.splitOrig;
@@ -223,6 +228,10 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     const key = descKey(g.desc);
     await saveSetup({ fixos: setup.fixos.map((x) => (x.id === f.id ? { ...x, keys: (x.keys ?? []).filter((k) => k !== key), notIds: [...(x.notIds ?? []), g.id] } : x)) });
   };
+  const removeOnce = async (b: Bill) => {
+    if (!await ask(`Apagar a conta a pagar "${b.desc}" (${brl(b.v)})?`)) return;
+    await saveSetup({ fixos: setup.fixos.filter((x) => x.id !== b.ref) });
+  };
   const HOW: Record<string, string> = { ligado: "ligado", nome: "pelo nome no extrato", "valor-cat": "pelo valor, mesma categoria", valor: "só pelo valor (outra categoria)" };
   const today = todayBR();
 
@@ -247,7 +256,8 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
             <button className="ghost icon" aria-label="Próximo mês" onClick={() => setM(addMonths(m, 1))}>&rsaquo;</button>
             {!isNow && <button className="ghost small-btn" onClick={() => setM(monthOf(todayBR()))}>hoje</button>}
           </div>
-          <span className="muted small">{items.filter((g) => !g.card).length} lançamentos na conta</span>
+          <span className="muted small">{items.filter((g) => !g.card).length} lançamentos na conta
+            <button className={sim ? "ghost small-btn on" : "ghost small-btn"} onClick={() => setSim(!sim)} title="Testar valores sem salvar nada">{sim ? "fechar simulação" : "simular"}</button></span>
         </div>
         {acSt.rows.some((r) => r.used || r.informed) && (
           <div className="saldo-bar">
@@ -265,6 +275,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
             </div>
           </div>
         )}
+        {sim && <Simulator saldo={acSt.rows.some((r) => r.used || r.informed) ? acSt.end : null} isNow={isNow} pending={pendingTotal} sobrou={s.receitas - s.gastos} />}
         <div className="kpis">
           <div><span>Saídas (gastos)</span><b>{brl(s.gastos)}</b>
             <small className={avg && s.gastos > avg.value * 1.1 ? "warn" : "muted"}>{avg ? `média ${brl(avg.value, 0)} (${avg.months} ${avg.months > 1 ? "meses" : "mês"})` : "a média aparece no 2o mês"}</small></div>
@@ -272,7 +283,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
           <div><span>Sobrou</span><b className={s.receitas - s.gastos >= 0 ? "pos" : "neg"}>{brl(s.receitas - s.gastos)}</b>
             <small className="muted">{s.receitas > 0 ? `${fmt(((s.receitas - s.gastos) / s.receitas) * 100, 0)}% das entradas` : "entradas - gastos"}</small></div>
           <div><span>Ainda a pagar</span><b className={pendingTotal > 0 ? "warn" : ""}>{brl(pendingTotal)}</b>
-            <small className="muted">{pending.length ? `${pending.length} fixos/parcelas - previsto ${brl(s.gastos + pendingTotal, 0)}` : "fixos e parcelas em dia"}</small></div>
+            <small className="muted">{pending.length ? `${pending.length} ${pending.length > 1 ? "contas" : "conta"} - previsto ${brl(s.gastos + pendingTotal, 0)}` : "contas do mês em dia"}</small></div>
         </div>
         {(() => {
           // So o que passou pela conta (sem cartao e sem o que outra pessoa pagou por voce), separado em renda/gasto
@@ -352,6 +363,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                   <li key={p.ref} className={p.paid ? "paid" : late ? "late" : ""}>
                     <span className="b-day">{dm(p.d)}</span>
                     <span className="b-desc"><b>{p.desc}</b>
+                      {p.once && <span className="tag">avulsa</span>}
                       {p.varia && <span className="tag">varia</span>}
                       {p.reaj && <span className="tag warn">reajuste: confira o valor</span>}
                       {p.paid && <small className="muted">{p.paid.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === p.paid!.by)?.name ?? "outra pessoa"} (abatido do que te deve) ${brl(p.paid.v)} (${dm(p.paid.d)})`
@@ -378,6 +390,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                             {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>cartão {c.name}</option>)}
                           </optgroup>
                         </select>
+                        {p.once && <button className="link" onClick={() => removeOnce(p)} title="Apagar esta conta a pagar">apagar</button>}
                       </>
                     )}
                   </li>
@@ -446,17 +459,19 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
         {shown.length ? (
           <div className="table-scroll">
             <table className="stack gastos">
-              <thead><tr><th>Descrição</th><th>Categoria</th><th>Valor</th><th /></tr></thead>
+              <thead><tr><th><input type="checkbox" className="sel-box" aria-label="Marcar todos" checked={shown.length > 0 && shown.every((g) => sel.has(g.id))}
+                onChange={(e) => setSel(e.target.checked ? new Set(shown.map((g) => g.id)) : new Set())} /> Descrição</th><th>Categoria</th><th>Valor</th><th /></tr></thead>
               <tbody>
                 {shown.map((g) => {
                   const card = setup.cards.find((c) => c.id === g.card);
                   const accs = accountsOf(setup);
                   const accName = !card && accs.length > 1 ? accs.find((a) => a.id === accIdOf(g, accs))?.name : null;
                   return (<Fragment key={g.id}>
-                    <tr className={g.tipo === "neutro" && !isFaturaOut(g) ? "neutral" : ""}>
-                      <td><span className="cell">{g.desc}<small className="muted">
+                    <tr className={`${g.tipo === "neutro" && !isFaturaOut(g) ? "neutral" : ""}${sel.has(g.id) ? " selected" : ""}`}>
+                      <td><span className="sel-cell"><input type="checkbox" className="sel-box" aria-label={`Marcar ${g.desc}`} checked={sel.has(g.id)} onChange={() => toggleSel(g.id)} />
+                        <span className="cell">{g.desc}<small className="muted">
                         {[dm(g.d), card ? `cartão ${card.name}` : accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, g.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === g.by)?.name ?? "outra pessoa"} - não saiu da sua conta` : null, isFaturaOut(g) ? "conta nos gastos do mês (fatura paga)" : g.tipo === "neutro" ? (dirOf(g) > 0 ? "entrou na conta - não é renda (dinheiro seu voltando)" : "saiu da conta - não é gasto") : null].filter(Boolean).join(" - ")}
-                      </small></span></td>
+                      </small></span></span></td>
                       <td data-label="Categoria"><span className="cell">
                         <CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} />
                         {(g.cat === RECV_OUT_CAT || g.cat === RECV_BACK_CAT) && <RecvSelect g={g} m={m} months={months} setup={setup} />}
@@ -483,7 +498,21 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
             </table>
           </div>
         ) : <p className="muted">Nenhum lançamento {filter ? "nesta categoria" : "neste mês"}.</p>}
-        <p className="muted small">Mudou a categoria de um lançamento? O site aplica aos iguais do mês e lembra para as próximas importações.</p>
+        {sel.size > 0 && (() => {
+          const list = items.filter((g) => sel.has(g.id));
+          const plus = list.filter((g) => g.tipo === "receita" || (g.tipo === "neutro" && dirOf(g) > 0)).reduce((t, g) => t + g.v, 0);
+          const minus = list.reduce((t, g) => t + g.v, 0) - plus;
+          return (
+            <div className="sel-bar">
+              <b>{list.length} {list.length > 1 ? "marcados" : "marcado"}</b>
+              {plus > 0 && <span className="pos">entradas +{brl(plus)}</span>}
+              {minus > 0 && <span className="v-out">saídas -{brl(minus)}</span>}
+              <span>total <b className={plus - minus >= 0 ? "pos" : "v-out"}>{plus - minus >= 0 ? "+" : "-"}{brl(Math.abs(plus - minus))}</b></span>
+              <button className="link" onClick={() => setSel(new Set())}>limpar</button>
+            </div>
+          );
+        })()}
+        <p className="muted small">Marque lançamentos para ver a soma deles (nada é salvo). Mudou a categoria de um lançamento? O site aplica aos iguais do mês e lembra para as próximas importações.</p>
         <HowItWorks />
       </section>
     </>
@@ -1341,14 +1370,15 @@ export function LoanForm({ l, onSave, onCancel }: { l: Loan; onSave: (l: Loan) =
 export function Fixos({ setup, months, onEdit }: { setup: GastosSetup; months?: Record<string, MonthDoc>; onEdit?: (id: string | null) => void }) {
   const m = monthOf(todayBR());
   const val = (f: Fixo) => fixoExpected(f, m, months);
-  const total = setup.fixos.filter((f) => fixoActive(f, m)).reduce((s, f) => s + val(f), 0);
+  const fixos = setup.fixos.filter((f) => !f.once);
+  const total = fixos.filter((f) => fixoActive(f, m)).reduce((s, f) => s + val(f), 0);
   return (
     <section className="card">
       <div className="card-head"><h2>Gastos fixos</h2>
-        <span className="muted small">{setup.fixos.length ? `~${brl(total)} por mês` : ""}{onEdit && <button className="link" onClick={() => onEdit(null)}>+ fixo</button>}</span></div>
-      {setup.fixos.length > 0 ? (
+        <span className="muted small">{fixos.length ? `~${brl(total)} por mês` : ""}{onEdit && <button className="link" onClick={() => onEdit(null)}>+ fixo</button>}</span></div>
+      {fixos.length > 0 ? (
         <ul className="pend small">
-          {setup.fixos.map((f) => {
+          {fixos.map((f) => {
             const next = (f.steps ?? []).filter((x) => x.from > m).sort((x, y) => x.from.localeCompare(y.from))[0];
             return (
               <li key={f.id}><span className="muted">dia {f.dia}</span> <b>{f.desc}</b> <span className="muted">{catLabel(f.cat)}</span>
@@ -1366,6 +1396,101 @@ export function Fixos({ setup, months, onEdit }: { setup: GastosSetup; months?: 
       <p className="muted small">Fixos aparecem em &quot;Previstos&quot; todo mês até o pagamento aparecer: lançamento ligado a ele, mesmo valor (2%) ou,
         se o valor varia (luz, água), um gasto da mesma categoria perto da média.</p>
     </section>
+  );
+}
+
+// Conta a pagar avulsa (boleto, conserto, IPVA...): aparece em Contas do mes ate ser paga; nao conta como gasto antes disso
+export function PayableForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fixo | null; onDone: (msg?: string) => void }) {
+  const [desc, setDesc] = useState(fixo?.desc ?? "");
+  const [v, setV] = useState(fixo ? fmt(fixo.v) : "");
+  const [due, setDue] = useState(fixo?.due ?? todayBR());
+  const [cat, setCat] = useState<string | null>(fixo?.cat ?? null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const finalCat = cat ?? categorize(desc, false, setup.rules).cat;
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!desc.trim() || !(num(v) > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(due)) return;
+    const mm = monthOf(due);
+    const f: Fixo = { ...(fixo ?? {}), id: fixo?.id ?? newId(), desc: desc.trim(), v: num(v), cat: finalCat, dia: Number(due.slice(8, 10)), once: true, due, start: mm, end: mm };
+    setBusy(true); setErr("");
+    try {
+      await saveSetup({ fixos: setup.fixos.some((x) => x.id === f.id) ? setup.fixos.map((x) => (x.id === f.id ? f : x)) : [...setup.fixos, f] });
+    } catch {
+      setBusy(false); setErr("Não salvou (sem conexão?). Tente de novo.");
+      return;
+    }
+    onDone(`${fixo ? "Salva" : "Adicionada"}: ${f.desc}, ${brl(f.v)}, vence ${dm(due)}. Ela aparece em "Contas do mês" até ser paga.`);
+  };
+  const remove = async () => {
+    if (fixo && await ask(`Apagar a conta a pagar "${fixo.desc}"?`)) { await saveSetup({ fixos: setup.fixos.filter((x) => x.id !== fixo.id) }); onDone(`Apagada: ${fixo.desc}.`); }
+  };
+  return (
+    <form className="fin-form" onSubmit={submit}>
+      <div className="row wrapline">
+        <label className="grow">Descrição<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Boleto do conserto, IPVA, dentista..." /></label>
+        <label>Valor (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
+        <label>Vence em<input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></label>
+        <label>Categoria<CatSelect value={finalCat} onChange={setCat} /></label>
+      </div>
+      {err && <p className="error small">{err}</p>}
+      <div className="row">
+        <button className="primary" type="submit" disabled={busy || !desc.trim() || !(num(v) > 0)}>{busy ? "Salvando..." : fixo ? "Salvar" : "Adicionar"}</button>
+        {fixo && <button className="ghost" type="button" onClick={remove}>apagar</button>}
+      </div>
+      <p className="muted small">Conta de uma vez só, ainda não paga. Ela fica em &quot;Contas do mês&quot; como a pagar e entra nos avisos de vencimento,
+        mas só conta como gasto quando for paga: ligue ao lançamento do extrato ou diga com que conta pagou. Se passar do mês sem pagar,
+        ela continua aparecendo como atrasada.</p>
+    </form>
+  );
+}
+
+// Simulacao: valores que ainda nao aconteceram, so na tela (nada e salvo)
+function Simulator({ saldo, isNow, pending, sobrou }: { saldo: number | null; isNow: boolean; pending: number; sobrou: number }) {
+  const [list, setList] = useState<{ id: string; desc: string; v: number }[]>([]);
+  const [desc, setDesc] = useState("");
+  const [val, setVal] = useState("");
+  const [out, setOut] = useState(true);
+  const add = (e: React.FormEvent) => {
+    e.preventDefault();
+    const x = num(val);
+    if (!(x > 0)) return;
+    setList([...list, { id: newId(), desc: desc.trim() || (out ? "saída" : "entrada"), v: out ? -x : x }]);
+    setDesc(""); setVal("");
+  };
+  const tot = list.reduce((t, x) => t + x.v, 0);
+  const sg = (x: number) => `${x >= 0 ? "+" : "-"}${brl(Math.abs(x))}`;
+  return (
+    <div className="sim">
+      <p className="small"><b>Simulação</b> <span className="muted">- teste valores que ainda não aconteceram. Nada é salvo; some ao fechar.</span></p>
+      <form className="row wrapline" onSubmit={add}>
+        <label className="grow">Descrição<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="conserto do carro, bico..." /></label>
+        <label>Valor (R$)<input value={val} inputMode="decimal" onChange={(e) => setVal(e.target.value)} /></label>
+        <div className="kind-pick" role="radiogroup" aria-label="Sentido">
+          <button type="button" role="radio" aria-checked={out} className={out ? "pill on" : "pill"} onClick={() => setOut(true)}>- sai</button>
+          <button type="button" role="radio" aria-checked={!out} className={!out ? "pill on" : "pill"} onClick={() => setOut(false)}>+ entra</button>
+        </div>
+        <button className="primary" type="submit" disabled={!(num(val) > 0)}>Somar</button>
+      </form>
+      {list.length > 0 && (
+        <ul className="sim-list small">
+          {list.map((x) => (
+            <li key={x.id}><span>{x.desc}</span><b className={x.v >= 0 ? "pos" : "v-out"}>{sg(x.v)}</b>
+              <button className="link" onClick={() => setList(list.filter((y) => y.id !== x.id))} aria-label="Tirar">x</button></li>
+          ))}
+          <li className="sim-tot"><span>Total simulado</span><b className={tot >= 0 ? "pos" : "v-out"}>{sg(tot)}</b>
+            <button className="link" onClick={() => setList([])}>limpar</button></li>
+        </ul>
+      )}
+      <div className="kpis compact sim-res">
+        {saldo !== null && <div><span>{isNow ? "Saldo nas contas hoje" : "Saldo no fim do mês"}</span><b>{brl(saldo + tot)}</b>
+          <small className="muted">{list.length ? `era ${brl(saldo)}` : "sem simulação"}</small></div>}
+        {saldo !== null && pending > 0 && <div><span>Depois de pagar o que falta</span><b className={saldo + tot - pending < 0 ? "neg" : ""}>{brl(saldo + tot - pending)}</b>
+          <small className="muted">contas do mês a pagar: {brl(pending)}</small></div>}
+        <div><span>Sobrou no mês</span><b className={sobrou + tot >= 0 ? "pos" : "neg"}>{brl(sobrou + tot)}</b>
+          <small className="muted">{list.length ? `era ${brl(sobrou)}` : "entradas - gastos"}</small></div>
+      </div>
+    </div>
   );
 }
 

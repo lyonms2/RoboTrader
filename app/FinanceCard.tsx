@@ -6,7 +6,7 @@ import { P } from "@/lib/paths";
 import { GROUPS, cdiYear, compareCdi, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
 import { INVEST_CAT, goalStatus, type Goal, recvStatus, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type Gasto, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
-import GastosCard, { guardWrite, AccountForm, AccountsPanel, CardForm, DebtsBlock, FixoForm, Fixos, ImportPanel, LoanForm, QuickAdd, monthSnapshot, saveSetup, upcoming } from "./GastosCard";
+import GastosCard, { guardWrite, AccountForm, AccountsPanel, CardForm, DebtsBlock, FixoForm, Fixos, ImportPanel, LoanForm, QuickAdd, monthSnapshot, saveSetup, upcoming, PayableForm } from "./GastosCard";
 import NetWorthChart from "./NetWorthChart";
 import CardsLoans, { type CardsEntry } from "./CardsLoans";
 import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
@@ -543,7 +543,10 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
               </>
             )}
             <p className="muted small full">Depósitos e resgates lançados em Lançamentos (categoria Investimento) depois dessa data somam
-              e descontam sozinhos. Ao mudar o saldo, a data vira hoje sozinha (a menos que você escolha outra). Use o saldo bruto que o app do banco mostra.</p>
+              e descontam sozinhos. Ao mudar o saldo, a data vira hoje sozinha (a menos que você escolha outra).</p>
+            <p className="muted small full">Imposto: o site calcula o rendimento bruto, antes do IR. Se o app do banco mostra o valor já sem IR
+              (comum no Mercado Pago), o site fica um pouco acima. Para chegar perto, baixe o % do CDI: com 100% do CDI, use ~78% nos
+              primeiros 6 meses, ~80% até 1 ano, ~83% até 2 anos e ~85% depois (IR de 22,5%, 20%, 17,5% e 15% sobre o rendimento).</p>
           </>
         )}
         {kind === "tesouro" && (
@@ -863,10 +866,10 @@ export function NetWorthBlock({ cfg, fin, wallet, months, setup, nwHist }: Ctx &
 }
 
 // ---------- "O que voce quer lancar?" (unico lugar de entrada) ----------
-export type EntryType = "mov" | "import" | "inv" | "bem" | "fixo" | "conta";
+export type EntryType = "mov" | "import" | "inv" | "bem" | "fixo" | "pagar" | "conta";
 const ENTRY_TYPES: { id: EntryType; label: string }[] = [
   { id: "mov", label: "Gasto ou entrada" }, { id: "import", label: "Importar extrato" },
-  { id: "fixo", label: "Gasto fixo" }, { id: "conta", label: "Conta / saldo" },
+  { id: "fixo", label: "Gasto fixo" }, { id: "pagar", label: "Conta a pagar" }, { id: "conta", label: "Conta / saldo" },
 ];
 
 function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, onRemoveInv }: {
@@ -887,7 +890,8 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   const accounts = accountsOf(setup);
   // Itens existentes de cada tipo (para alterar ou remover)
   const existing: Record<string, { id: string; label: string }[]> = {
-    fixo: setup.fixos.map((f) => ({ id: f.id, label: f.desc })),
+    fixo: setup.fixos.filter((f) => !f.once).map((f) => ({ id: f.id, label: f.desc })),
+    pagar: setup.fixos.filter((f) => f.once).map((f) => ({ id: f.id, label: `${f.desc} (vence ${f.due ? `${f.due.slice(8, 10)}/${f.due.slice(5, 7)}` : "-"})` })),
     conta: accounts.map((a) => ({ id: a.id, label: a.name })),
   };
   const opts = existing[type];
@@ -921,6 +925,7 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
       {type === "import" && <ImportPanel months={months} setup={setup} invest={invest} onDone={() => setEntry({ type: "mov", id: null })} />}
       {msg && <p className="small pos entry-msg">&#10003; {msg}</p>}
       {type === "fixo" && <FixoForm key={`${id ?? "novo"}-${n}`} setup={setup} fixo={setup.fixos.find((f) => f.id === id) ?? null} onDone={done} />}
+      {type === "pagar" && <PayableForm key={`${id ?? "novo"}-${n}`} setup={setup} fixo={setup.fixos.find((f) => f.id === id && f.once) ?? null} onDone={done} />}
       {type === "conta" && (
         <AccountForm key={`${id ?? "novo"}-${n}`} acc={accounts.find((a) => a.id === id) ?? null}
           canRemove={!!id && accounts.length > 1 && !usedAcc.has(id)}

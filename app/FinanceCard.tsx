@@ -461,6 +461,9 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
   const [balanceAt, setBalanceAt] = useState(new Date(initial?.balanceAt ?? Date.now() - 3 * 3_600_000).toISOString().slice(0, 10));
   const [dateTouched, setDateTouched] = useState(false);
   const [cdiPct, setCdiPct] = useState(String(initial?.cdiPct ?? 100));
+  const [hasPart2, setHasPart2] = useState(!!initial?.part2);
+  const [p2v, setP2v] = useState(initial?.part2 ? String(initial.part2.v).replace(".", ",") : "");
+  const [p2pct, setP2pct] = useState(initial?.part2 ? String(initial.part2.pct).replace(".", ",") : "");
   const [value, setValue] = useState(initial?.value !== undefined ? String(initial.value).replace(".", ",") : "");
   const [reserva, setReserva] = useState(initial?.reserva ?? (initial ? false : true));
   const [err, setErr] = useState("");
@@ -478,11 +481,15 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
     let it: FinItem;
     if (kind === "caixa") {
       if (!(parse(balance) >= 0) || !balance) return setErr("Informe o saldo.");
+      const part2 = hasPart2 && parse(p2v) > 0 ? { v: parse(p2v), pct: parse(p2pct) } : null;
+      if (part2 && !(part2.pct > 0)) return setErr("Informe o % do CDI da parte com outra taxa.");
+      if (part2 && part2.v > parse(balance)) return setErr("A parte com outra taxa não pode ser maior que o saldo total.");
       // Mudou o saldo e nao mexeu na data: e o saldo de hoje (senao o site somaria de novo o rendimento desde a data antiga)
-      const day = initial?.kind === "caixa" && parse(balance) !== initial.balance && !dateTouched
+      const changed = parse(balance) !== initial?.balance || (part2?.v ?? 0) !== (initial?.part2?.v ?? 0);
+      const day = initial?.kind === "caixa" && changed && !dateTouched
         ? new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10) : balanceAt;
       it = { ...base, name: name.trim() || "Cofrinho", balance: parse(balance), balanceAt: Date.parse(`${day}T12:00:00-03:00`),
-        cdiPct: parse(cdiPct) || 100, reserva };
+        cdiPct: parse(cdiPct) || 100, reserva, ...(part2 ? { part2 } : {}) };
     } else if (kind === "tesouro") {
       if (!title) return setErr("Escolha o título.");
       if (!(parse(qty) > 0)) return setErr("Informe a quantidade de títulos (ex.: 0,35).");
@@ -524,9 +531,17 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
         )}
         {kind === "caixa" && (
           <>
-            <label>Saldo hoje (R$)<input value={balance} inputMode="decimal" onChange={(e) => setBalance(e.target.value)} placeholder="5.000,00" /></label>
+            <label>{hasPart2 ? "Saldo total hoje (R$)" : "Saldo hoje (R$)"}<input value={balance} inputMode="decimal" onChange={(e) => setBalance(e.target.value)} placeholder="5.000,00" /></label>
             <label>Data do saldo<input type="date" value={balanceAt} onChange={(e) => { setBalanceAt(e.target.value); setDateTouched(true); }} /></label>
-            <label>% do CDI<input value={cdiPct} inputMode="decimal" onChange={(e) => setCdiPct(e.target.value)} /></label>
+            <label>{hasPart2 ? "% do CDI do resto" : "% do CDI"}<input value={cdiPct} inputMode="decimal" onChange={(e) => setCdiPct(e.target.value)} /></label>
+            <label className="check full"><input type="checkbox" checked={hasPart2} onChange={(e) => setHasPart2(e.target.checked)} />
+              Uma parte do saldo rende outra taxa (ex.: PicPay 120% numa parte e 102% no resto)</label>
+            {hasPart2 && (
+              <>
+                <label>Valor nessa outra taxa (R$)<input value={p2v} inputMode="decimal" onChange={(e) => setP2v(e.target.value)} placeholder="641,22" /></label>
+                <label>% do CDI dessa parte<input value={p2pct} inputMode="decimal" onChange={(e) => setP2pct(e.target.value)} placeholder="120" /></label>
+              </>
+            )}
             <p className="muted small full">Depósitos e resgates lançados em Lançamentos (categoria Investimento) depois dessa data somam
               e descontam sozinhos. Ao mudar o saldo, a data vira hoje sozinha (a menos que você escolha outra). Use o saldo bruto que o app do banco mostra.</p>
           </>

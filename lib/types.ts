@@ -33,6 +33,8 @@ export type FinItem = {
   reserva?: boolean; // faz parte da reserva de emergencia
   // caixa (cofrinho, CDB com liquidez diaria): saldo informado numa data + % do CDI -> rendimento estimado ate hoje
   balance?: number; balanceAt?: number; cdiPct?: number;
+  // parte do saldo (na mesma data) que rende outra taxa, ex.: PicPay 120% numa parte e 102% no resto. balance continua sendo o total
+  part2?: { v: number; pct: number };
   title?: string; // tesouro: "Tesouro Selic|01/03/2029" (tipo|vencimento)
   ticker?: string; // acao/FII/ETF na B3, sem ".SA"
   qty?: number; avg?: number; // tesouro e acao: quantidade e preco medio por unidade (R$)

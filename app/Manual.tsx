@@ -103,7 +103,8 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Em Investimentos, clique em \"+ novo investimento\".",
       "Escolha o tipo: cofrinho (saldo + % do CDI), Tesouro, ação/FII/ETF (código + quantidade) ou outro.",
       "Clique em \"Atualizar cotações\" para trazer preços e proventos.",
-    ], tips: ["Aplicações e resgates do extrato (categoria Investimento) ligados a um cofrinho somam e descontam o saldo dele sozinhos."] },
+      "Cofrinho com duas taxas (ex.: PicPay 120% numa parte e 102% no resto)? Marque \"Uma parte do saldo rende outra taxa\" e informe o valor e o % dessa parte.",
+    ], tips: ["Se o app do banco mostra o valor já sem IR, o site (que calcula o bruto) fica um pouco acima: atualize o saldo de vez em quando.", "Aplicações e resgates do extrato (categoria Investimento) ligados a um cofrinho somam e descontam o saldo dele sozinhos."] },
     { title: "Comparar seus investimentos com o CDI", steps: [
       "Em Investimentos, clique em \"alterar\" no Tesouro ou na ação.",
       "Informe o preço médio e a data da compra e salve.",

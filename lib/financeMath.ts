@@ -26,6 +26,7 @@ export type FinRow = {
 
 const DAY = 86_400_000;
 const fmtD = (t: number) => new Date(t).toLocaleDateString("pt-BR");
+const brlS = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtP = (v: number) => `${(v * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 // Dia no horario de Brasilia (AAAA-MM-DD)
 export const dayBR = (t: number) => new Date(t - 3 * 3_600_000).toISOString().slice(0, 10);
@@ -62,6 +63,9 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     const r = { ...base, kindLabel: "Conta / cofrinho", group: item.reserva ? "reserva" : "rendafixa" } as FinRow;
     const bal = item.balance ?? 0;
     const pct = (item.cdiPct ?? 100) / 100;
+    // Parte com outra taxa (opcional): sai do total e rende o seu proprio %
+    const p2 = item.part2 && item.part2.v > 0 ? { v: Math.min(item.part2.v, bal), pct: item.part2.pct / 100 } : null;
+    const tier = p2 ? ` + ${brlS(p2.v)} a ${(p2.pct * 100).toLocaleString("pt-BR")}%` : "";
     const at = item.balanceAt ?? Date.now();
     // Depositos/resgates depois da data do saldo: cada um rende CDI a partir do proprio dia
     const fl = flows.filter((x) => x.d > dayBR(at));
@@ -70,13 +74,17 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     // Movimentos ligados ate a data do saldo ja estao dentro dele (mostra para nao parecer que sumiram)
     const inside = flows.length - fl.length;
     const incl = inside > 0 ? ` (${inside} ${inside > 1 ? "movimentos anteriores já estão" : "movimento anterior já está"} nesse saldo)` : "";
-    if (!f?.cdi.d.length) return { ...r, value: bal + net, cost: bal + net, note: `${fmtP(pct)} do CDI - saldo de ${fmtD(at)}${incl}${moved}`, problem: null };
-    const value = bal * cdiFactor(f, dayBR(at), pct) + fl.reduce((s, x) => s + x.v * cdiFactor(f, x.d, pct), 0);
-    const year = (1 + cdiDaily(f)! * pct) ** 252 - 1;
+    if (!f?.cdi.d.length) return { ...r, value: bal + net, cost: bal + net, note: `${fmtP(pct)} do CDI${tier} - saldo de ${fmtD(at)}${incl}${moved}`, problem: null };
+    const v2 = p2 ? p2.v * cdiFactor(f, dayBR(at), p2.pct) : 0;
+    const value = (bal - (p2?.v ?? 0)) * cdiFactor(f, dayBR(at), pct) + v2 + fl.reduce((s, x) => s + x.v * cdiFactor(f, x.d, pct), 0);
+    const y1 = (1 + cdiDaily(f)! * pct) ** 252 - 1;
+    const y2 = p2 ? (1 + cdiDaily(f)! * p2.pct) ** 252 - 1 : y1;
+    // taxa media pesada pelo valor de cada parte
+    const year = value > 0 ? ((value - v2) * y1 + v2 * y2) / value : y1;
     const days = Math.floor((Date.now() - at) / DAY);
     return {
       ...r, value, cost: bal + net, monthly: monthlyOf(value, year), yieldYear: year,
-      note: `${(pct * 100).toLocaleString("pt-BR")}% do CDI - saldo de ${fmtD(at)}${incl}${moved} + rendimento estimado`,
+      note: `${(pct * 100).toLocaleString("pt-BR")}% do CDI${tier} - saldo de ${fmtD(at)}${incl}${moved} + rendimento estimado`,
       stale: days > 60 ? `saldo informado há ${days} dias: confira no app do banco` : null,
     };
   }

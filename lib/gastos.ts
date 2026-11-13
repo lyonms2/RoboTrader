@@ -84,6 +84,8 @@ export type Fixo = {
 };
 // O fixo existe neste mes?
 export const fixoActive = (f: Fixo, m: string) => (!f.start || m >= f.start) && (!f.end || m <= f.end);
+// Meta de economia: acompanha o saldo de um investimento (inv) ou um valor guardado informado a mao (saved)
+export type Goal = { id: string; name: string; target: number; by?: string; inv?: string; saved?: number };
 export type GastosSetup = {
   cards: Card[]; loans: Loan[]; fixos: Fixo[]; rules: Record<string, string>; categories?: string[];
   customCats?: CustomCat[]; // categorias criadas por voce (ex.: Presentes, Pet)
@@ -94,6 +96,8 @@ export type GastosSetup = {
   accRules?: Record<string, string>; // descricao -> conta de destino de transferencias
   recvs?: Recv[]; // a receber (alguem te deve em parcelas)
   dismissed?: Record<string, string>; // avisos dispensados: id -> mes (AAAA-MM) em que vale
+  budgets?: Record<string, number>; // orcamento por categoria: limite de gasto por mes (R$)
+  goals?: Goal[]; // metas de economia
 };
 export const EMPTY_SETUP: GastosSetup = { cards: [], loans: [], fixos: [], rules: {} };
 
@@ -351,6 +355,25 @@ export function splitGasto(g: Gasto, parts: { desc: string; cat: string; v: numb
   const splitId = newId();
   return parts.map((p, k) => ({ ...base, id: k === 0 ? g.id : newId(), desc: p.desc, cat: p.cat, v: p.v, tipo: tipoOfCat(p.cat) ?? g.tipo, io, splitId,
     ...(k === 0 ? { splitOrig: g, ...(ext ? { ext } : {}) } : {}) }));
+}
+// Gasto do mes por categoria para o orcamento: o que saiu da conta e tambem as compras no cartao feitas no mes
+// (aqui a compra conta na data dela, e nao quando a fatura e paga, para o limite da categoria fazer sentido)
+export function budgetSpent(months: Record<string, MonthDoc>, setup: GastosSetup, m: string) {
+  const out: Record<string, number> = {};
+  const add = (g: Gasto) => { if (g.tipo === "gasto") out[g.cat] = (out[g.cat] ?? 0) + g.v; };
+  for (const g of months[m]?.items ?? []) add(g);
+  for (const c of setup.cards) for (const g of subCharges(c, addMonths(m, 2))) if (monthOf(g.d) === m) add(g);
+  return out;
+}
+// Quanto falta e quanto guardar por mes para chegar na meta ate o prazo
+export function goalStatus(g: Goal, current: number, today = todayBR()) {
+  const left = Math.max(0, g.target - current);
+  const cur = monthOf(today);
+  // meses ate o prazo, contando o mes atual (prazo neste mes = 1; prazo ja passado = 0)
+  let monthsLeft: number | null = null;
+  if (g.by) { monthsLeft = 0; if (g.by >= cur) for (let x = cur; x <= g.by && monthsLeft < 600; x = addMonths(x, 1)) monthsLeft++; }
+  return { current, left, pct: g.target > 0 ? Math.min(1, current / g.target) : 0, done: left <= 0.005, monthsLeft,
+    perMonth: monthsLeft && left > 0 ? left / monthsLeft : null, late: !!g.by && g.by < cur && left > 0.005 };
 }
 export function subValue(s: CardSub, m: string) {
   let v = s.v;

@@ -10,7 +10,7 @@ import { CardPayForm } from "./CardsLoans";
 import { RecvSelect, linkRecv, receive } from "./Receivables";
 import {
   catLabel, CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, splitGasto, parcelSiblings, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, budgetSpent, splitGasto, parcelSiblings, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
   type Bill, type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
@@ -334,6 +334,8 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
         )}
         <MonthsChart months={months} current={m} onPick={setM} />
       </section>
+
+      <BudgetCard months={months} setup={setup} m={m} />
 
       {(bills.length > 0 || recs.length > 0) && (
         <section className="card bills-card">
@@ -1573,5 +1575,64 @@ function SplitForm({ g, m, items, onDone }: { g: Gasto; m: string; items: Gasto[
       </div>
       <p className="muted small">A soma das partes tem de ser igual ao total. O saldo da conta não muda e o extrato não será importado de novo.</p>
     </form>
+  );
+}
+
+// Orcamento por categoria: limite por mes, quanto ja foi e quanto sobra
+function BudgetCard({ months, setup, m }: { months: Record<string, MonthDoc>; setup: GastosSetup; m: string }) {
+  const budgets = setup.budgets ?? {};
+  const spent = budgetSpent(months, setup, m);
+  const [adding, setAdding] = useState(false);
+  const [cat, setCat] = useState("Alimentacao");
+  const [v, setV] = useState("");
+  const list = Object.entries(budgets).filter(([, lim]) => lim > 0).sort((a, b) => (spent[b[0]] ?? 0) / b[1] - (spent[a[0]] ?? 0) / a[1]);
+  const save = async (c: string, lim: number) => {
+    const next = { ...budgets };
+    if (lim > 0) next[c] = Math.round(lim * 100) / 100; else delete next[c];
+    // merge do Firestore nao apaga chave: grava o mapa inteiro com 0 no que saiu
+    await saveSetup({ budgets: lim > 0 ? next : { ...next, [c]: 0 } });
+  };
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!(num(v) > 0)) return;
+    await save(cat, num(v));
+    setV(""); setAdding(false);
+  };
+  const change = async (c: string, lim: number) => {
+    const ans = await askText(`Orçamento de ${catLabel(c)} por mês (R$). Deixe 0 para remover.`, fmt(lim));
+    if (ans === null) return;
+    await save(c, num(ans));
+  };
+  const totalLim = list.reduce((t, [, lim]) => t + lim, 0);
+  const totalSpent = list.reduce((t, [c]) => t + (spent[c] ?? 0), 0);
+  if (!list.length && !adding)
+    return <p className="small budget-empty"><button className="link" onClick={() => setAdding(true)}>+ definir orçamento por categoria</button> <span className="muted">(um limite de gasto por mês, ex.: Alimentação R$ 600)</span></p>;
+  return (
+    <section className="card">
+      <div className="card-head"><h2>Orçamento do mês</h2>
+        <span className="muted small">{list.length ? `${brl(totalSpent, 0)} de ${brl(totalLim, 0)}` : ""}<button className="link" onClick={() => setAdding(!adding)}>{adding ? "fechar" : "+ categoria"}</button></span></div>
+      {adding && (
+        <form className="row wrapline fin-form" onSubmit={add}>
+          <label>Categoria<CatSelect value={cat} onChange={setCat} /></label>
+          <label>Limite por mês (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="600,00" /></label>
+          <button className="primary" type="submit" disabled={!(num(v) > 0)}>Salvar</button>
+        </form>
+      )}
+      <div className="budgets">
+        {list.map(([c, lim]) => {
+          const s = spent[c] ?? 0, pct = s / lim;
+          return (
+            <div key={c} className="budget-row">
+              <span className="b-name">{catLabel(c)}</span>
+              <span className="limit"><span className={pct > 1 ? "limit-fill over" : pct >= 0.8 ? "limit-fill high" : "limit-fill"} style={{ width: `${Math.min(100, pct * 100)}%` }} /></span>
+              <span className="b-num small">{brl(s, 0)} de {brl(lim, 0)}</span>
+              <span className={`small ${pct > 1 ? "warn" : "muted"}`}>{pct > 1 ? `passou ${brl(s - lim, 0)}` : `sobram ${brl(lim - s, 0)}`}</span>
+              <button className="link" onClick={() => change(c, lim)}>alterar</button>
+            </div>
+          );
+        })}
+      </div>
+      <p className="muted small">Conta o que saiu da conta e também as compras no cartão feitas no mês (pela data da compra). Avisa na Visão geral aos 80% e quando passar.</p>
+    </section>
   );
 }

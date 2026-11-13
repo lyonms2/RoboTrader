@@ -59,6 +59,18 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Informe o dia em que pagou. Se o site ligou o lançamento errado, clique em \"alterar\".",
     ] },
   ] },
+  { group: "Orçamento e metas", items: [
+    { title: "Definir um orçamento por categoria", steps: [
+      "Em Finanças → Lançamentos, clique em \"+ definir orçamento por categoria\" (ou \"+ categoria\" no bloco Orçamento do mês).",
+      "Escolha a categoria e o limite por mês (ex.: Alimentação R$ 600) e salve.",
+      "A barra mostra quanto já foi e quanto sobra. Para mudar ou remover, clique em \"alterar\" (0 remove).",
+    ], tips: ["O orçamento conta o que saiu da conta e também as compras no cartão feitas no mês. A Visão geral avisa aos 80% e quando passar."] },
+    { title: "Criar uma meta de economia", steps: [
+      "Em Finanças → Investimentos, no bloco Metas, clique em \"+ nova meta\".",
+      "Dê um nome, diga quanto quer juntar e, se quiser, até quando.",
+      "Em \"Onde está o dinheiro\", escolha um cofrinho ou investimento para o progresso andar sozinho, ou informe o valor à mão.",
+    ], tips: ["Com prazo, o site mostra quanto guardar por mês para chegar lá."] },
+  ] },
   { group: "Cartões e empréstimos", items: [
     { title: "Lançar uma compra no cartão", steps: [
       "Em Cartões e empréstimos → Cartões, clique em \"Compra no cartão\".",

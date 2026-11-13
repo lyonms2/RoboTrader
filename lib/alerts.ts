@@ -1,5 +1,5 @@
 import {
-  CARD_PAY_CAT, GENERIC_CATS, accIdOf, accountsOf, accountsStatus, addMonths, cardStatus, catLabel, faturaMonth, fixoHistory, monthBills, monthOf, recvLedger, subValue, summarize, todayBR,
+  CARD_PAY_CAT, GENERIC_CATS, accIdOf, accountsOf, accountsStatus, budgetSpent, addMonths, cardStatus, catLabel, faturaMonth, fixoHistory, monthBills, monthOf, recvLedger, subValue, summarize, todayBR,
   type Card, type GastosSetup, type MonthDoc,
 } from "./gastos";
 
@@ -93,6 +93,15 @@ export function buildAlerts(a: {
 
   for (const r of negativeStarts(months, setup, m))
     out.push({ id: `inicio-neg:${r.id}:${m}`, prio: 2, tone: "warn", who: "Dados", text: `O início do mês da conta ${r.name} aparece negativo (${brl(r.start)}): se a conta não estava no vermelho, faltam saídas lançadas. Importe o extrato do mês`, fin: "lanc" });
+
+  // orcamento por categoria: passou do limite ou chegou em 80%
+  const spentCat = budgetSpent(months, setup, m);
+  for (const [c, lim] of Object.entries(setup.budgets ?? {})) {
+    const v = spentCat[c] ?? 0;
+    if (!(lim > 0)) continue;
+    if (v > lim + 0.005) out.push({ id: `orc-over:${c}:${m}`, prio: 1, tone: "warn", who: "Orçamento", text: `${catLabel(c)} passou do orçamento do mês: ${brl(v)} de ${brl(lim)} (${brl(v - lim)} a mais)`, fin: "lanc" });
+    else if (v >= lim * 0.8) out.push({ id: `orc-80:${c}:${m}`, prio: 2, tone: "info", who: "Orçamento", text: `${catLabel(c)} já usou ${num((v / lim) * 100, 0)}% do orçamento do mês (${brl(v)} de ${brl(lim)})`, fin: "lanc" });
+  }
 
   // 6) categoria fora do padrao (a que mais passou da media)
   const keys = [1, 2, 3].map((k) => addMonths(m, -k)).filter((k) => months[k]?.items.length);

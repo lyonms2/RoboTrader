@@ -5,7 +5,7 @@ import { db } from "@/lib/firebaseClient";
 import { P } from "@/lib/paths";
 import { GROUPS, cdiYear, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
-import { INVEST_CAT, recvStatus, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type Gasto, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
+import { INVEST_CAT, goalStatus, type Goal, recvStatus, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type Gasto, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
 import GastosCard, { guardWrite, AccountForm, AccountsPanel, CardForm, DebtsBlock, FixoForm, Fixos, ImportPanel, LoanForm, QuickAdd, monthSnapshot, saveSetup, upcoming } from "./GastosCard";
 import NetWorthChart from "./NetWorthChart";
 import CardsLoans, { type CardsEntry } from "./CardsLoans";
@@ -128,7 +128,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   if (sub === "cards") return <>{nav}<CardsLoans months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} /></>;
   if (sub === "invest") return (
     <>{nav}<InvestPart items={items} rows={rows} fin={fin} months={months} reserve={s.reserve} reserveMonths={s.reserveMonths}
-      onQuotes={onQuotes} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} /></>
+      setup={setup} onQuotes={onQuotes} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} /></>
   );
   if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} entry={entryPanel} /></>;
 
@@ -223,9 +223,9 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
 }
 
 // ---------- sub-aba Investimentos: cadastro, carteira, aportes/resgates e proventos ----------
-function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes, edit, setEdit, bemEdit, setBemEdit, bensTotal, onSave, onRemove, onLanc }: {
+function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, onQuotes, edit, setEdit, bemEdit, setBemEdit, bensTotal, onSave, onRemove, onLanc }: {
   items: FinItem[]; rows: FinRow[]; fin: FinanceDoc | null; months: Record<string, MonthDoc>;
-  reserve: number; reserveMonths: number | null; onQuotes?: () => Promise<void>;
+  setup: GastosSetup; reserve: number; reserveMonths: number | null; onQuotes?: () => Promise<void>;
   edit: string | null | undefined; setEdit: (id: string | null | undefined) => void;
   bemEdit: string | null | undefined; setBemEdit: (id: string | null | undefined) => void; bensTotal: number;
   onSave: (it: FinItem) => void; onRemove: (it: FinItem) => void; onLanc: () => void;
@@ -378,6 +378,8 @@ function InvestPart({ items, rows, fin, months, reserve, reserveMonths, onQuotes
       </section>
 
       <Dividends rows={rows} fin={fin} />
+
+      <GoalsCard setup={setup} rows={rows} />
 
       <section className="card">
         <div className="card-head"><h2>Bens</h2><span className="muted small"><b>{brl(bensTotal)}</b><button className="ghost small-btn" onClick={() => setBemEdit(null)}>+ novo bem</button></span></div>
@@ -851,5 +853,86 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
       </>}
       {!open && msg && <p className="small pos entry-msg">&#10003; {msg}</p>}
     </div>
+  );
+}
+
+// Metas de economia: quanto ja tem, quanto falta e quanto guardar por mes
+function GoalsCard({ setup, rows }: { setup: GastosSetup; rows: FinRow[] }) {
+  const goals = setup.goals ?? [];
+  const [edit, setEdit] = useState<string | null>(null); // id ou "new"
+  const invs = rows.filter((r) => r.item.kind !== "bem");
+  const currentOf = (g: Goal) => (g.inv ? invs.find((r) => r.item.id === g.inv)?.value ?? 0 : g.saved ?? 0);
+  const write = async (list: Goal[]) => { await saveSetup({ goals: JSON.parse(JSON.stringify(list)) }); setEdit(null); };
+  return (
+    <section className="card">
+      <div className="card-head"><h2>Metas</h2><button className="ghost small-btn" onClick={() => setEdit(edit === "new" ? null : "new")}>{edit === "new" ? "fechar" : "+ nova meta"}</button></div>
+      {edit === "new" && <GoalForm invs={invs} onSave={(g) => write([...goals, g])} onCancel={() => setEdit(null)} />}
+      {goals.length ? (
+        <div className="goals">
+          {goals.map((g) => {
+            const st = goalStatus(g, currentOf(g));
+            const src = g.inv ? invs.find((r) => r.item.id === g.inv)?.item.name : null;
+            return (
+              <div key={g.id} className="goal">
+                <div className="goal-head"><b>{g.name}</b>
+                  <span className="small">{brl(st.current, 0)} de {brl(g.target, 0)} <b className={st.done ? "pos" : ""}>{fmt(st.pct * 100, 0)}%</b></span></div>
+                <div className="limit"><span className={st.done ? "limit-fill paid" : "limit-fill"} style={{ width: `${st.pct * 100}%` }} /></div>
+                <div className="goal-foot small muted">
+                  <span>{st.done ? "Meta atingida!" : st.late ? `prazo passou (${monthLabel(g.by!)}): faltam ${brl(st.left, 0)}`
+                    : st.perMonth !== null ? `faltam ${brl(st.left, 0)}: guardar ${brl(st.perMonth, 0)} por mês até ${monthLabel(g.by!)}` : `faltam ${brl(st.left, 0)}`}
+                    {src ? ` - acompanha o saldo de ${src}` : g.inv ? " - investimento removido" : " - valor informado à mão"}</span>
+                  <button className="link" onClick={() => setEdit(edit === g.id ? null : g.id)}>alterar</button>
+                </div>
+                {edit === g.id && <GoalForm goal={g} invs={invs} onSave={(n) => write(goals.map((x) => (x.id === g.id ? n : x)))} onCancel={() => setEdit(null)}
+                  onRemove={() => write(goals.filter((x) => x.id !== g.id))} />}
+              </div>
+            );
+          })}
+        </div>
+      ) : edit !== "new" && <p className="muted small">Nenhuma meta. Ex.: reserva de emergência, viagem, entrada de um carro. Ligando a meta a um cofrinho, o progresso anda sozinho.</p>}
+    </section>
+  );
+}
+
+function GoalForm({ goal, invs, onSave, onCancel, onRemove }: { goal?: Goal; invs: FinRow[]; onSave: (g: Goal) => void; onCancel: () => void; onRemove?: () => void }) {
+  const cur = monthOf(todayBR());
+  const [name, setName] = useState(goal?.name ?? "");
+  const [target, setTarget] = useState(goal ? fmt(goal.target) : "");
+  const [by, setBy] = useState(goal?.by ?? "");
+  const [inv, setInv] = useState(goal?.inv ?? "");
+  const [saved, setSaved] = useState(goal?.saved !== undefined ? fmt(goal.saved) : "");
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !(parse(target) > 0)) return;
+    onSave({ id: goal?.id ?? newId(), name: name.trim(), target: Math.round(parse(target) * 100) / 100, ...(by ? { by } : {}),
+      ...(inv ? { inv } : { saved: Math.round(parse(saved) * 100) / 100 }) });
+  };
+  const opts = Array.from({ length: 121 }, (_, i) => addMonths(cur, i));
+  return (
+    <form className="fin-form loan-pay" onSubmit={submit}>
+      <div className="row wrapline">
+        <label className="grow">Meta<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Reserva de emergência, viagem..." /></label>
+        <label>Quanto quer juntar (R$)<input value={target} inputMode="decimal" onChange={(e) => setTarget(e.target.value)} placeholder="10.000,00" /></label>
+        <label>Até quando (opcional)
+          <select value={by} onChange={(e) => setBy(e.target.value)}>
+            <option value="">sem prazo</option>
+            {by && !opts.includes(by) && <option value={by}>{monthLabel(by)}</option>}
+            {opts.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+          </select>
+        </label>
+        <label>Onde está o dinheiro
+          <select value={inv} onChange={(e) => setInv(e.target.value)}>
+            <option value="">informar o valor à mão</option>
+            {invs.map((r) => <option key={r.item.id} value={r.item.id}>saldo de {r.item.name}</option>)}
+          </select>
+        </label>
+        {!inv && <label>Já guardado (R$)<input value={saved} inputMode="decimal" onChange={(e) => setSaved(e.target.value)} placeholder="0,00" /></label>}
+      </div>
+      <div className="row">
+        <button className="primary" type="submit" disabled={!name.trim() || !(parse(target) > 0)}>{goal ? "Salvar" : "Adicionar"}</button>
+        <button className="ghost" type="button" onClick={onCancel}>Cancelar</button>
+        {onRemove && <button className="ghost small-btn" type="button" onClick={onRemove}>remover meta</button>}
+      </div>
+    </form>
   );
 }

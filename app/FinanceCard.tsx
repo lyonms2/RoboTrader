@@ -459,6 +459,7 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
   const sinceF = since ? { since: Date.parse(`${since}T12:00:00-03:00`) } : {};
   const [balance, setBalance] = useState(initial?.balance !== undefined ? String(initial.balance).replace(".", ",") : "");
   const [balanceAt, setBalanceAt] = useState(new Date(initial?.balanceAt ?? Date.now() - 3 * 3_600_000).toISOString().slice(0, 10));
+  const [dateTouched, setDateTouched] = useState(false);
   const [cdiPct, setCdiPct] = useState(String(initial?.cdiPct ?? 100));
   const [value, setValue] = useState(initial?.value !== undefined ? String(initial.value).replace(".", ",") : "");
   const [reserva, setReserva] = useState(initial?.reserva ?? (initial ? false : true));
@@ -477,7 +478,10 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
     let it: FinItem;
     if (kind === "caixa") {
       if (!(parse(balance) >= 0) || !balance) return setErr("Informe o saldo.");
-      it = { ...base, name: name.trim() || "Cofrinho", balance: parse(balance), balanceAt: Date.parse(`${balanceAt}T12:00:00-03:00`),
+      // Mudou o saldo e nao mexeu na data: e o saldo de hoje (senao o site somaria de novo o rendimento desde a data antiga)
+      const day = initial?.kind === "caixa" && parse(balance) !== initial.balance && !dateTouched
+        ? new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10) : balanceAt;
+      it = { ...base, name: name.trim() || "Cofrinho", balance: parse(balance), balanceAt: Date.parse(`${day}T12:00:00-03:00`),
         cdiPct: parse(cdiPct) || 100, reserva };
     } else if (kind === "tesouro") {
       if (!title) return setErr("Escolha o título.");
@@ -521,10 +525,10 @@ function ItemForm({ initial, fin, onSave, onCancel, only }: {
         {kind === "caixa" && (
           <>
             <label>Saldo hoje (R$)<input value={balance} inputMode="decimal" onChange={(e) => setBalance(e.target.value)} placeholder="5.000,00" /></label>
-            <label>Data do saldo<input type="date" value={balanceAt} onChange={(e) => setBalanceAt(e.target.value)} /></label>
+            <label>Data do saldo<input type="date" value={balanceAt} onChange={(e) => { setBalanceAt(e.target.value); setDateTouched(true); }} /></label>
             <label>% do CDI<input value={cdiPct} inputMode="decimal" onChange={(e) => setCdiPct(e.target.value)} /></label>
             <p className="muted small full">Depósitos e resgates lançados em Lançamentos (categoria Investimento) depois dessa data somam
-              e descontam sozinhos. Ao atualizar o saldo, use a data de hoje.</p>
+              e descontam sozinhos. Ao mudar o saldo, a data vira hoje sozinha (a menos que você escolha outra). Use o saldo bruto que o app do banco mostra.</p>
           </>
         )}
         {kind === "tesouro" && (

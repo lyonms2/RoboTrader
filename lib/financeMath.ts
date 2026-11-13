@@ -37,10 +37,12 @@ export const cdiYear = (f: FinanceDoc | null) => {
   return d === null ? null : (1 + d) ** 252 - 1;
 };
 
-// Fator de rendimento de um % do CDI nos dias uteis depois de "from" (sem IR)
+// Fator de rendimento de um % do CDI nos dias uteis a partir de "from", inclusive (sem IR).
+// O banco credita o CDI do dia D na manha de D+1: o saldo visto no dia X ja tem ate X-1, entao o dia X ainda falta.
+// A serie do Banco Central vai ate ontem, que e o ultimo rendimento que o banco ja creditou hoje.
 export function cdiFactor(f: FinanceDoc, from: string, pct: number) {
   let fac = 1;
-  for (let i = 0; i < f.cdi.d.length; i++) if (f.cdi.d[i] > from) fac *= 1 + (f.cdi.v[i] / 100) * pct;
+  for (let i = 0; i < f.cdi.d.length; i++) if (f.cdi.d[i] >= from) fac *= 1 + (f.cdi.v[i] / 100) * pct;
   return fac;
 }
 

@@ -40,6 +40,11 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "\"alterar\": muda data, descrição, valor, sentido (entrou/saiu) e conta.",
       "\"dividir\": separa um valor cheio em partes (ex.: aluguel, água, luz e internet), cada uma com a sua categoria. \"desfazer divisão\" volta ao original.",
     ] },
+    { title: "Criar, renomear e excluir categorias suas", steps: [
+      "Para criar: no seletor de categoria, escolha \"+ nova categoria de gasto\" (ou de entrada).",
+      "Para renomear ou excluir: no fim de Lançamentos, abra \"Suas categorias\".",
+      "Renomear muda o nome em todos os lançamentos e cadastros. Excluir passa o que estava nela para \"Outros\" (ou \"Outras entradas\").",
+    ], tips: ["Cada pessoa pode ter até 20 categorias suas."] },
     { title: "Entender as cores e o que conta como gasto", steps: [
       "Verde: entrada (renda). Vermelho: gasto. Azul: dinheiro seu mudando de lugar (cofrinho, transferência entre suas contas, cripto).",
       "Compra no cartão não entra no mês da compra: o que conta é o pagamento da fatura.",

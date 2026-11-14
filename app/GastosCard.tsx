@@ -11,7 +11,7 @@ import { RecvSelect, linkRecv, receive } from "./Receivables";
 import {
   catLabel, CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
   dirOf, monthIncomes, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, budgetSpent, splitGasto, parcelSiblings, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
-  type Bill, type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
+  type Bill, type Card, type CustomCat, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
 import { guardWrite, saveMonth, saveSetup, monthSnapshot, upcoming, reviewCount, genericCount } from "./gastosShared";
@@ -549,6 +549,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
           );
         })()}
         <Note>Marque lançamentos para ver a soma deles (nada é salvo). Mudou a categoria de um lançamento? O site aplica aos iguais do mês e lembra para as próximas importações.</Note>
+        <CustomCatsManager months={months} setup={setup} />
         <HowItWorks />
       </section>
     </>
@@ -557,6 +558,73 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
 
 // Escolha da categoria. "Outros"/"Outras entradas" so aparecem quando o lancamento ainda esta nelas (importacao sem categoria);
 // para algo novo, "+ nova categoria" cria uma sua
+// Categorias criadas por cada usuario: no maximo MAX_CUSTOM_CATS (renomeie ou exclua em "Suas categorias")
+export const MAX_CUSTOM_CATS = 20;
+
+// Troca uma categoria por outra em tudo o que foi lancado e cadastrado: lancamentos (de todos os meses), regras aprendidas,
+// orcamento, gastos e entradas fixas e assinaturas dos cartoes. Usado para renomear ou excluir uma categoria sua
+async function replaceCat(months: Record<string, MonthDoc>, setup: GastosSetup, from: string, to: string, customCats: CustomCat[]) {
+  await Promise.all(Object.entries(months).filter(([, md]) => md.items.some((g) => g.cat === from || g.splitOrig?.cat === from))
+    .map(([m, md]) => saveMonth(m, md.items.map((g) => ({ ...g, ...(g.cat === from ? { cat: to } : {}), ...(g.splitOrig?.cat === from ? { splitOrig: { ...g.splitOrig, cat: to } } : {}) })))));
+  const rules = Object.fromEntries(Object.entries(setup.rules).map(([k, v]) => [k, v === from ? to : v]));
+  const old = setup.budgets ?? {};
+  // orcamento: passa o limite para a categoria nova (excluindo para uma generica, o limite sai); 0 = sem orcamento
+  const budgets = old[from] ? { ...old, [from]: 0, ...(GENERIC_CATS.includes(to) ? {} : { [to]: (old[to] ?? 0) + old[from] }) } : old;
+  const fixos = setup.fixos.map((f) => (f.cat === from ? { ...f, cat: to } : f));
+  const cards = setup.cards.map((c) => (c.subs?.some((x) => x.cat === from) ? { ...c, subs: c.subs.map((x) => (x.cat === from ? { ...x, cat: to } : x)) } : c));
+  setCustomCats(customCats);
+  await saveSetup({ rules, budgets, fixos, cards, customCats });
+}
+
+// Suas categorias: renomear ou excluir (o que estava nela passa para a nova ou para Outros / Outras entradas)
+export function CustomCatsManager({ months, setup }: { months: Record<string, MonthDoc>; setup: GastosSetup }) {
+  const mine = setup.customCats ?? [];
+  const [busy, setBusy] = useState("");
+  const uses = (name: string) => Object.values(months).reduce((t, md) => t + md.items.filter((g) => g.cat === name).length, 0)
+    + setup.fixos.filter((f) => f.cat === name).length + setup.cards.reduce((t, c) => t + (c.subs ?? []).filter((x) => x.cat === name).length, 0);
+  const taken = (name: string, except: string) => [...CATS_GASTO, ...CATS_RECEITA, ...CATS_NEUTRO, ...mine.map((x) => x.name)]
+    .some((c) => c.toLowerCase() === name.toLowerCase() && c !== except);
+  const rename = async (c: CustomCat) => {
+    const raw = await askText(`Novo nome para "${c.name}" (os lançamentos dela passam a ter o nome novo):`, c.name);
+    const name = raw?.trim().replace(/^./, (x) => x.toUpperCase());
+    if (!name || name === c.name) return;
+    if (taken(name, c.name)) return void tell(`Já existe uma categoria "${name}".`);
+    setBusy(c.name);
+    try { await replaceCat(months, setup, c.name, name, mine.map((x) => (x.name === c.name ? { ...x, name } : x))); }
+    catch (e) { await tell(`Não salvou: ${String(e)}`); }
+    finally { setBusy(""); }
+  };
+  const remove = async (c: CustomCat) => {
+    const n = uses(c.name);
+    const to = c.tipo === "gasto" ? "Outros" : "Outras entradas";
+    if (!(await ask(n ? `Excluir "${c.name}"? ${n} ${n > 1 ? "lançamentos e cadastros passam" : "lançamento ou cadastro passa"} para "${catLabel(to)}" (você pode trocar depois).`
+      : `Excluir a categoria "${c.name}"? Nenhum lançamento usa ela.`))) return;
+    setBusy(c.name);
+    try { await replaceCat(months, setup, c.name, to, mine.filter((x) => x.name !== c.name)); }
+    catch (e) { await tell(`Não salvou: ${String(e)}`); }
+    finally { setBusy(""); }
+  };
+  return (
+    <details className="eq-more cats-mine">
+      <summary>Suas categorias ({mine.length} de {MAX_CUSTOM_CATS})</summary>
+      {mine.length ? (
+        <ul className="pend small">
+          {[...mine].sort((a, b) => a.tipo.localeCompare(b.tipo) || a.name.localeCompare(b.name)).map((c) => (
+            <li key={c.name}><b>{c.name}</b> <span className="tag">{c.tipo === "gasto" ? "gasto" : "entrada"}</span>
+              <span className="muted">{uses(c.name)} {uses(c.name) === 1 ? "uso" : "usos"}</span>
+              <span className="acc-btns">
+                <button className="link" disabled={!!busy} onClick={() => rename(c)}>{busy === c.name ? "salvando..." : "renomear"}</button>
+                <button className="link" disabled={!!busy} onClick={() => remove(c)}>excluir</button>
+              </span></li>
+          ))}
+        </ul>
+      ) : <p className="muted small">Nenhuma categoria sua ainda. Crie no seletor de categoria (&quot;+ nova categoria&quot;).</p>}
+      <p className="muted small">Renomear muda o nome em todos os lançamentos, contas a pagar, entradas fixas, assinaturas e no orçamento.
+        Excluir passa o que estava nela para &quot;Outros&quot; (gasto) ou &quot;Outras entradas&quot;. Cada pessoa pode ter até {MAX_CUSTOM_CATS} categorias suas.</p>
+    </details>
+  );
+}
+
 // dir: "out" (saiu: gastos e o que sai da conta sem ser gasto) ou "in" (entrou: entradas e o que volta). Sem dir: tudo.
 // "ver todas as categorias" abre a lista completa quando precisar
 const NEUTRO_OUT = ["Investimento", "Compra de cripto", "Transferencia entre contas", "Emprestei dinheiro"];
@@ -574,6 +642,10 @@ export function CatSelect({ value, onChange, dir }: { value: string; onChange: (
     const all = [...CATS_GASTO, ...CATS_RECEITA, ...CATS_NEUTRO, ...mine.map((x) => x.name)];
     const found = all.find((c) => c.toLowerCase() === name.toLowerCase());
     if (found) return found;
+    if (mine.length >= MAX_CUSTOM_CATS) {
+      await tell(`Você já tem ${MAX_CUSTOM_CATS} categorias suas (o limite). Exclua ou renomeie uma em "Suas categorias", no fim de Lançamentos.`);
+      return null;
+    }
     const list = [...mine, { name, tipo }];
     setCustomCats(list);
     // grava em segundo plano: a escolha vale na hora

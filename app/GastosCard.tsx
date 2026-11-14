@@ -292,7 +292,11 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
           const tout = gasto + outs.reduce((t, [, v]) => t + v.out, 0);
           const LBL_IN: Record<string, string> = { Investimento: "Resgate de investimento", "Transferencia entre contas": "De outra conta sua", "Venda de cripto": "Venda de cripto" };
           const LBL_OUT: Record<string, string> = { Investimento: "Guardado em investimento", "Transferencia entre contas": "Para outra conta sua", "Compra de cripto": "Compra de cripto" };
+          // recolhido: so o resumo; clicando abre a conta (entrou x saiu, por tipo)
           return (
+            <details className="eq-more flow-more">
+            <summary>resultado na conta no mês: <b className={tin - tout >= 0 ? "pos" : "v-out"}>{tin - tout >= 0 ? "+" : "-"}{brl(Math.abs(tin - tout))}</b>
+              <span className="muted"> (entrou {brl(tin)} - saiu {brl(tout)})</span></summary>
             <div className="flow small">
               <div className="flow-col">
                 <div className="flow-h"><span>Entrou na conta</span><b className="pos">{brl(tin)}</b></div>
@@ -308,6 +312,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                 {(ins.length > 0 || outs.length > 0) && <small className="muted">azul = dinheiro seu mudando de lugar (não é renda nem gasto)</small>}
                 {internal > 0 && <small className="muted">Entre suas contas: {brl(internal)} (saiu de uma e entrou na outra, não muda o total)</small>}</div>
             </div>
+            </details>
           );
         })()}
         <Review months={months} setup={setup} invest={invest} />

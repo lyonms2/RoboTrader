@@ -832,3 +832,8 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 .ib-bar { height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--text) 7%, transparent); overflow: hidden; }
 .ib-bar > span { display: block; height: 100%; border-radius: 999px; }
 .ib-sub { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
+
+.flow-more { margin: 10px 0 0; }
+.flow-more > summary { color: var(--text); }
+.flow-more > summary::before { color: var(--accent); }
+.flow-more[open] > summary { margin-bottom: 8px; }

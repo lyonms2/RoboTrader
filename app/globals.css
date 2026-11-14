@@ -916,3 +916,10 @@ html { -webkit-text-size-adjust: 100%; touch-action: manipulation; }
 .spark.up polyline { stroke: var(--sell); }
 .spark.down polyline { stroke: var(--buy); }
 .shop-name .shop-tag { margin-left: 6px; }
+
+/* importar nota fiscal */
+.nota-steps { margin: 6px 0 8px; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; color: var(--muted); }
+.nota-text { width: 100%; min-height: 90px; font: inherit; font-size: 14px; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); margin-bottom: 8px; }
+.nota-table input { width: 100%; min-width: 140px; }
+.nota-table tr.off { opacity: .45; }
+.nota-table th:first-child, .nota-table td:first-child { width: 32px; }

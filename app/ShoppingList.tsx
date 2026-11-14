@@ -127,6 +127,48 @@ function parseItem(raw: string): { name: string; qty?: string } {
   if (b) return { name: cap(b[1]), qty: b[2] };
   return { name: cap(t) };
 }
+// Nota fiscal (NFC-e): le os itens do texto copiado da pagina de consulta (layout nacional: "(Codigo: ...) Qtde.: 1 UN: UN
+// Vl. Unit.: 4,59 Vl. Total 4,59") ou do cupom impresso ("18 7891910000197 ACUCAR REFINADO 1kg 1 UN 4,59 4,59").
+// Nada e enviado a outro lugar: a consulta na Sefaz voce faz no seu celular (ela pede verificacao contra robos).
+export type NotaItem = { desc: string; qty: number; unit: string; unitPrice: number; total: number };
+const brNum = (x: string) => Number(x.replace(/\./g, "").replace(",", ".")) || 0;
+export function parseNota(text: string): { items: NotaItem[]; store?: string; date?: string; total?: number } {
+  const t = text.replace(/\r/g, "").replace(/[ \t]+/g, " ");
+  const items: NotaItem[] = [];
+  // pagina de consulta (layout nacional)
+  const web = /([^\n()]{3,}?)\s*\(\s*C[óo]digo:?\s*\d+\s*\)\s*Qtde\.?:?\s*([\d.,]+)\s*UN:?\s*([A-Za-z]+)\s*Vl\.?\s*Unit\.?:?\s*([\d.,]+)\s*Vl\.?\s*Total:?\s*([\d.,]+)/gi;
+  for (const m of t.matchAll(web)) items.push({ desc: m[1].trim(), qty: brNum(m[2]), unit: m[3].toUpperCase(), unitPrice: brNum(m[4]), total: brNum(m[5]) });
+  // cupom impresso: uma linha por item
+  if (!items.length) {
+    const line = /^\s*\d{1,3}\s+\d{3,14}\s+(.+?)\s+([\d.,]+)\s*(UN|UND|KG|LT|L|PC|PCT|CX|DZ|G|ML|FD)\s+([\d.,]+)\s+([\d.,]+)\s*$/i;
+    for (const l of t.split("\n")) {
+      const m = line.exec(l);
+      if (m) items.push({ desc: m[1].trim(), qty: brNum(m[2]), unit: m[3].toUpperCase(), unitPrice: brNum(m[4]), total: brNum(m[5]) });
+    }
+  }
+  const lines = t.split("\n").map((x) => x.trim()).filter(Boolean);
+  const ci = lines.findIndex((x) => /CNPJ/i.test(x));
+  const store = ci > 0 ? lines[ci - 1].replace(/\s*CNPJ.*$/i, "").trim() : ci === 0 ? lines[0].replace(/\s*CNPJ.*$/i, "").trim() || undefined : undefined;
+  const dm2 = /(\d{2})\/(\d{2})\/(\d{4})\s+\d{2}:\d{2}/.exec(t);
+  // total da nota ("Valor a pagar" ou "Valor total"; nunca o "Vl. Total" de um item)
+  const tot = /Valor\s+a\s+pagar\s*R?\$?:?\s*([\d.]+,\d{2})/i.exec(t) ?? /Valor\s+total\s*R?\$?:?\s*([\d.]+,\d{2})/i.exec(t);
+  return { items, ...(store ? { store } : {}), ...(dm2 ? { date: `${dm2[3]}-${dm2[2]}-${dm2[1]}` } : {}), ...(tot ? { total: brNum(tot[1]) } : {}) };
+}
+// "ACUCAR REFINADO UNIAO 1KG" -> "Acucar refinado uniao 1kg" (o nome do produto salvo pode ser escolhido na tela)
+const nice = (s: string) => cap(s.toLowerCase());
+// Produto salvo mais parecido com o item da nota: mesma primeira palavra (sem acento), o que tiver mais palavras em comum
+export function matchProduct(desc: string, prices: Record<string, Product>) {
+  const w = key(desc).split(/\s+/);
+  let best: string | null = null, score = 0;
+  for (const k of Object.keys(prices)) {
+    const kw = k.split(/\s+/);
+    if (kw[0] !== w[0]) continue;
+    const sc = kw.filter((x) => w.includes(x)).length;
+    if (sc > score) { best = k; score = sc; }
+  }
+  return best;
+}
+
 // Mini grafico do preco ao longo do tempo
 function Spark({ hist }: { hist: PriceRec[] }) {
   if (hist.length < 2) return <span className="muted small">-</span>;
@@ -199,6 +241,18 @@ export default function ShoppingList({ months, setup, ipca12m }: { months: Recor
     const hist = (prices[k]?.hist ?? []).filter((h) => !(h.d === today && (h.s ?? "") === (data.store ?? "")));
     return { ...prices, [k]: { ...(prices[k] ?? {}), name: prices[k]?.name ?? cap(name), hist: [...hist, { v, d: today, ...(data.store ? { s: data.store } : {}) }].slice(-40) } };
   };
+  const saveNota = async (rows: { name: string; price: number }[], date: string, store: string | undefined, buyDay: boolean) => {
+    const prices = { ...data.prices };
+    for (const r of rows) {
+      const k = key(r.name);
+      const p = prices[k] ?? { name: cap(r.name), hist: [] };
+      const hist = p.hist.filter((h) => !(h.d === date && (h.s ?? "") === (store ?? "")));
+      prices[k] = { ...p, hist: [...hist, { v: r.price, d: date, ...(store ? { s: store } : {}) }].sort((a, b) => a.d.localeCompare(b.d)).slice(-40),
+        ...(buyDay ? { buys: [...new Set([...(p.buys ?? []), date])].sort().slice(-12) } : {}) };
+    }
+    const stores = store ? [...new Set([...(data.stores ?? []), store])] : data.stores;
+    await save({ ...data, prices, stores });
+  };
   const setPrice = (x: Item, v: number) => save({
     ...data, items: data.items.map((y) => (y.id === x.id ? { ...y, price: v > 0 ? v : undefined } : y)),
     prices: v > 0 ? withPrice(data.prices, x.name, v) : data.prices,
@@ -265,7 +319,6 @@ export default function ShoppingList({ months, setup, ipca12m }: { months: Recor
             {(data.stores ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
             <option value="__new">+ novo mercado</option>
           </select>
-          <span className="muted">(os preços digitados ficam com este mercado)</span>
         </div>
         <form className="shop-add" onSubmit={(e) => { e.preventDefault(); void add(text); }}>
           <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ex.: arroz, 2 leite, café, sabão 3" aria-label="Adicionar itens" />
@@ -362,6 +415,8 @@ export default function ShoppingList({ months, setup, ipca12m }: { months: Recor
             {ipca12m != null && <span className="muted">IPCA 12 meses {fmt(ipca12m * 100, 1)}%</span>}
           </p>
         )}
+        <NotaImport prices={data.prices} stores={data.stores ?? []} setup={setup} months={months}
+          onSave={(rows, date, store) => saveNota(rows, date, store, true)} />
         <Products products={products} groups={productGroups(data.prices)} today={today} freq={data.freq}
           onSave={(name, v) => save({ ...data, prices: withPrice(data.prices, name, v) })}
           onSize={(k, s) => save({ ...data, prices: { ...data.prices, [k]: { ...data.prices[k], ...(s ? s : { size: undefined, unit: undefined }) } } })}
@@ -369,7 +424,7 @@ export default function ShoppingList({ months, setup, ipca12m }: { months: Recor
           onAdd={(name) => add(name)} />
         <Note>Escreva vários itens de uma vez separados por vírgula; a quantidade pode vir antes ou depois (&quot;2 leite&quot;, &quot;sabão 3&quot;).
           Kg/Qtd: quantas unidades ou o peso (1,37 kg; 500 g conta como 0,5 kg). Preço un.: o preço da unidade ou do quilo. Total = Kg/Qtd x Preço un.
-          O preço que você digita fica salvo no produto, com o mercado de hoje: na próxima lista ele já vem preenchido e o site compara com
+          O preço que você digita fica salvo no produto, com o mercado de hoje (escolha no topo da lista): na próxima lista ele já vem preenchido e o site compara com
           os anteriores (menor preço, barato, na média, caro; &quot;bom para estocar&quot; quando um item que você compra sempre está no menor preço).
           Com o tamanho da embalagem (em Produtos salvos) aparece o preço por kg/litro, para comparar pacotes diferentes.
           Ao terminar a compra (&quot;lançar o gasto&quot; ou &quot;tirar os marcados&quot;), o site guarda o dia: depois de 2 compras ele sabe de quanto em
@@ -423,6 +478,9 @@ function Products({ products, groups, today, freq, onSave, onSize, onRemove, onA
       {products.length > 6 && <input className="shop-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Procurar produto..." aria-label="Procurar produto" />}
       {rows.length ? (
         <div className="table-scroll">
+          <Note>Variações do mesmo produto (marcas, tipos) ficam juntas, com a mais barata marcada: por kg/litro/unidade quando todas têm o
+            tamanho informado (&quot;+ tamanho&quot;), senão pelo último preço. &quot;Mais barato em&quot;: o último preço em cada mercado, o menor primeiro.
+            &quot;Preço no tempo&quot;: vermelho se subiu, verde se caiu. &quot;Bom para estocar&quot;: item que você compra sempre, no menor preço da sua história.</Note>
           <table className="stack shop-table">
             <thead><tr><th>Produto</th><th>Último</th><th>Por kg/l/un</th><th>Menor / média</th><th>Mais barato em</th><th>Preço no tempo</th><th /></tr></thead>
             <tbody>
@@ -439,7 +497,7 @@ function Products({ products, groups, today, freq, onSave, onSize, onRemove, onA
                 const c = cadence(p);
                 const stock = last ? stockUp(p, last.v, freq[k] ?? 0, today) : false;
                 return [
-                  head ? <tr key={`g-${g}`} className="grp-row"><td colSpan={7}><b>{g}</b> <span className="muted small">variações - a mais barata está marcada{products.filter(([kk, pp]) => groups[kk] === g).every(([, pp]) => pp.size) ? " (por kg/l/un)" : " (pelo último preço; informe o tamanho para comparar por kg)"}</span></td></tr> : null,
+                  head ? <tr key={`g-${g}`} className="grp-row"><td colSpan={7}><b>{g}</b> <span className="muted small">variações</span></td></tr> : null,
                   <tr key={k}>
                     <td><b>{p.name}</b> {cheapest[g ?? ""] === k && <span className="shop-tag good">mais barata</span>} {stock && <span className="shop-tag good">bom para estocar</span>}
                       <div className="muted small">{p.size ? sizeLabel(p) : <button className="link" onClick={() => editSize(k, p)}>+ tamanho</button>}
@@ -459,6 +517,86 @@ function Products({ products, groups, today, freq, onSave, onSize, onRemove, onA
           </table>
         </div>
       ) : <p className="muted small">{products.length ? "Nenhum produto com esse nome." : "Nenhum produto salvo ainda. Digite o preço de um item da lista, ou salve aqui."}</p>}
+    </details>
+  );
+}
+
+// Importar a nota fiscal: colar o texto da pagina da nota (aberta pelo QR code no celular), conferir e salvar os precos
+function NotaImport({ prices, stores, setup, months, onSave }: {
+  prices: Record<string, Product>; stores: string[]; setup: GastosSetup; months: Record<string, MonthDoc>;
+  onSave: (rows: { name: string; price: number }[], date: string, store: string | undefined) => Promise<void>;
+}) {
+  const [text, setText] = useState("");
+  const [res, setRes] = useState<ReturnType<typeof parseNota> | null>(null);
+  const [rows, setRows] = useState<{ on: boolean; name: string; it: NotaItem }[]>([]);
+  const [store, setStore] = useState("");
+  const [date, setDate] = useState(todayBR());
+  const [done, setDone] = useState("");
+  const [launch, setLaunch] = useState(false);
+  const read = () => {
+    const r = parseNota(text);
+    setRes(r); setDone("");
+    // nome do mercado: um que voce ja usa com o mesmo comeco, ou o da nota
+    const known = r.store ? stores.find((x) => key(r.store!).includes(key(x)) || key(x).includes(key(r.store!).split(" ")[0])) : undefined;
+    setStore(known ?? (r.store ? nice(r.store).split(" ").slice(0, 2).join(" ") : ""));
+    if (r.date) setDate(r.date);
+    setRows(r.items.map((it) => { const k = matchProduct(it.desc, prices); return { on: true, name: k ? prices[k].name : nice(it.desc), it }; }));
+  };
+  const save = async () => {
+    const list = rows.filter((x) => x.on && x.name.trim() && x.it.unitPrice > 0).map((x) => ({ name: x.name.trim(), price: x.it.unitPrice }));
+    await onSave(list, date, store.trim() ? cap(store.trim()) : undefined);
+    setDone(`${list.length} preços salvos${store.trim() ? ` (${cap(store.trim())}, ${dm(date)})` : ""}.`);
+    setText(""); setRes(null); setRows([]);
+  };
+  const total = rows.filter((x) => x.on).reduce((t, x) => t + x.it.total, 0);
+  return (
+    <details className="eq-more shop-prod">
+      <summary>Importar nota fiscal (NFC-e): salvar todos os preços de uma vez</summary>
+      <ol className="small nota-steps">
+        <li>No celular, aponte a câmera para o QR code da nota e abra o link (site da Sefaz; ele pode pedir uma verificação).</li>
+        <li>Na página da nota, toque e segure no texto, &quot;Selecionar tudo&quot; e &quot;Copiar&quot;.</li>
+        <li>Cole aqui embaixo e toque em &quot;Ler itens&quot;. Também funciona com o texto do cupom impresso.</li>
+      </ol>
+      <textarea className="nota-text" value={text} onChange={(e) => setText(e.target.value)} rows={4} placeholder="Cole aqui o texto da nota..." />
+      <div className="row"><button className="primary" type="button" disabled={!text.trim()} onClick={read}>Ler itens</button></div>
+      {res && !rows.length && <p className="small warn">Não encontrei itens nesse texto. Copie a página inteira da nota (com &quot;Qtde.&quot; e &quot;Vl. Unit.&quot;).</p>}
+      {rows.length > 0 && (
+        <>
+          <div className="row wrapline">
+            <label>Mercado<input value={store} onChange={(e) => setStore(e.target.value)} list="nota-stores" /></label>
+            <datalist id="nota-stores">{stores.map((x) => <option key={x} value={x} />)}</datalist>
+            <label>Data<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+          </div>
+          <div className="table-scroll">
+            <table className="stack nota-table">
+              <thead><tr><th /><th>Na nota</th><th>Salvar como</th><th>Qtd</th><th>Preço un.</th><th>Total</th></tr></thead>
+              <tbody>
+                {rows.map((x, i) => (
+                  <tr key={i} className={x.on ? "" : "off"}>
+                    <td><input type="checkbox" checked={x.on} onChange={(e) => setRows(rows.map((y, j) => (j === i ? { ...y, on: e.target.checked } : y)))} aria-label="Salvar este" /></td>
+                    <td data-label="Na nota" className="small">{x.it.desc}</td>
+                    <td data-label="Salvar como"><input value={x.name} list="nota-prods" onChange={(e) => setRows(rows.map((y, j) => (j === i ? { ...y, name: e.target.value } : y)))} /></td>
+                    <td data-label="Qtd">{fmt(x.it.qty, x.it.qty % 1 ? 3 : 0)} {x.it.unit.toLowerCase()}</td>
+                    <td data-label="Preço un.">{brl(x.it.unitPrice)}{x.it.unit === "KG" ? "/kg" : ""}</td>
+                    <td data-label="Total">{brl(x.it.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <datalist id="nota-prods">{Object.values(prices).map((p) => <option key={p.name} value={p.name} />)}</datalist>
+          </div>
+          <p className="small"><b>{rows.filter((x) => x.on).length} itens - {brl(total)}</b>{res?.total ? <span className="muted"> (total da nota {brl(res.total)})</span> : null}</p>
+          <div className="row wrapline">
+            <button className="primary" type="button" onClick={save}>Salvar os preços</button>
+            <button className="ghost" type="button" onClick={() => setLaunch(!launch)}>{launch ? "fechar" : "lançar o gasto da nota"}</button>
+          </div>
+          {launch && <LaunchForm setup={setup} months={months} estimate={res?.total ?? total} store={store || undefined} onDone={(m) => { setLaunch(false); setDone(m); }} />}
+        </>
+      )}
+      {done && <p className="small pos">&#10003; {done}</p>}
+      <Note>&quot;Salvar como&quot; já vem com o produto salvo mais parecido (mesma primeira palavra); troque se quiser juntar com outro nome.
+        Itens vendidos por kg salvam o preço do quilo. A nota também marca o dia da compra de cada produto (para a lista sugerida).
+        A consulta da nota é feita por você, no site da Sefaz; o SeuBitico só lê o texto que você cola.</Note>
     </details>
   );
 }

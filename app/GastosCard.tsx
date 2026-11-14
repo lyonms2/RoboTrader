@@ -830,8 +830,8 @@ export function AccountsPanel({ months, setup, m, onEdit }: { months: Record<str
             setEdit(null);
           }} />
       )}
-      <p className="muted">O total das contas entra no patrimônio como &quot;Conta corrente&quot;. Confira o saldo de vez em quando com o app do banco:
-        o site recalcula todos os meses a partir dele.</p>
+      <Note>O total das contas entra no patrimônio como &quot;Conta corrente&quot;. Confira o saldo de vez em quando com o app do banco:
+        o site recalcula todos os meses a partir dele.</Note>
     </div>
   );
 }

@@ -112,10 +112,12 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   const order = GROUPS.map((g) => g.key);
   const rows = [...s.rows].sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group) || (b.value ?? 0) - (a.value ?? 0));
   const mon = monthSnapshot(months, setup);
-  // Contas e bens nao inclui a cripto (ela tem a aba Carteira); a Visao geral soma tudo
+  // Balanco igual ao da Visao geral: tudo o que tem (contas, investimentos, cripto, bens, a receber) - dividas = liquido
   const crypto = s.byGroup.cripto + s.byGroup.dolar;
-  const noCrypto = s.total - crypto;
-  const fin0 = noCrypto - s.bens; // contas + investimentos (sem cripto e sem bens)
+  const contas = s.byGroup.conta;
+  const investido = s.total - crypto - contas - s.bens;
+  const bruto = s.total + debt.recv;
+  const liquido = bruto - debt.total;
   const invRows = rows.filter((r) => r.item.kind !== "bem");
   const bemRows = rows.filter((r) => r.item.kind === "bem");
 
@@ -143,19 +145,36 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
       {sub === "bens" && <>
       <section className="card">
         <h2>Balanço</h2>
-        <div className="kpis">
-          <div><span>Contas e investimentos</span><b>{brl(fin0)}</b><small className="muted">sem cripto e sem bens</small></div>
-          <div><span>Bens</span><b>{brl(s.bens)}</b><small className="muted">imóveis, terrenos, veículos</small></div>
-          <div><span>O que você deve</span><b className={debt.total > 0 ? "warn" : ""}>{brl(debt.total)}</b><small className="muted">cartões {brl(debt.cards, 0)} - empréstimos {brl(debt.loans, 0)}</small></div>
-          {debt.recv > 0 && <div><span>A receber</span><b className="pos">{brl(debt.recv)}</b><small className="muted">o que te devem</small></div>}
-          <div><span>Líquido sem bens</span><b>{brl(fin0 + debt.recv - debt.total)}</b><small className="muted">{s.bens > 0 ? `com bens: ${brl(fin0 + debt.recv + s.bens - debt.total)}` : debt.recv > 0 ? "tem + a receber - deve" : "tem - deve"}</small></div>
+        <div className="hero">
+          <div className="hero-main">
+            <span>Tudo o que você tem</span>
+            <b>{brl(bruto)}</b>
+            <small>contas, investimentos, cripto{s.bens > 0 ? ", bens" : ""}{debt.recv > 0 ? " e o que te devem" : ""}</small>
+          </div>
+          <div className="hero-side">
+            <div><span>Líquido (depois das dívidas)</span><b className={liquido < 0 ? "neg" : ""}>{brl(liquido)}</b>
+              <small className="muted">{debt.total > 0 ? `${brl(debt.total, 0)} de dívidas` : "sem dívidas"}</small></div>
+            {s.bens > 0 && <div><span>Líquido sem bens</span><b className={liquido - s.bens < 0 ? "neg" : ""}>{brl(liquido - s.bens)}</b></div>}
+          </div>
         </div>
-        <Note>Aqui só se vê: para lançar ou alterar, use Lançamentos (contas e fixos), Investimentos (investimentos e bens),
-          Cartões e empréstimos, ou o link &quot;alterar&quot; de cada item.
-          A cripto fica na aba Carteira{crypto > 0 ? ` (${brl(crypto, 0)})` : ""}; o patrimônio total da Visão geral soma tudo.</Note>
+        {/* a conta, linha a linha: o que tem - o que deve = liquido */}
+        <ul className="bal-eq">
+          <li><span>Contas</span><b>{brl(contas)}</b></li>
+          <li><span>Investimentos</span><b>{brl(investido)}</b></li>
+          <li><span>Cripto</span><b>{brl(crypto)}</b></li>
+          {s.bens > 0 && <li><span>Bens (imóveis, veículos)</span><b>{brl(s.bens)}</b></li>}
+          {debt.recv > 0 && <li><span>A receber</span><b className="pos">{brl(debt.recv)}</b></li>}
+          {debt.cards > 0 && <li className="minus"><span>Cartões (faturas e parcelas)</span><b>-{brl(debt.cards)}</b></li>}
+          {debt.loans > 0 && <li className="minus"><span>Empréstimos</span><b>-{brl(debt.loans)}</b></li>}
+          <li className="total"><span>Líquido</span><b className={liquido < 0 ? "neg" : "pos"}>{brl(liquido)}</b></li>
+        </ul>
+        <FinBar byGroup={s.byGroup} />
+        <Note>É o mesmo patrimônio da Visão geral, aberto em partes. Aqui só se vê: para lançar ou alterar, use Lançamentos (contas e
+          contas a pagar), Investimentos (investimentos e bens), Cartões e empréstimos, ou o link &quot;alterar&quot; de cada item.
+          A cripto é lida das carteiras (detalhes na aba Cripto), em reais pelo dólar do dia.</Note>
       </section>
 
-      <h3 className="bal-title">O que você tem</h3>
+      <h3 className="bal-title">O que você tem <span className="bal-sum">{brl(bruto)}</span></h3>
       <section className="card">
         <div className="card-head"><h2>Contas</h2><span className="muted small">{brl(acct?.value ?? 0)}</span></div>
         <AccountsPanel months={months} setup={setup} m={mon.m} onEdit={(id) => goEdit("conta", id)} />
@@ -171,16 +190,28 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
               return (
                 <li key={r.item.id}>
                   <b>{r.item.name}</b> <span className="tag">{r.kindLabel}</span>{r.item.reserva && <span className="tag">reserva</span>}
-                  <span className={gain !== null ? pnlClass(gain) : "muted"}>{gain !== null ? signed(gain) : r.problem ?? ""}</span>
+                  <span className={gain !== null ? pnlClass(gain) : "muted"}>{gain !== null && Math.abs(gain) >= 0.01 ? signed(gain) : gain === null ? r.problem ?? "" : ""}</span>
                   <span>{r.value !== null ? brl(r.value, 0) : "-"}</span>
                 </li>
               );
             })}
           </ul>
         ) : <p className="muted small">Nenhum investimento cadastrado. Cofrinho, Tesouro, ações e FIIs se cadastram em Investimentos.</p>}
+        {!bemRows.length && <p className="muted small">Imóveis e veículos: nenhum cadastrado. <button className="link" onClick={() => goEdit("bem", null)}>+ bem</button></p>}
       </section>
 
-      <section className="card">
+      {crypto > 0.5 && (
+        <section className="card">
+          <div className="card-head"><h2>Cripto</h2><span className="muted small">{brl(crypto)}</span></div>
+          <ul className="pend small">
+            {s.byGroup.dolar > 0.5 && <li><b>Dólar (stablecoins)</b><span className="muted">{s.usd ? `~US$ ${fmt(s.byGroup.dolar / s.usd, 0)}` : ""}</span><span>{brl(s.byGroup.dolar, 0)}</span></li>}
+            {s.byGroup.cripto > 0.5 && <li><b>Tokens (BTC, ETH, SOL e outros)</b><span className="muted">{s.usd ? `~US$ ${fmt(s.byGroup.cripto / s.usd, 0)}` : ""}</span><span>{brl(s.byGroup.cripto, 0)}</span></li>}
+          </ul>
+          <p className="muted small">Lido das carteiras cadastradas; os detalhes ficam na aba Cripto.</p>
+        </section>
+      )}
+
+      {bemRows.length > 0 && <section className="card">
         <div className="card-head"><h2>Bens</h2><span className="muted small">{brl(s.bens)}<button className="link" onClick={() => goEdit("bem", null)}>+ bem</button><button className="link" onClick={() => setSub("invest")}>ver em investimentos &rsaquo;</button></span></div>
         {bemRows.length ? (
           <ul className="pend small">
@@ -194,7 +225,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
             ))}
           </ul>
         ) : <p className="muted small">Nenhum bem cadastrado. Imóveis, terrenos e veículos entram no patrimônio &quot;com bens&quot;, separados do financeiro.</p>}
-      </section>
+      </section>}
 
       {(setup.recvs ?? []).length > 0 && (
         <section className="card">
@@ -217,7 +248,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
         </section>
       )}
 
-      <h3 className="bal-title">O que você deve</h3>
+      <h3 className="bal-title">O que você deve <span className="bal-sum">{brl(debt.total)}</span></h3>
       <DebtsBlock months={months} setup={setup} onEdit={(t, id) => goEdit(t, id)} />
 
       <h3 className="bal-title">Compromissos todo mês</h3>

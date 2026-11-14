@@ -805,3 +805,12 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 .sub-block { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .sub-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .sub-head b { font-size: 15px; }
+
+/* Contas e bens: a conta do balanco linha a linha */
+.bal-eq { list-style: none; margin: 0 0 12px; padding: 0; font-size: 14px; }
+.bal-eq li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 2px; border-bottom: 1px dashed var(--line); font-variant-numeric: tabular-nums; }
+.bal-eq li span { color: var(--muted); }
+.bal-eq li.minus b { color: var(--sell); font-weight: 600; }
+.bal-eq li.total { border-bottom: 0; border-top: 1px solid var(--text); margin-top: 2px; padding-top: 8px; font-size: 15px; }
+.bal-eq li.total span { color: var(--text); font-weight: 600; }
+.bal-title .bal-sum { order: 2; font-size: 13px; color: var(--text); letter-spacing: 0; text-transform: none; font-weight: 600; }

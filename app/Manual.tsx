@@ -140,12 +140,12 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Em Carteira → Meus tokens, informe o preço médio para ver lucro e prejuízo.",
     ], tips: ["É só leitura: o site nunca pede frase secreta nem chave privada, e não movimenta nada."] },
     { title: "Robô: estudo da regra", steps: [
-      "A aba Robô mostra onde cada moeda está em relação à regra (SMA 150 + HMA 100) e como a regra se comportou no passado.",
+      "Em Cripto → Robô, cada moeda aparece em relação à regra (SMA 150 + HMA 100), com o comportamento da regra no passado.",
       "É estudo educacional: não é recomendação de compra ou venda.",
     ] },
-    { title: "Tokens e Operações", owner: true, steps: [
-      "Tokens: fichas dos projetos (valor de mercado, oferta, receita e situação pela regra 55/20). A lista padrão é só para acompanhar.",
-      "Operações: registre compras e vendas feitas fora das carteiras e compare o seu resultado com o da estratégia.",
+    { title: "Robô e tokens, Operações manuais", owner: true, steps: [
+      "Robô e tokens: os sinais do robô, o \"Real x estratégia\" (seu resultado comparado com seguir a regra à risca) e as fichas dos tokens (valor de mercado, oferta, receita e situação pela regra 55/20).",
+      "Operações manuais: registre compras e vendas feitas fora das carteiras; elas entram no \"Real x estratégia\".",
     ] },
   ] },
   { group: "Sua conta", items: [

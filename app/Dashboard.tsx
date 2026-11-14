@@ -175,8 +175,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     ro.observe(h);
     return () => ro.disconnect();
   }, [user, role]);
-  // membro nao tem Tokens nem Operacoes: cai no Robo (estudo)
-  useEffect(() => { if (member && (tab === "tokens" || tab === "operacoes")) setTabState("sinais"); }, [member, tab]);
+  // Tokens agora fica junto do Robo; membro nao tem Operacoes manuais: cai no Robo (estudo)
+  useEffect(() => { if (tab === "tokens" || (member && tab === "operacoes")) setTabState("sinais"); }, [member, tab]);
 
   useEffect(() => {
     if (!user || demo || (role !== "owner" && role !== "member")) return;
@@ -317,16 +317,15 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     { id: "ajuda", label: "Ajuda" },
   ] as const;
   const cryptoSubs = [
-    { id: "sinais", label: "Robô" },
+    { id: "sinais", label: member ? "Robô" : "Robô e tokens" },
     { id: "carteira", label: "Carteira" },
-    { id: "tokens", label: "Tokens" },
-    { id: "operacoes", label: "Operações" },
+    { id: "operacoes", label: "Operações manuais" },
   ] as const;
   const inCrypto = CRYPTO_TABS.includes(tab);
   const lastCrypto = (): TabId => {
     try {
       const v = localStorage.getItem("criptoSub") as TabId | null;
-      return v && CRYPTO_TABS.includes(v) ? v : "sinais";
+      return v && CRYPTO_TABS.includes(v) && v !== "tokens" ? v : "sinais";
     } catch {
       return "sinais";
     }
@@ -403,6 +402,9 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             </div>
             {/* Outras moedas para o robo: escondido ate dar para trocar as moedas do robo pela tela */}
             {SHOW_CANDIDATES && <CandidatesCard doc={candidates} />}
+            {/* resultado real x estrategia e as fichas dos tokens ficam junto do robo */}
+            {!member && <Performance cfg={eff} latest={latest} trades={trades} prices={prices} />}
+            {!member && <div id="fichas"><FichasCard fichas={fichas} /></div>}
           </>
         )}
         {tab === "ajuda" && <Manual member={member} />}
@@ -410,11 +412,9 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
           onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }}
           onQuotes={support ? undefined : async () => { const p = await refreshFinance(); if (p.length) setError(p.join("; ")); else setNotice(`Cotações atualizadas às ${new Date().toLocaleTimeString("pt-BR")}.`); }} />}
         {tab === "carteira" && <WalletCard wallet={wallet} history={walletHistory} cfg={eff} latest={latest} />}
-        {tab === "tokens" && !member && <FichasCard fichas={fichas} />}
         {tab === "operacoes" && !member && (
           <>
             <TradeForm cfg={cfg} latest={latest} prices={prices} />
-            <Performance cfg={eff} latest={latest} trades={trades} prices={prices} />
             <TradesTable trades={trades} />
           </>
         )}
@@ -482,7 +482,7 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
   // Fichas dos tokens: uma linha so
   const acts = (fichas?.items ?? []).filter((f) => !SYMBOLS.includes(`${f.symbol}USDT`) && f.situacao
     && (["entrada", "entrada_metade", "saida", "reduzir", "sem_vaga"].includes(f.situacao.code) || f.action));
-  if (acts.length) todo.push({ tone: "info", who: "Tokens", prio: 3, tab: "tokens",
+  if (acts.length) todo.push({ tone: "info", who: "Tokens", prio: 3, tab: "sinais",
     text: acts.slice(0, 4).map((f) => `${f.symbol}: ${f.situacao!.label.toLowerCase()}`).join(" - ") + (acts.length > 4 ? ` e mais ${acts.length - 4}` : "") });
   if (wallet) for (const n of walletNotices(wallet)) if (n.level !== "info") todo.push({ tone: "warn", who: "Carteira", prio: 3, text: n.text, tab: "carteira" });
   if (unknown && !member) todo.push({ tone: "info", who: "Robô", prio: 3, text: "há posição sem preço médio: informe-o em Carteira > Meus tokens para ver o lucro", tab: "sinais" });
@@ -648,7 +648,7 @@ function Performance({ cfg, latest, trades, prices }: { cfg: AppConfig; latest: 
   const pctOf = (v: number) => (perf.capital > 0 ? ` (${signed((v / perf.capital) * 100, 1)}%)` : "");
   return (
     <section className="card">
-      <div className="row between"><h2>Real x estratégia</h2><span className="muted small">desde {day(perf.start)}</span></div>
+      <div className="card-head"><h2>Real x estratégia</h2><span className="muted small">desde {day(perf.start)}</span></div>
       <div className="summary perf">
         <div><span className="muted small">Seu resultado</span><b className={pnlClass(last.real)}>{signed(last.real)} USDT{pctOf(last.real)}</b></div>
         <div><span className="muted small">Estratégia a risca</span><b className={pnlClass(last.strat)}>{signed(last.strat)} USDT{pctOf(last.strat)}</b></div>

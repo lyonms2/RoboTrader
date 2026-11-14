@@ -28,9 +28,9 @@ const SUBS: { id: Sub; label: string }[] = [
 const OLD_SUB: Record<string, Sub> = { gastos: "lanc", dividas: "bens", resumo: "lanc", loans: "cards", recv: "cards" };
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
+const brl = (v: number, d = 2) => `R$\u00a0${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
-const signed = (v: number) => `${v > 0 ? "+" : v < 0 ? "-" : ""}R$ ${fmt(Math.abs(v))}`;
+const signed = (v: number) => `${v > 0 ? "+" : v < 0 ? "-" : ""}R$\u00a0${fmt(Math.abs(v))}`;
 const pnlClass = (v: number) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
 const short = (n: string) => (n.length > 48 ? `${n.slice(0, 46)}...` : n);
 const pctS = (v: number, d = 1) => `${fmt(v * 100, d)}%`;

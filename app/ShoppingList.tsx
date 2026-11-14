@@ -19,7 +19,7 @@ type ListDoc = { items: Item[]; freq: Record<string, number>; prices: Record<str
 
 const DAY = 86_400_000;
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const brl = (v: number) => `R$ ${fmt(v)}`;
+const brl = (v: number) => `R$\u00a0${fmt(v)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const num = (s: string) => {
   let t = s.replace(/[\sR$]/g, "");

@@ -26,7 +26,7 @@ export type FinRow = {
 
 const DAY = 86_400_000;
 const fmtD = (t: number) => new Date(t).toLocaleDateString("pt-BR");
-const brlS = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const brlS = (v: number) => `R$\u00a0${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtP = (v: number) => `${(v * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 // Dia no horario de Brasilia (AAAA-MM-DD)
 export const dayBR = (t: number) => new Date(t - 3 * 3_600_000).toISOString().slice(0, 10);
@@ -70,7 +70,7 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     // Depositos/resgates depois da data do saldo: cada um rende CDI a partir do proprio dia
     const fl = flows.filter((x) => x.d > dayBR(at));
     const net = fl.reduce((s, x) => s + x.v, 0);
-    const moved = fl.length ? ` + ${fl.length} ${fl.length > 1 ? "movimentos" : "movimento"} (${net >= 0 ? "+" : "-"}R$ ${Math.abs(net).toLocaleString("pt-BR", { maximumFractionDigits: 2 })})` : "";
+    const moved = fl.length ? ` + ${fl.length} ${fl.length > 1 ? "movimentos" : "movimento"} (${net >= 0 ? "+" : "-"}R$\u00a0${Math.abs(net).toLocaleString("pt-BR", { maximumFractionDigits: 2 })})` : "";
     // Movimentos ligados ate a data do saldo ja estao dentro dele (mostra para nao parecer que sumiram)
     const inside = flows.length - fl.length;
     const incl = inside > 0 ? ` (${inside} ${inside > 1 ? "movimentos anteriores já estão" : "movimento anterior já está"} nesse saldo)` : "";
@@ -120,7 +120,7 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
       ...base, kindLabel: q.type === "fii" ? "FII" : q.type === "etf" ? "ETF" : "Ação", group: q.type === "fii" ? "fiis" : "acoes",
       value, cost, price: q.price, change: q.change, yieldYear: d12 > 0 ? d12 / q.price : null, monthly: d12 > 0 ? (d12 * qty) / 12 : null,
       note: d12 > 0
-        ? `proventos 12 m: R$ ${d12.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} por cota - último ${fmtD(lastDiv.t)}`
+        ? `proventos 12 m: R$\u00a0${d12.toLocaleString("pt-BR", { maximumFractionDigits: 4 })} por cota - último ${fmtD(lastDiv.t)}`
         : "sem proventos nos últimos 12 meses",
     };
   }

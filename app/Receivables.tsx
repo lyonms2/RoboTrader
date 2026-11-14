@@ -10,7 +10,7 @@ import Note from "./Note";
 void tell;
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
+const brl = (v: number, d = 2) => `R$\u00a0${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const num = (x: string) => Number(x.replace(/\./g, "").replace(",", ".")) || 0;
 const SIT: Record<RecvRow["status"], { cls: string; label: string }> = {

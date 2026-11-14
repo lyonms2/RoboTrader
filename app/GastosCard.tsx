@@ -20,7 +20,7 @@ export { guardWrite, saveMonth, saveSetup, monthSnapshot, upcoming, reviewCount,
 
 import Note from "./Note";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
+const brl = (v: number, d = 2) => `R$\u00a0${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const clean = <T,>(o: T): T => JSON.parse(JSON.stringify(o));
 function num(s: string) {

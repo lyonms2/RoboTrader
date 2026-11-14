@@ -13,9 +13,9 @@ import { guardWrite, monthSnapshot, upcoming } from "./gastosShared";
 import NetWorthChart from "./NetWorthChart";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
+const brl = (v: number, d = 2) => `R$\u00a0${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
-const signed = (v: number) => `${v > 0 ? "+" : v < 0 ? "-" : ""}R$ ${fmt(Math.abs(v))}`;
+const signed = (v: number) => `${v > 0 ? "+" : v < 0 ? "-" : ""}R$\u00a0${fmt(Math.abs(v))}`;
 const pnlClass = (v: number) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
 const pctS = (v: number, d = 1) => `${fmt(v * 100, d)}%`;
 
@@ -136,7 +136,7 @@ export function PatrimonioCard({ cfg, fin, wallet, spend, debt, months, setup, o
         <p className="muted small indic">
           {cdi !== null && <span>CDI {pctS(cdi, 2)} ao ano</span>}
           {fin?.ipca12m != null && <span>IPCA 12 m {pctS(fin.ipca12m, 2)} ({fin.ipcaRef})</span>}
-          {fin?.usdbrl && <span>Dólar R$ {fmt(fin.usdbrl, 4)} (PTAX)</span>}
+          {fin?.usdbrl && <span>Dólar R${" "}{fmt(fin.usdbrl, 4)} (PTAX)</span>}
           {spend && <span>Gasto médio {brl(spend.value, 0)}/mês</span>}
           {fin && <span>dados de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>}
         </p>

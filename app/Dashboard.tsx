@@ -525,14 +525,14 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
     const upList = upcoming(money.months, money.setup);
     for (const p of upList.filter((x) => x.late))
       todo.push({ tone: "warn", who: "Pagar", prio: 1, id: `late:${p.desc}:${p.d}`, text: !p.loan && !p.card && !p.once
-        ? `${p.desc} costuma sair até o dia ${p.d.slice(8, 10)} e ainda não veio no extrato (R$ ${fmt(p.v)})`
-        : `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : p.card ? "cards" : "lanc" });
+        ? `${p.desc} costuma sair até o dia ${p.d.slice(8, 10)} e ainda não veio no extrato (R$\u00a0${fmt(p.v)})`
+        : `${p.desc}: R$\u00a0${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : p.card ? "cards" : "lanc" });
     for (const r of money.setup.recvs ?? []) {
       const st = recvStatus(r, money.months);
-      if (st.late) todo.push({ tone: "warn", who: "Receber", text: `${r.name}: ${st.late} ${st.late > 1 ? "parcelas atrasadas" : "parcela atrasada"} (R$ ${fmt(st.lateV)})`, tab: "financas", fin: "recv" });
+      if (st.late) todo.push({ tone: "warn", who: "Receber", text: `${r.name}: ${st.late} ${st.late > 1 ? "parcelas atrasadas" : "parcela atrasada"} (R$\u00a0${fmt(st.lateV)})`, tab: "financas", fin: "recv" });
     }
     for (const b of budgetAlerts(money.months, money.setup))
-      todo.push({ tone: "warn", who: "Cartão", text: `${b.c.name}: R$ ${fmt(b.used, 0)} na fatura aberta, ${fmt(b.pct * 100, 0)}% do planejado (R$ ${fmt(b.c.budget!, 0)})`, tab: "financas", fin: "cards" });
+      todo.push({ tone: "warn", who: "Cartão", text: `${b.c.name}: R$\u00a0${fmt(b.used, 0)} na fatura aberta, ${fmt(b.pct * 100, 0)}% do planejado (R$\u00a0${fmt(b.c.budget!, 0)})`, tab: "financas", fin: "cards" });
     {
       const cm = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 7);
       for (const f of money.setup.fixos) if (fixoActive(f, cm) && fixoReajPending(f, cm))
@@ -544,7 +544,7 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
     const cm = t0.slice(0, 7);
     for (const b of monthIncomes(cm, money.months[cm]?.items ?? [], money.setup, money.months))
       if (!b.paid && b.d < t0) todo.push({ tone: "info", who: "Receber", prio: 2, id: `inc:${b.ref}:${cm}`, tab: "financas", fin: "lanc",
-        text: `${b.desc} costuma cair até o dia ${b.d.slice(8, 10)} e ainda não veio no extrato (R$ ${fmt(b.v)})` });
+        text: `${b.desc} costuma cair até o dia ${b.d.slice(8, 10)} e ainda não veio no extrato (R$\u00a0${fmt(b.v)})` });
   }
   const rc = reviewCount(money.months, money.setup);
     if (rc) todo.push({ tone: "info", who: "Finanças", text: `${rc} ${rc > 1 ? "pontos" : "ponto"} para revisar nos lançamentos (para os números ficarem certos)`, tab: "financas", fin: "lanc" });

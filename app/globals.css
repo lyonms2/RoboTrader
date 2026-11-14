@@ -953,3 +953,6 @@ input, select, textarea { max-width: 100%; }
 .tabs { --hs-pad: 12px; }
 .hs-on::after { right: calc(-1 * var(--hs-pad, 0px)); width: calc(34px + var(--hs-pad, 0px)); margin-left: calc(-34px - var(--hs-pad, 0px)); padding-right: var(--hs-pad, 0px); }
 .hs-on::before { left: calc(-1 * var(--hs-pad, 0px)); width: calc(34px + var(--hs-pad, 0px)); margin-right: calc(-34px - var(--hs-pad, 0px)); padding-left: var(--hs-pad, 0px); }
+
+/* graficos de 12 meses no celular: so o mes (o ano some para os rotulos nao encostarem) */
+@media (max-width: 600px) { .mbars.twelve .yr { display: none; } .mbars.twelve small { font-size: 10px; letter-spacing: 0; } }

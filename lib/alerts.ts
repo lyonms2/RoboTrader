@@ -8,7 +8,7 @@ export type SmartAlert = { id: string; prio: 1 | 2 | 3; tone: "warn" | "info"; w
 type Upcoming = { d: string; desc: string; v: number; late: boolean };
 
 const num = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const brl = (v: number, d = 2) => `R$ ${num(v, d)}`;
+const brl = (v: number, d = 2) => `R$\u00a0${num(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const dayMs = 86_400_000;
 const diffDays = (a: string, b: string) => Math.round((Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / dayMs);

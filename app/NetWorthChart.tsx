@@ -5,7 +5,7 @@ import type { NetWorthDoc } from "@/lib/patrimonio";
 
 import Note from "./Note";
 const fmt = (v: number, d = 0) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const brl = (v: number, d = 0) => `R$ ${fmt(v, d)}`;
+const brl = (v: number, d = 0) => `R$\u00a0${fmt(v, d)}`;
 const date = (t: number) => new Date(t).toLocaleDateString("pt-BR");
 const RANGES = [
   { id: "1m", label: "1M", days: 31 }, { id: "3m", label: "3M", days: 92 }, { id: "6m", label: "6M", days: 183 },

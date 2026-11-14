@@ -14,7 +14,7 @@ import Note from "./Note";
 import { budgetAlerts } from "./gastosShared";
 export { budgetAlerts };
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
+const brl = (v: number, d = 2) => `R$\u00a0${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
 export type CardsEntry = { type: "compra" | "card" | "loan" | "prepay" | "recv"; id: string | null };
@@ -414,7 +414,7 @@ function CommitmentsChart({ data, which }: { data: Com; which: "cards" | "loans"
           {data.map((x, i) => (
             <div key={x.m} className={`mbar${hover !== null && hover !== i ? " dim" : ""}`} onMouseEnter={() => setHover(i)} title={`${monthLabel(x.m)}: ${brl(val(x))}`}>
               <span className="stack-col"><span className={`mbar-fill ${which === "cards" ? "k-cards" : "k-loans"}`} style={{ height: `${(val(x) / max) * 100}%` }} /></span>
-              <small>{monthLabel(x.m)}</small>
+              <small>{monthLabel(x.m).slice(0, 3)}<span className="yr">{monthLabel(x.m).slice(3)}</span></small>
             </div>
           ))}
         </div>

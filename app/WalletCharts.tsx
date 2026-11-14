@@ -70,8 +70,12 @@ export function ProtocolBars({ rows, total }: { rows: { app: string; value: numb
 }
 
 // Linha: patrimonio total ao longo do tempo (1 ponto por dia), com cursor e valor ao passar o mouse
-export function HistoryLine({ history }: { history: WalletHistoryDoc[] }) {
+export function HistoryLine({ history: raw }: { history: WalletHistoryDoc[] }) {
   const [idx, setIdx] = useState<number | null>(null);
+  // um ponto por dia de Brasilia (o ultimo retrato do dia): retratos antigos gravados com o dia em UTC podiam repetir o dia
+  const byDay = new Map<string, WalletHistoryDoc>();
+  for (const h of [...raw].sort((a, b) => a.t - b.t)) byDay.set(new Date(h.t - 3 * 3_600_000).toISOString().slice(0, 10), h);
+  const history = [...byDay.values()];
   // largura real (o texto do eixo nao encolhe no celular)
   const box = useRef<HTMLElement>(null);
   const [width, setWidth] = useState(640);

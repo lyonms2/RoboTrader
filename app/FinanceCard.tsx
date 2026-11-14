@@ -15,14 +15,15 @@ import Note from "./Note";
 import { BalanceEq, FinBar } from "./OverviewBlocks";
 export { MonthAndUpcoming, NetWorthBlock, PatrimonioCard } from "./OverviewBlocks";
 import ExportData from "./ExportData";
+import ShoppingList from "./ShoppingList";
 // membro: dados em users/{uid}/ (o dono exporta tambem as operacoes manuais)
 const isMemberBase = () => P("").startsWith("users/");
 // Resumo = ver como esta; Lancamentos = unico lugar onde o dinheiro se move; Contas e bens = unico lugar com saldos e cadastros
 // O resumo (patrimonio, mes, proximos pagamentos, evolucao) fica na Visao geral
-export type Sub = "lanc" | "invest" | "cards" | "bens";
+export type Sub = "lanc" | "invest" | "cards" | "bens" | "compras";
 const SUBS: { id: Sub; label: string }[] = [
   { id: "bens", label: "Contas e bens" }, { id: "lanc", label: "Lançamentos" }, { id: "invest", label: "Investimentos" },
-  { id: "cards", label: "Cartões e empréstimos" },
+  { id: "cards", label: "Cartões e empréstimos" }, { id: "compras", label: "Lista de compras" },
 ];
 const OLD_SUB: Record<string, Sub> = { gastos: "lanc", dividas: "bens", resumo: "lanc", loans: "cards", recv: "cards" };
 
@@ -136,6 +137,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
     <EntryPanel entry={entry} setEntry={setEntry} months={months} setup={setup} invest={items} fin={fin}
       onSaveInv={upsert} onRemoveInv={remove} />
   );
+  if (sub === "compras") return <>{nav}<ShoppingList months={months} setup={setup} /></>;
   if (sub === "cards") return <>{nav}<CardsLoans months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} /></>;
   if (sub === "invest") return (
     <>{nav}<InvestPart items={items} rows={rows} fin={fin} months={months} reserve={s.reserve} reserveMonths={s.reserveMonths}

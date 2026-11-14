@@ -841,3 +841,22 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 /* "O que voce quer lancar?": fechar no canto, na linha da pergunta */
 .entry-bar { position: relative; padding-right: 56px; }
 .entry-bar .entry-close { position: absolute; top: 2px; right: 0; margin: 0; }
+
+/* lista de compras (feita para usar no celular, dentro do mercado) */
+.shop-add { display: flex; gap: 8px; margin-bottom: 10px; }
+.shop-add input { flex: 1; min-width: 0; font-size: 16px; }
+.shop-freq { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.shop-freq .chip { cursor: pointer; font-size: 13px; }
+.shop-freq .chip:hover { border-color: var(--accent); color: var(--accent); }
+.shop-list { list-style: none; margin: 0 0 12px; padding: 0; }
+.shop-list li { display: grid; grid-template-columns: 1fr 64px 84px 24px; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.shop-list .shop-check { display: flex; flex-direction: row; align-items: center; gap: 10px; cursor: pointer; min-width: 0; margin: 0; font-size: inherit; color: var(--text); }
+.shop-check input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+.shop-name { font-size: 15px; overflow-wrap: anywhere; }
+.shop-list li.done .shop-name { text-decoration: line-through; color: var(--muted); }
+.shop-list li.done { opacity: .7; }
+.shop-qty, .shop-price { width: 100%; padding: 6px 8px; font-size: 14px; }
+.shop-x { color: var(--muted) !important; font-size: 16px; padding: 0 !important; text-align: center; }
+.shop-actions { margin-bottom: 8px; }
+.shop-launch { margin-top: 8px; padding: 12px; border: 1px dashed var(--accent); border-radius: 10px; }
+@media (max-width: 560px) { .shop-list li { grid-template-columns: 1fr 52px 70px 20px; gap: 6px; } }

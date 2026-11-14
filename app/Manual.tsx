@@ -76,6 +76,14 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Informe o dia em que pagou. Se o site ligou o lançamento errado, clique em \"alterar\".",
     ] },
   ] },
+  { group: "Lista de compras", items: [
+    { title: "Usar a lista de compras do mercado", steps: [
+      "Em Finanças → Lista de compras, escreva os itens (vários de uma vez, separados por vírgula: \"arroz, 2 leite, café\").",
+      "No mercado, marque o que já pegou: o item vai para o fim da lista. O preço é opcional e estima o total.",
+      "Ao terminar, clique em \"Terminei: lançar o gasto\", informe o valor do cupom e com o que pagou: a compra entra em Lançamentos (Mercado).",
+      "Os itens que você mais usa aparecem em \"Frequentes\" para adicionar com um toque.",
+    ] },
+  ] },
   { group: "Orçamento e metas", items: [
     { title: "Definir um orçamento por categoria", steps: [
       "Em Finanças → Lançamentos, clique em \"+ definir orçamento por categoria\" (ou \"+ categoria\" no bloco Orçamento do mês).",

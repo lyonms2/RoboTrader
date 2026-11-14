@@ -11,6 +11,8 @@ import ReceivablesPart, { RecvSelect } from "./Receivables";
 import { ask, askText, tell } from "./Dialog";
 
 import Note from "./Note";
+import { budgetAlerts } from "./gastosShared";
+export { budgetAlerts };
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$ ${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
@@ -23,19 +25,6 @@ const STATUS: Record<string, string> = { aberta: "aberta (ainda recebendo compra
 const FSIT: Record<string, { cls: string; label: string }> = {
   paga: { cls: "paga", label: "paga" }, vencida: { cls: "atrasada", label: "atrasada" }, fechada: { cls: "fechada", label: "fechada" }, aberta: { cls: "aberta", label: "aberta" },
 };
-
-// Planejamento do cartao: fatura que esta recebendo compras agora x o planejado
-export function budgetAlerts(months: Record<string, MonthDoc>, setup: GastosSetup) {
-  const out: { c: Card; used: number; pct: number }[] = [];
-  for (const c of setup.cards) {
-    if (!c.budget) continue;
-    const fm = faturaMonth(c, todayBR());
-    const f = cardStatus(c, months).all.find((x) => x.m === fm);
-    const used = f?.v ?? 0;
-    if (used >= c.budget * 0.8) out.push({ c, used, pct: used / c.budget });
-  }
-  return out;
-}
 
 // Sub-aba Cartoes e emprestimos, separada em duas partes: Cartoes | Emprestimos
 const LOAN_TYPES: CardsEntry["type"][] = ["loan", "prepay"];

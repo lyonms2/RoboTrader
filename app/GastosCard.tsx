@@ -14,6 +14,9 @@ import {
   type Bill, type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
+import { guardWrite, saveMonth, saveSetup, monthSnapshot, upcoming, reviewCount, genericCount } from "./gastosShared";
+export { guardWrite, saveMonth, saveSetup, monthSnapshot, upcoming, reviewCount, genericCount };
+
 
 import Note from "./Note";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -26,21 +29,6 @@ function num(s: string) {
   else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
   return Number(t) || 0;
 }
-// Modo suporte e so leitura: avisa e nao grava (as regras do banco tambem bloqueiam)
-export function guardWrite() {
-  if (!isReadOnly()) return;
-  void tell("Modo suporte: só leitura. Nada foi alterado.");
-  throw new Error("modo suporte: so leitura");
-}
-export const saveMonth = async (m: string, items: Gasto[]) => {
-  guardWrite();
-  return setDoc(doc(db(), P("config"), `gastos-${m}`), { items: clean([...items].sort((a, b) => a.d.localeCompare(b.d))) });
-};
-export const saveSetup = async (s: Partial<GastosSetup>) => {
-  guardWrite();
-  return setDoc(doc(db(), P("config"), "gastos-setup"), clean(s), { merge: true });
-};
-
 // Grava lancamentos que podem cair em meses diferentes (parcelas, importacao)
 async function addItems(months: Record<string, MonthDoc>, list: Gasto[]) {
   const by: Record<string, Gasto[]> = {};
@@ -54,15 +42,6 @@ export { debts };
 const isFaturaOut = (g: Gasto) =>
   g.cat === CARD_PAY_CAT && !g.card && dirOf(g) < 0;
 
-// Resumo do mes atual (para a pagina Resumo das Financas)
-export function monthSnapshot(months: Record<string, MonthDoc>, setup: GastosSetup) {
-  const m = monthOf(todayBR());
-  const items = months[m]?.items ?? [];
-  const s = summarize(items, { m, months });
-  const pending = pendingFor(m, items, setup, months);
-  return { m, ...s, count: items.length, pending: pending.reduce((a, p) => a + p.v, 0), pendingN: pending.length, avg: avgMonthly(months) };
-}
-
 // Cartoes e dividas: resumo + cartoes + emprestimos
 export function DebtsBlock({ months, setup, onEdit }: { months: Record<string, MonthDoc>; setup: GastosSetup; onEdit?: (type: "card" | "loan", id: string | null) => void }) {
   const cards = setup.cards.map((c) => ({ c, st: cardStatus(c, months) }));
@@ -72,28 +51,6 @@ export function DebtsBlock({ months, setup, onEdit }: { months: Record<string, M
       <Loans setup={setup} months={months} onEdit={onEdit && ((id) => onEdit("loan", id))} />
     </div>
   );
-}
-
-// Proximos pagamentos (Resumo): faturas, fixos e parcelas nos proximos 30 dias, mais o que ja venceu sem pagamento
-export function upcoming(months: Record<string, MonthDoc>, setup: GastosSetup) {
-  const today = todayBR();
-  const limit = new Date(Date.parse(`${today}T12:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10);
-  const out: { d: string; desc: string; v: number; late: boolean; loan?: boolean; card?: boolean; once?: boolean }[] = [];
-  for (const c of setup.cards) {
-    const st = cardStatus(c, months);
-    for (const f of st.overdue) out.push({ d: f.due, desc: `Fatura ${c.name} (${monthLabel(f.m)})`, v: f.rest, late: true, card: true });
-    if (st.next && st.next.due <= limit) out.push({ d: st.next.due, desc: `Fatura ${c.name} (${st.next.status === "fechada" ? "fechada" : "ainda aberta"})`, v: st.next.v, late: false });
-  }
-  const m = monthOf(today);
-  for (const mm of [m, addMonths(m, 1)])
-    for (const p of pendingFor(mm, months[mm]?.items ?? [], setup, months))
-      if (p.d <= limit && !p.card && !out.some((x) => x.once && x.desc === p.desc && x.d === p.d))
-        out.push({ d: p.d, desc: p.desc, v: p.v, late: p.d < today, loan: !!p.parc, once: p.once });
-  // parcelas de emprestimo de meses anteriores que continuam sem pagamento
-  for (const l of setup.loans)
-    for (const r of loanStatus(l, today, { months, setup }).rows)
-      if (r.status === "atrasada" && r.m < m) out.push({ d: r.due, desc: `${l.name} (parcela ${r.k + 1}/${l.n})`, v: l.parcela, late: true, loan: true });
-  return out.sort((a, b) => a.d.localeCompare(b.d));
 }
 
 export default function GastosCard({ months, setup, invest = [], onBens, entry }: {
@@ -619,25 +576,6 @@ function InvSelect({ value, desc, invest, out, onChange }: { value?: string; des
 }
 
 // Quantos pontos ha para revisar (para o "O que fazer hoje" da Visao geral)
-export function reviewCount(months: Record<string, MonthDoc>, setup: GastosSetup) {
-  let n = 0;
-  for (const md of Object.values(months))
-    for (const g of md.items) {
-      if (g.cat === INVEST_CAT && !g.inv) n++;
-      if (g.cat === CARD_PAY_CAT && !g.card && !g.payCard && setup.cards.length) n++;
-    }
-  n += unmatchedTransfers(months, setup).filter((g) => dirOf(g) < 0).length;
-  n += accountsStatus(months, setup).rows.filter((r) => r.used && !r.informed).length;
-  if (genericCount(months)) n++;
-  return n;
-}
-
-// Lancamentos em "Outros"/"Outras entradas" (sem dizer o que e)
-export function genericCount(months: Record<string, MonthDoc>) {
-  return Object.values(months).reduce((s, md) => s + md.items.filter((g) => GENERIC_CATS.includes(g.cat)).length, 0);
-}
-
-// Para revisar: tudo que deixaria um numero errado, com o conserto de 1 clique quando da
 export function Review({ months, setup, invest }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[] }) {
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState<string | null>(null); // fatura vencida com o formulario de pagamento aberto

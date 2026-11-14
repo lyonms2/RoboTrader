@@ -317,17 +317,17 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     { id: "ajuda", label: "Ajuda" },
   ] as const;
   const cryptoSubs = [
-    { id: "sinais", label: member ? "Robô" : "Robô e tokens" },
     { id: "carteira", label: "Carteira" },
+    { id: "sinais", label: member ? "Robô" : "Robô e tokens" },
     { id: "operacoes", label: "Operações manuais" },
   ] as const;
   const inCrypto = CRYPTO_TABS.includes(tab);
   const lastCrypto = (): TabId => {
     try {
       const v = localStorage.getItem("criptoSub") as TabId | null;
-      return v && CRYPTO_TABS.includes(v) && v !== "tokens" ? v : "sinais";
+      return v && CRYPTO_TABS.includes(v) && v !== "tokens" ? v : "carteira";
     } catch {
-      return "sinais";
+      return "carteira";
     }
   };
   const updatedAt = Math.max(0, ...latest.map((l) => l.updatedAt), wallet?.at ?? 0, fichas?.at ?? 0);
@@ -843,7 +843,11 @@ function TradeForm({ cfg, latest, prices }: { cfg: AppConfig; latest: LatestDoc[
   return (
     <section className="card">
       <h2>Registrar operação manual</h2>
-      <p className="muted small">Só para o que você faz fora das carteiras cadastradas (o saldo delas já entra sozinho).</p>
+      <div className="info-box small">
+        <b>Comprou ou vendeu numa carteira cadastrada (Rabby, Phantom...)? Não precisa lançar nada.</b> O site lê o saldo das carteiras
+        sozinho quando você clica em &quot;Atualizar&quot; (e o agendador atualiza ao longo do dia); as operações da Lighter também entram sozinhas quando a importação dela está ligada na engrenagem.
+        Use este formulário só para o que foi feito fora das carteiras cadastradas, por exemplo numa carteira que não está na engrenagem.
+      </div>
       <div className="row wrap-row">
         <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>{symbols.map((s) => <option key={s} value={s}>{s.replace("USDT", "")}</option>)}</select>
         <select value={side} onChange={(e) => setSide(e.target.value as "compra" | "venda")}><option value="compra">compra</option><option value="venda">venda</option></select>

@@ -952,16 +952,71 @@ export const accIdOf = (g: Gasto, accounts: Account[]) =>
 // Transferencia entre suas contas com os dois lados no extrato (saiu de A com destino B e entrou em B): o lado de B ja esta
 // no extrato de B, entao o "espelho" (creditar B pelo lancamento de A) nao pode contar de novo. Devolve os ids sem espelho
 export function transferTwins(months: Record<string, MonthDoc>, accounts: Account[]) {
-  const all = Object.values(months).flatMap((md) => md.items).filter((g) => g.cat === TRANSFER_CAT && !g.card);
-  const skip = new Set<string>();
-  for (const g of all) {
+  return accIndex(months, accounts).twins;
+}
+
+// Indice das contas, calculado uma vez por versao dos lancamentos (os meses chegam do banco como objetos novos a cada mudanca
+// e nunca sao alterados no lugar): movimentos de cada conta em ordem de data com soma acumulada, para o saldo num dia sair
+// por busca binaria em vez de percorrer todos os lancamentos de novo para cada conta e cada data
+type AccIdx = { twins: Set<string>; moves: Map<string, { d: string[]; cum: number[] }>; used: Set<string>; first: string };
+const ACC_IDX = new WeakMap<object, Map<string, AccIdx>>();
+function accIndex(months: Record<string, MonthDoc>, accounts: Account[]): AccIdx {
+  let per = ACC_IDX.get(months);
+  if (!per) ACC_IDX.set(months, (per = new Map()));
+  const key = accounts.map((a) => a.id).join("|");
+  const hit = per.get(key);
+  if (hit) return hit;
+  const all = Object.values(months).flatMap((md) => md.items);
+  // transferencias com os dois lados no extrato: procura o outro lado pelo valor (em centavos) na conta de destino
+  const trans = all.filter((g) => g.cat === TRANSFER_CAT && !g.card);
+  const byKey = new Map<string, Gasto[]>();
+  for (const h of trans) {
+    const a = accIdOf(h, accounts);
+    if (!a) continue;
+    const k = `${a}|${Math.round(h.v * 100)}`;
+    const l = byKey.get(k);
+    if (l) l.push(h); else byKey.set(k, [h]);
+  }
+  const twins = new Set<string>();
+  for (const g of trans) {
     if (!g.toAcc) continue;
     const src = accIdOf(g, accounts);
-    const twin = all.find((h) => h.id !== g.id && accIdOf(h, accounts) === g.toAcc && dirOf(h) === -dirOf(g) && Math.abs(h.v - g.v) <= 0.01
-      && Math.abs(Date.parse(h.d) - Date.parse(g.d)) <= 3 * 86_400_000 && (!h.toAcc || h.toAcc === src));
-    if (twin) skip.add(g.id);
+    const c = Math.round(g.v * 100);
+    const cands = [c - 1, c, c + 1].flatMap((x) => byKey.get(`${g.toAcc}|${x}`) ?? []);
+    if (cands.some((h) => h.id !== g.id && dirOf(h) === -dirOf(g) && Math.abs(h.v - g.v) <= 0.01
+      && Math.abs(Date.parse(h.d) - Date.parse(g.d)) <= 3 * 86_400_000 && (!h.toAcc || h.toAcc === src))) twins.add(g.id);
   }
-  return skip;
+  const raw = new Map<string, { d: string; f: number }[]>();
+  const push = (a: string, d: string, f: number) => { const l = raw.get(a); if (l) l.push({ d, f }); else raw.set(a, [{ d, f }]); };
+  const used = new Set<string>();
+  let first = "";
+  for (const g of all) {
+    const id = accIdOf(g, accounts);
+    if (id) {
+      used.add(id);
+      if (g.toAcc) used.add(g.toAcc);
+      if (!first || g.d < first) first = g.d;
+      push(id, g.d, dirOf(g) * g.v);
+    }
+    // na conta de destino da transferencia: o contrario (se o outro lado nao veio no extrato dela)
+    if (g.toAcc && !g.card && g.toAcc !== id && !twins.has(g.id)) push(g.toAcc, g.d, -dirOf(g) * g.v);
+  }
+  const moves = new Map<string, { d: string[]; cum: number[] }>();
+  for (const [a, l] of raw) {
+    l.sort((x, y) => (x.d < y.d ? -1 : x.d > y.d ? 1 : 0));
+    let t = 0;
+    moves.set(a, { d: l.map((x) => x.d), cum: l.map((x) => (t += x.f)) });
+  }
+  const idx = { twins, moves, used, first };
+  per.set(key, idx);
+  return idx;
+}
+// Soma dos movimentos da conta ate o fim do dia x (inclusive)
+function sumUntil(m: { d: string[]; cum: number[] } | undefined, x: string) {
+  if (!m) return 0;
+  let lo = 0, hi = m.d.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (m.d[mid] <= x) lo = mid + 1; else hi = mid; }
+  return lo ? m.cum[lo - 1] : 0;
 }
 
 // Saldo da conta no fim do dia "date". Com saldo conferido (B no dia A): para frente B + movimentos depois de A,
@@ -970,19 +1025,9 @@ export function transferTwins(months: Record<string, MonthDoc>, accounts: Accoun
 export function balanceAt(months: Record<string, MonthDoc>, accounts: Account[], accId: string, date: string) {
   const acc = accounts.find((a) => a.id === accId)!;
   const anchored = acc.balance !== undefined && !!acc.at;
-  let v = anchored ? acc.balance! : 0;
-  const twins = transferTwins(months, accounts);
-  for (const md of Object.values(months))
-    for (const g of md.items) {
-      // na conta do lancamento: o sentido dele; na conta de destino da transferencia: o contrario
-      const f = accIdOf(g, accounts) === accId ? dirOf(g) * g.v : g.toAcc === accId && !g.card && !twins.has(g.id) ? -dirOf(g) * g.v : null;
-      if (f === null) continue;
-      if (anchored) {
-        if (g.d > acc.at! && g.d <= date) v += f;
-        else if (g.d > date && g.d <= acc.at!) v -= f;
-      } else if (g.d <= date) v += f;
-    }
-  return v;
+  const m = accIndex(months, accounts).moves.get(accId);
+  // com saldo conferido: saldo + movimentos entre a data do saldo e o dia pedido (para frente soma, para tras desconta)
+  return anchored ? acc.balance! + sumUntil(m, date) - sumUntil(m, acc.at!) : sumUntil(m, date);
 }
 
 // Movimentos de uma conta entre dois dias (para conferir o saldo linha a linha): + entrou, - saiu
@@ -1005,16 +1050,7 @@ export function accountsStatus(months: Record<string, MonthDoc>, setup: GastosSe
   const endOfMonth = `${m}-31`;
   const end = endOfMonth < today ? endOfMonth : today;
   const startDay = `${addMonths(m, -1)}-31`;
-  const used = new Set<string>();
-  let first = "";
-  for (const md of Object.values(months))
-    for (const g of md.items) {
-      const id = accIdOf(g, accounts);
-      if (!id) continue;
-      used.add(id);
-      if (g.toAcc) used.add(g.toAcc);
-      if (!first || g.d < first) first = g.d;
-    }
+  const { used, first } = accIndex(months, accounts);
   const rows = accounts.map((a) => ({
     acc: a, informed: (a.balance !== undefined && !!a.at) || !!a.noStatement, used: used.has(a.id),
     start: balanceAt(months, accounts, a.id, startDay), end: balanceAt(months, accounts, a.id, end), now: balanceAt(months, accounts, a.id, today),

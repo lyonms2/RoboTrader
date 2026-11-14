@@ -2,6 +2,7 @@ import { FieldPath } from "firebase-admin/firestore";
 import { adminDb } from "./firebaseAdmin";
 import { EMPTY_SETUP, type GastosSetup, type MonthDoc } from "./gastos";
 import { netWorth } from "./patrimonio";
+import { writeDaily } from "./historyServer";
 import type { AppConfig, FinanceDoc, WalletDoc } from "./types";
 
 // Grava a foto do dia em patrimonio_history/{AAAA-MM-DD} (a ultima do dia vale). Chamado pelo "Atualizar tudo" e pelo agendador
@@ -21,6 +22,6 @@ export async function snapshotNetWorth(base = "") {
   }
   const nw = netWorth(cfg, (finS.data() as FinanceDoc | undefined) ?? null, (walS.data() as WalletDoc | undefined) ?? null, months, setup);
   if (!(nw.bens > 0) && !(nw.dividas > 0)) return { skipped: true, reason: "nada cadastrado" };
-  await db.doc(`${base}patrimonio_history/${nw.day}`).set(JSON.parse(JSON.stringify(nw)));
+  await writeDaily(base, "patrimonio_history", nw.day, nw);
   return { skipped: false, net: nw.net };
 }

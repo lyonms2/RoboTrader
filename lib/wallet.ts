@@ -1,6 +1,7 @@
 import { adminDb } from "./firebaseAdmin";
 import type { WalletDoc, WalletItem, WalletPerp } from "./types";
 import { walletTotals } from "./walletMath";
+import { writeDaily } from "./historyServer";
 import { isEvmAddress, isSolAddress, walletAddresses, walletKey } from "./addresses";
 import { readSolana } from "./solana";
 
@@ -230,7 +231,7 @@ export async function refreshWallet({ force, base = "" }: { force: boolean; base
   if (!doc.errors.length) {
     // dia no horario de Brasilia (antes era UTC: depois das 21:00 o retrato caia no dia seguinte)
     const day = new Date(doc.at - 3 * 3_600_000).toISOString().slice(0, 10);
-    await db.doc(`${base}wallet_history/${day}`).set({ t: doc.at, total: doc.total, byClass: walletTotals(doc).byClass, addr: doc.address });
+    await writeDaily(base, "wallet_history", day, { t: doc.at, total: doc.total, byClass: walletTotals(doc).byClass, addr: doc.address });
   }
   return { skipped: false, total: doc.total, errors: doc.errors };
 }

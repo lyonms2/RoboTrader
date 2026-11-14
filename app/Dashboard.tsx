@@ -1,7 +1,7 @@
 "use client";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
 import { addDoc, collection, deleteDoc, doc, documentId, getDoc, getDocs, limitToLast, onSnapshot, orderBy, query, setDoc, where, writeBatch } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { P, memberBase, setDataBase, setReadOnly } from "@/lib/paths";
 import { applyTrade, rebuild } from "@/lib/ledger";
@@ -196,8 +196,20 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     const u3 = !owner ? none : onSnapshot(query(collection(db(), "trades"), orderBy("t", "desc")),
       (s) => setTrades(s.docs.map((d) => ({ id: d.id, ...(d.data() as TradeDoc) }))), onErr);
     const u4 = onSnapshot(doc(db(), P("wallet/main")), (s) => setWallet(s.exists() ? (s.data() as WalletDoc) : null), onErr);
-    const u5 = onSnapshot(query(collection(db(), P("wallet_history")), orderBy("t"), limitToLast(365)),
-      (s) => setWalletHistory(s.docs.map((d) => d.data() as WalletHistoryDoc)), onErr);
+    // historicos: um documento por mes (dias dentro); enquanto o servidor nao gravou no formato novo, le os dias
+    const monthly = <T extends { t: number }>(col: string, months: number, days: number, set: (v: T[]) => void) => {
+      let old: (() => void) | null = null;
+      const un = onSnapshot(query(collection(db(), P(`${col}_m`)), orderBy(documentId()), limitToLast(months)), (s) => {
+        if (s.empty) {
+          if (!old) old = onSnapshot(query(collection(db(), P(col)), orderBy("t"), limitToLast(days)), (x) => set(x.docs.map((d) => d.data() as T)), onErr);
+          return;
+        }
+        if (old) { old(); old = null; }
+        set(s.docs.flatMap((d) => Object.values((d.data() as { days?: Record<string, T> }).days ?? {})).sort((a, b) => a.t - b.t));
+      }, onErr);
+      return () => { un(); if (old) old(); };
+    };
+    const u5 = monthly<WalletHistoryDoc>("wallet_history", 13, 365, setWalletHistory);
     const u6 = !owner ? none : onSnapshot(doc(db(), "sync/lighter"), (s) => setSync(s.exists() ? (s.data() as LighterSyncDoc) : null), onErr);
     // membro com Robo e tokens le a copia publica (sem a carteira do dono)
     const u7 = owner || robo ? onSnapshot(doc(db(), owner ? "fichas/main" : "fichas_pub/main"), (s) => setFichas(s.exists() ? (s.data() as FichaDoc) : null), () => setFichas(null)) : none;
@@ -214,8 +226,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       setMonths(ms);
       setGSetup(st);
     }, onErr);
-    const u11 = onSnapshot(query(collection(db(), P("patrimonio_history")), orderBy("t"), limitToLast(1500)),
-      (s) => setNwHist(s.docs.map((d) => d.data() as NetWorthDoc)), onErr);
+    const u11 = monthly<NetWorthDoc>("patrimonio_history", 60, 1500, setNwHist);
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); u11(); };
   }, [user, demo, role, support, robo]);
 
@@ -289,10 +300,11 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const px = Object.fromEntries(SYMBOLS.map((s) => [s, priceOf(s, latest, prices)?.price ?? 0]));
   const eff = effectiveConfig(cfg, sync, wallet, px);
   const walletOk = !!wallet && wallet.address === walletKey(walletAddresses(cfg));
-  const spend = avgMonthly(months);
+  // calculos de financas so quando os dados mudam (o preco do cripto atualiza a tela a cada 30 s)
+  const spend = useMemo(() => avgMonthly(months), [months, gSetup]);
   setCustomCats(gSetup.customCats);
   setCardsReg(gSetup.cards); // categorias criadas por voce (usadas nos menus e nos totais)
-  const debt = debts(months, gSetup);
+  const debt = useMemo(() => debts(months, gSetup), [months, gSetup]);
 
   if (!firebaseConfigured && !demo)
     return <main className="wrap center"><h1>SeuBitico</h1><p className="error">Firebase não configurado: cadastre as variáveis NEXT_PUBLIC_FIREBASE_* na Vercel e faça Redeploy.</p></main>;
@@ -496,31 +508,37 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
   if (wallet) for (const n of walletNotices(wallet)) if (n.level !== "info") todo.push({ tone: "warn", who: "Carteira", prio: 3, text: n.text, tab: "carteira" });
   if (unknown && !member) todo.push({ tone: "info", who: "Robô", prio: 3, text: "há posição sem preço médio: informe-o em Carteira > Meus tokens para ver o lucro", tab: "sinais" });
   if (sync?.shorts.length) todo.push({ tone: "warn", who: "Lighter", prio: 3, text: `posição vendida (${sync.shorts.join(", ")}) fica fora da conta`, tab: "carteira" });
-  // Financas: pagamentos vencidos e pontos para revisar
-  const upList = upcoming(money.months, money.setup);
-  for (const p of upList.filter((x) => x.late))
-    todo.push({ tone: "warn", who: "Pagar", prio: 1, id: `late:${p.desc}:${p.d}`, text: !p.loan && !p.card && !p.once
-      ? `${p.desc} costuma sair até o dia ${p.d.slice(8, 10)} e ainda não veio no extrato (R$ ${fmt(p.v)})`
-      : `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : p.card ? "cards" : "lanc" });
-  for (const r of money.setup.recvs ?? []) {
-    const st = recvStatus(r, money.months);
-    if (st.late) todo.push({ tone: "warn", who: "Receber", text: `${r.name}: ${st.late} ${st.late > 1 ? "parcelas atrasadas" : "parcela atrasada"} (R$ ${fmt(st.lateV)})`, tab: "financas", fin: "recv" });
-  }
-  for (const b of budgetAlerts(money.months, money.setup))
-    todo.push({ tone: "warn", who: "Cartão", text: `${b.c.name}: R$ ${fmt(b.used, 0)} na fatura aberta, ${fmt(b.pct * 100, 0)}% do planejado (R$ ${fmt(b.c.budget!, 0)})`, tab: "financas", fin: "cards" });
-  {
-    const cm = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 7);
-    for (const f of money.setup.fixos) if (fixoActive(f, cm) && fixoReajPending(f, cm))
-      todo.push({ tone: "info", who: "Fixo", text: `${f.desc} reajusta este mês: atualize o novo valor (Lançamentos > Contas a pagar)`, tab: "financas", fin: "lanc" });
-  }
-  const rc = reviewCount(money.months, money.setup);
-  if (rc) todo.push({ tone: "info", who: "Finanças", text: `${rc} ${rc > 1 ? "pontos" : "ponto"} para revisar nos lançamentos (para os números ficarem certos)`, tab: "financas", fin: "lanc" });
+  // Financas: so recalcula quando os dados de financas mudam (nao a cada atualizacao de preco do cripto, a cada 30 s)
+  const finTodo = useMemo(() => {
+    const todo: Todo[] = [];
+    // Financas: pagamentos vencidos e pontos para revisar
+    const upList = upcoming(money.months, money.setup);
+    for (const p of upList.filter((x) => x.late))
+      todo.push({ tone: "warn", who: "Pagar", prio: 1, id: `late:${p.desc}:${p.d}`, text: !p.loan && !p.card && !p.once
+        ? `${p.desc} costuma sair até o dia ${p.d.slice(8, 10)} e ainda não veio no extrato (R$ ${fmt(p.v)})`
+        : `${p.desc}: R$ ${fmt(p.v)} venceu em ${new Date(`${p.d}T12:00:00`).toLocaleDateString("pt-BR")}`, tab: "financas", fin: p.loan ? "loans" : p.card ? "cards" : "lanc" });
+    for (const r of money.setup.recvs ?? []) {
+      const st = recvStatus(r, money.months);
+      if (st.late) todo.push({ tone: "warn", who: "Receber", text: `${r.name}: ${st.late} ${st.late > 1 ? "parcelas atrasadas" : "parcela atrasada"} (R$ ${fmt(st.lateV)})`, tab: "financas", fin: "recv" });
+    }
+    for (const b of budgetAlerts(money.months, money.setup))
+      todo.push({ tone: "warn", who: "Cartão", text: `${b.c.name}: R$ ${fmt(b.used, 0)} na fatura aberta, ${fmt(b.pct * 100, 0)}% do planejado (R$ ${fmt(b.c.budget!, 0)})`, tab: "financas", fin: "cards" });
+    {
+      const cm = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 7);
+      for (const f of money.setup.fixos) if (fixoActive(f, cm) && fixoReajPending(f, cm))
+        todo.push({ tone: "info", who: "Fixo", text: `${f.desc} reajusta este mês: atualize o novo valor (Lançamentos > Contas a pagar)`, tab: "financas", fin: "lanc" });
+    }
+    const rc = reviewCount(money.months, money.setup);
+    if (rc) todo.push({ tone: "info", who: "Finanças", text: `${rc} ${rc > 1 ? "pontos" : "ponto"} para revisar nos lançamentos (para os números ficarem certos)`, tab: "financas", fin: "lanc" });
 
-  // Avisos inteligentes das financas
-  const acctNow = accountBalance(money.months, money.setup);
-  const summary = financeSummary(money.cfg.finance ?? [], money.fin, money.wallet, money.spend?.value ?? money.cfg.monthlyCost, acctNow?.value, investFlows(money.months));
-  for (const x of buildAlerts({ months: money.months, setup: money.setup, up: upList, saldo: acctNow?.value ?? null, avg: money.spend, reserve: summary.reserve, reserveMonths: summary.reserveMonths, hist: money.nwHist }))
-    todo.push({ tone: x.tone, who: x.who, text: x.text, tab: "financas", fin: x.fin, prio: x.prio, id: x.id });
+    // Avisos inteligentes das financas
+    const acctNow = accountBalance(money.months, money.setup);
+    const summary = financeSummary(money.cfg.finance ?? [], money.fin, money.wallet, money.spend?.value ?? money.cfg.monthlyCost, acctNow?.value, investFlows(money.months));
+    for (const x of buildAlerts({ months: money.months, setup: money.setup, up: upList, saldo: acctNow?.value ?? null, avg: money.spend, reserve: summary.reserve, reserveMonths: summary.reserveMonths, hist: money.nwHist }))
+      todo.push({ tone: x.tone, who: x.who, text: x.text, tab: "financas", fin: x.fin, prio: x.prio, id: x.id });
+    return todo;
+  }, [money.months, money.setup, money.cfg, money.fin, money.wallet, money.spend, money.nwHist]);
+  todo.push(...finTodo);
   // Contra poluicao: tira os dispensados neste mes, os mais urgentes primeiro, no maximo 5 (o resto em "ver mais")
   const nowMonth = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 7);
   const idOf = (t: Todo) => t.id ?? (t.tab === "financas" ? `${t.who}:${t.text}` : null);

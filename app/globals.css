@@ -849,17 +849,17 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 .shop-freq .chip { cursor: pointer; font-size: 13px; }
 .shop-freq .chip:hover { border-color: var(--accent); color: var(--accent); }
 .shop-list { list-style: none; margin: 0 0 12px; padding: 0; }
-.shop-list li { display: grid; grid-template-columns: 1fr 64px 84px 24px; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.shop-list li { display: grid; grid-template-columns: 1fr 72px 84px 84px 36px; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .shop-list .shop-check { display: flex; flex-direction: row; align-items: center; gap: 10px; cursor: pointer; min-width: 0; margin: 0; font-size: inherit; color: var(--text); }
 .shop-check input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
 .shop-name { font-size: 15px; overflow-wrap: anywhere; }
 .shop-list li.done .shop-name { text-decoration: line-through; color: var(--muted); }
 .shop-list li.done { opacity: .7; }
 .shop-qty, .shop-price { width: 100%; padding: 6px 8px; font-size: 14px; }
-.shop-x { color: var(--muted) !important; font-size: 16px; padding: 0 !important; text-align: center; }
+
 .shop-actions { margin-bottom: 8px; }
 .shop-launch { margin-top: 8px; padding: 12px; border: 1px dashed var(--accent); border-radius: 10px; }
-@media (max-width: 560px) { .shop-list li { grid-template-columns: 1fr 52px 70px 20px; gap: 6px; } }
+
 
 /* lista de compras: comparacao de preco */
 .shop-info { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 12px; margin: -2px 0 0 32px; }
@@ -869,3 +869,35 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 .shop-prod { margin: 14px 0 4px; }
 .shop-prod form { margin: 6px 0 8px; align-items: flex-end; }
 .shop-search { width: 100%; margin: 4px 0 8px; }
+
+/* lista de compras: colunas Kg/Qtd, Preco un., Total; botao de tirar grande e vermelho */
+.shop-list .shop-head { padding: 0 0 4px; border-bottom: 1px solid var(--line); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+.shop-list .shop-head span:not(:first-child) { text-align: right; }
+.shop-tot { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; }
+.shop-list li.done .shop-tot { color: var(--muted); }
+.shop-qty, .shop-price { text-align: right; }
+.shop-x { width: 36px; height: 36px; padding: 0; border-radius: 9px; font-size: 22px; line-height: 1; font-weight: 700;
+  color: var(--sell); background: color-mix(in srgb, var(--sell) 12%, transparent); border: 1px solid color-mix(in srgb, var(--sell) 45%, var(--line)); }
+.shop-x:hover { background: color-mix(in srgb, var(--sell) 22%, transparent); }
+.shop-sum { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--text) 4%, transparent); }
+.shop-sum > div { display: flex; justify-content: space-between; font-size: 14px; font-variant-numeric: tabular-nums; }
+.shop-sum > div span { color: var(--muted); }
+.shop-sum .total { font-size: 16px; border-top: 1px solid var(--line); padding-top: 6px; margin-top: 2px; }
+.shop-sum .total span { color: var(--text); font-weight: 600; }
+.shop-sum .total b { color: var(--accent); }
+/* celular: nome numa linha; embaixo Kg/Qtd, Preco un., Total e o botao de tirar (longe dos campos) */
+@media (max-width: 560px) {
+  .shop-list li { grid-template-columns: 1fr 1fr 1fr 40px; grid-template-areas: "name name name name" "qty price tot x"; row-gap: 6px; column-gap: 8px; }
+  .shop-list li > .shop-check { grid-area: name; }
+  .shop-list li > .shop-qty { grid-area: qty; }
+  .shop-list li > .shop-price { grid-area: price; }
+  .shop-list li > .shop-tot { grid-area: tot; }
+  .shop-list li > .shop-x { grid-area: x; justify-self: end; }
+  .shop-list li > .shop-info { grid-column: 1 / -1; margin-left: 0; }
+  .shop-list .shop-head { display: none; }
+}
+/* iPhone: campos com letra de 16px para o Safari nao dar zoom ao tocar; toque sem zoom de duplo clique */
+html { -webkit-text-size-adjust: 100%; touch-action: manipulation; }
+@media (max-width: 900px), (pointer: coarse) {
+  input, select, textarea { font-size: 16px !important; }
+}

@@ -16,6 +16,17 @@ type PriceRec = { v: number; d: string };
 type Product = { name: string; hist: PriceRec[] };
 type ListDoc = { items: Item[]; freq: Record<string, number>; prices: Record<string, Product> };
 
+// Quantidade em numero: "3" -> 3; "1,37 Kg" -> 1,37; "500 g" / "500 ml" -> 0,5 (o preco e por kg ou litro); vazio -> 1
+export function qtyNum(q?: string) {
+  const m = /^(\d+(?:[.,]\d+)?)\s*(kg|g|l|ml|un|cx|pct|dz)?/i.exec((q ?? "").trim());
+  if (!m) return 1;
+  const n = Number(m[1].replace(",", ".")) || 1;
+  const u = (m[2] ?? "").toLowerCase();
+  return u === "g" || u === "ml" ? n / 1000 : n;
+}
+// Total da linha = quantidade x preco unitario (ou do kg)
+export const lineTotal = (x: { qty?: string; price?: number }) => (x.price ?? 0) * qtyNum(x.qty);
+
 // Novo preco x historico do produto (sem contar o registro de hoje): menor, barato, na media ou caro
 export function verdict(prod: Product | undefined, v: number, today: string) {
   const prev = (prod?.hist ?? []).filter((h) => h.d !== today).slice(-10);
@@ -73,7 +84,8 @@ export default function ShoppingList({ months, setup }: { months: Record<string,
   };
 
   const add = async (raw: string) => {
-    const parts = raw.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
+    // separa os itens pela virgula, mas nao a virgula decimal ("1,37 kg laranja" e um item so)
+    const parts = raw.replace(/(\d),(\d)/g, "$1\u0000$2").split(/[,;\n]/).map((x) => x.replace(/\u0000/g, ",").trim()).filter(Boolean);
     if (!parts.length) return;
     const items = [...data.items];
     const freq = { ...data.freq };
@@ -106,7 +118,7 @@ export default function ShoppingList({ months, setup }: { months: Record<string,
 
   const open = data.items.filter((x) => !x.done);
   const done = data.items.filter((x) => x.done);
-  const est = (l: Item[]) => l.reduce((t, x) => t + (x.price ?? 0) * (Number((x.qty ?? "1").replace(",", ".").match(/^\d+(?:\.\d+)?/)?.[0]) || 1), 0);
+  const est = (l: Item[]) => l.reduce((t, x) => t + lineTotal(x), 0);
   // itens frequentes que nao estao na lista agora (pelo nome mais usado)
   const freqChips = useMemo(() => {
     const inList = new Set(data.items.map((x) => key(x.name)));
@@ -133,18 +145,20 @@ export default function ShoppingList({ months, setup }: { months: Record<string,
           <p className="muted small">Lista vazia. Escreva os itens acima (vários de uma vez, separados por vírgula).</p>
         ) : (
           <ul className="shop-list">
+            <li className="shop-head" aria-hidden="true"><span>Item</span><span>Kg/Qtd</span><span>Preço un.</span><span>Total</span><span /></li>
             {[...open, ...done].map((x) => (
               <li key={x.id} className={x.done ? "done" : ""}>
                 <label className="shop-check">
                   <input type="checkbox" checked={!!x.done} onChange={(e) => update(x.id, { done: e.target.checked })} />
                   <span className="shop-name">{x.name}</span>
                 </label>
-                <input className="shop-qty" value={x.qty ?? ""} placeholder="qtd" aria-label={`Quantidade de ${x.name}`}
+                <input className="shop-qty" value={x.qty ?? ""} placeholder="kg/qtd" inputMode="decimal" aria-label={`Quantidade ou peso de ${x.name}`}
                   onChange={(e) => setData({ ...data, items: data.items.map((y) => (y.id === x.id ? { ...y, qty: e.target.value } : y)) })}
                   onBlur={(e) => update(x.id, { qty: e.target.value.trim() || undefined })} />
-                <input key={`${x.id}-${x.price ?? ""}`} className="shop-price" inputMode="decimal" defaultValue={x.price ? fmt(x.price) : ""} placeholder="R$" aria-label={`Preço de ${x.name}`}
+                <input key={`${x.id}-${x.price ?? ""}`} className="shop-price" inputMode="decimal" defaultValue={x.price ? fmt(x.price) : ""} placeholder="R$ un." aria-label={`Preço de ${x.name}`}
                   onBlur={(e) => { const v = num(e.target.value); if (v !== (x.price ?? 0)) void setPrice(x, v); }} />
-                <button type="button" className="link shop-x" aria-label={`Tirar ${x.name}`} onClick={() => remove(x.id)}>x</button>
+                <span className="shop-tot">{x.price ? brl(lineTotal(x)) : "-"}</span>
+                <button type="button" className="shop-x" aria-label={`Tirar ${x.name} da lista`} title="Tirar da lista" onClick={() => remove(x.id)}>&times;</button>
                 {(() => {
                   const prod = data.prices[key(x.name)];
                   const vd = x.price ? verdict(prod, x.price, today) : null;
@@ -162,6 +176,13 @@ export default function ShoppingList({ months, setup }: { months: Record<string,
             ))}
           </ul>
         )}
+        {est(data.items) > 0 && (
+          <div className="shop-sum">
+            {done.length > 0 && <div><span>No carrinho ({done.length})</span><b>{brl(est(done))}</b></div>}
+            {open.length > 0 && est(open) > 0 && <div><span>Falta pegar ({open.length})</span><b>{brl(est(open))}</b></div>}
+            <div className="total"><span>Total da lista</span><b>{brl(est(data.items))}</b></div>
+          </div>
+        )}
         {data.items.length > 0 && (
           <div className="row wrapline shop-actions">
             {done.length > 0 && <button className="primary" onClick={() => setBuy(!buy)}>{buy ? "fechar" : "Terminei: lançar o gasto"}</button>}
@@ -178,7 +199,8 @@ export default function ShoppingList({ months, setup }: { months: Record<string,
           onAdd={(name) => add(name)} />
         <Note>Escreva vários itens de uma vez separados por vírgula; a quantidade pode vir antes ou depois (&quot;2 leite&quot;, &quot;sabão 3&quot;).
           O preço que você digita fica salvo no produto: na próxima lista ele já vem preenchido e, quando muda, o site compara com
-          os preços anteriores (menor preço, barato, na média ou caro). Use sempre o preço da mesma unidade (ex.: o pacote de 5 kg).
+          os preços anteriores (menor preço, barato, na média ou caro). Kg/Qtd: quantas unidades ou o peso (1,37 kg; 500 g conta
+          como 0,5 kg). Preço un.: o preço da unidade ou do quilo. Total = Kg/Qtd x Preço un.
           No mercado, marque o que já pegou: vai para o fim da lista. O preço é opcional e serve para estimar o total. Ao terminar,
           &quot;lançar o gasto&quot; registra a compra em Lançamentos (categoria Mercado) e tira da lista o que foi comprado.
           Os itens que você mais usa aparecem em &quot;Frequentes&quot; para adicionar com um toque.</Note>

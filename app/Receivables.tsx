@@ -412,7 +412,7 @@ type MoveMode = "conta" | "pagou" | "porela" | "ajuste";
 function MoveForm({ mode, r, months, setup, onDone }: { mode: MoveMode; r: Recv; months: Record<string, MonthDoc>; setup: GastosSetup; onDone: () => void }) {
   const accounts = accountsOf(setup);
   const cur = monthOf(todayBR());
-  const fixos = setup.fixos.filter((f) => fixoActive(f, cur));
+  const fixos = setup.fixos.filter((f) => fixoActive(f, cur) && !f.entrada);
   const [fx, setFx] = useState(mode === "conta" ? (fixos.find((f) => /condom/i.test(f.desc))?.id ?? fixos[0]?.id ?? "") : "");
   const fixo = setup.fixos.find((f) => f.id === fx);
   const [v, setV] = useState(fixo ? fmt(fixoExpected(fixo, cur, months)) : "");

@@ -10,7 +10,7 @@ import { CardPayForm } from "./CardsLoans";
 import { RecvSelect, linkRecv, receive } from "./Receivables";
 import {
   catLabel, CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, budgetSpent, splitGasto, parcelSiblings, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  dirOf, monthIncomes, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, budgetSpent, splitGasto, parcelSiblings, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
   type Bill, type Card, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
@@ -66,6 +66,9 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
   const bills = monthBills(m, items, setup, months);
   const recs = monthReceipts(m, months, setup);
   const recLeft = recs.filter((x) => x.row.status !== "recebida");
+  // entradas fixas do mes (aluguel recebido, salario...)
+  const incomes = monthIncomes(m, items, setup, months);
+  const incLeft = incomes.filter((b) => !b.paid);
   const onRecv = async (x: (typeof recs)[number], v: string) => {
     if (v.startsWith("item:")) { const g = items.find((y) => y.id === v.slice(5)); if (g) await linkRecv(x.r, x.row.k, g, months, setup); }
     else if (v.startsWith("acc:")) await receive(x.r, x.row.k, x.r.parcela, x.row.due < todayBR() ? todayBR() : x.row.due, v.slice(4), months, setup);
@@ -192,6 +195,32 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
     if (!await ask(`Apagar a conta a pagar "${b.desc}" (${brl(b.v)})?`)) return;
     await saveSetup({ fixos: setup.fixos.filter((x) => x.id !== b.ref) });
   };
+  // Entrada fixa recebida: liga a entrada que veio no extrato (e aprende a descricao) ou lanca a entrada na conta escolhida
+  const onIncome = async (b: Bill, src: string) => {
+    const f = setup.fixos.find((x) => x.id === b.ref);
+    if (!f) return;
+    if (src.startsWith("item:")) {
+      const g = items.find((x) => x.id === src.slice(5));
+      if (!g) return;
+      await saveMonth(m, items.map((x) => (x.id === g.id ? { ...x, ref: f.id } : x)));
+      const key = descKey(g.desc);
+      if (key && !(f.keys ?? []).includes(key)) await saveSetup({ fixos: setup.fixos.map((x) => (x.id === f.id ? { ...x, keys: [...(x.keys ?? []), key] } : x)) });
+      return;
+    }
+    const ans = await askText(`Quanto entrou de ${b.desc}? (R$)`, fmt(b.v));
+    if (ans === null) return;
+    const v = num(ans);
+    if (!(v > 0)) return;
+    const def = monthOf(todayBR()) === m ? todayBR() : b.d;
+    const ansD = await askText(`Quando entrou ${b.desc}? (dia/mês)`, `${def.slice(8, 10)}/${def.slice(5, 7)}`);
+    if (ansD === null) return;
+    const md = /^(\d{1,2})(?:\/(\d{1,2}))?/.exec(ansD.trim());
+    const d = md ? `${m.slice(0, 4)}-${String(Number(md[2] ?? m.slice(5, 7))).padStart(2, "0")}-${String(Number(md[1])).padStart(2, "0")}` : def;
+    const gm = monthOf(d);
+    const base = gm === m ? items : months[gm]?.items ?? [];
+    await saveMonth(gm, [...base, { id: newId(), d, desc: b.desc, v, tipo: tipoOfCat(b.cat) ?? "receita", io: "in", cat: b.cat, src: "fixo", ref: f.id,
+      ...(src.startsWith("acc:") ? { acc: src.slice(4) } : {}) }]);
+  };
   const HOW: Record<string, string> = { ligado: "ligado", nome: "pelo nome no extrato", "valor-cat": "pelo valor, mesma categoria", valor: "só pelo valor (outra categoria)" };
   const today = todayBR();
 
@@ -308,7 +337,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
 
       <BudgetCard months={months} setup={setup} m={m} />
 
-      {(bills.length > 0 || recs.length > 0) && (
+      {(bills.length > 0 || recs.length > 0 || incomes.length > 0) && (
         <section className="card bills-card">
           <div className="bills">
             {bills.length > 0 && <>
@@ -358,9 +387,51 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
               })}
             </ul>
             </>}
-            {recs.length > 0 && (
+            {incomes.length > 0 && (
               <>
                 <div className={bills.length ? "bills-head bills-sub" : "bills-head"}>
+                  <b>Entradas fixas</b>
+                  <span className="small muted">{incomes.length - incLeft.length} de {incomes.length} recebidas{incLeft.length ? ` - falta ${brl(incLeft.reduce((t, b) => t + b.v, 0))}` : ""}</span>
+                </div>
+                <ul>
+                  {[...incomes].sort((x, y) => Number(!!x.paid) - Number(!!y.paid) || x.d.localeCompare(y.d)).map((p) => {
+                    const late = !p.paid && p.d < today;
+                    return (
+                      <li key={p.ref} className={p.paid ? "paid" : late ? "late" : ""}>
+                        <span className="b-day">{dm(p.d)}</span>
+                        <span className="b-desc"><b>{p.desc}</b>
+                          {p.varia && <span className="tag">varia</span>}
+                          {p.reaj && <span className="tag warn">reajuste: confira o valor</span>}
+                          {p.paid && <small className="muted">recebido: {p.paid.desc.slice(0, 40)} {brl(p.paid.v)} ({dm(p.paid.d)}) - {HOW[p.how ?? ""] ?? ""}
+                            <button className="link" title="Desfaz: a entrada volta para a receber e você escolhe de novo" onClick={() => notThis(p)}>alterar</button></small>}
+                        </span>
+                        <span className="b-v pos">+{p.varia && !p.paid ? "~" : ""}{brl(p.paid ? p.paid.v : p.v)}</span>
+                        {p.paid ? <span className="sit sit-paga">recebido</span> : (
+                          <>
+                            <span className={late ? "sit sit-atrasada" : "sit sit-aberta"}>{late ? "atrasado" : "a receber"}</span>
+                            <select className="pay-sel" value="" onChange={(e) => e.target.value && onIncome(p, e.target.value)}
+                              title="Ligue à entrada que veio no extrato, ou diga em que conta caiu se não vai aparecer em extrato">
+                              <option value="">recebi / ligar...</option>
+                              <optgroup label="já veio no extrato">
+                                {items.filter((g) => !g.card && !g.ref && g.tipo !== "gasto" && dirOf(g) > 0 && !incomes.some((x) => x.paid?.id === g.id))
+                                  .sort((a, b) => Number(b.cat === p.cat) - Number(a.cat === p.cat) || Math.abs(a.v - p.v) - Math.abs(b.v - p.v)).slice(0, 8)
+                                  .map((g) => <option key={g.id} value={`item:${g.id}`}>{dm(g.d)} {g.desc.slice(0, 28)} {brl(g.v)}</option>)}
+                              </optgroup>
+                              <optgroup label="recebi (não vem em extrato)">
+                                {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>caiu na {a.name}</option>)}
+                              </optgroup>
+                            </select>
+                          </>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+            {recs.length > 0 && (
+              <>
+                <div className={bills.length || incomes.length ? "bills-head bills-sub" : "bills-head"}>
                   <b>A receber</b>
                   <span className="small muted">{recs.length - recLeft.length} de {recs.length} recebidas{recLeft.length ? ` - falta ${brl(recLeft.reduce((t, x) => t + x.r.parcela, 0))}` : ""}</span>
                 </div>
@@ -1311,21 +1382,22 @@ export function LoanForm({ l, onSave, onCancel }: { l: Loan; onSave: (l: Loan) =
 }
 
 // Lista dos gastos fixos (Contas e bens: so mostra)
-export function Fixos({ setup, months, onEdit }: { setup: GastosSetup; months?: Record<string, MonthDoc>; onEdit?: (id: string | null) => void }) {
+export function Fixos({ setup, months, onEdit, entrada = false }: { setup: GastosSetup; months?: Record<string, MonthDoc>; onEdit?: (id: string | null) => void; entrada?: boolean }) {
   const m = monthOf(todayBR());
   const val = (f: Fixo) => fixoExpected(f, m, months);
-  const fixos = setup.fixos.filter((f) => !f.once).sort((a, b) => a.dia - b.dia);
+  const fixos = setup.fixos.filter((f) => !f.once && !!f.entrada === entrada).sort((a, b) => a.dia - b.dia);
   const total = fixos.filter((f) => fixoActive(f, m)).reduce((s, f) => s + val(f), 0);
   // situacao de cada fixo neste mes (pago, a pagar, atrasado)
-  const bills = months ? monthBills(m, months[m]?.items ?? [], setup, months) : [];
+  const bills = months ? (entrada ? monthIncomes : monthBills)(m, months[m]?.items ?? [], setup, months) : [];
   const billOf = (f: Fixo) => bills.find((b) => b.ref === f.id);
   const active = fixos.filter((f) => fixoActive(f, m));
   const paidN = active.filter((f) => billOf(f)?.paid).length;
   const today = todayBR();
+  if (entrada && !fixos.length) return null;
   return (
     <section className="card">
-      <div className="card-head"><h2>Gastos fixos</h2>
-        <span className="muted small">{fixos.length ? `~${brl(total)} por mês${months && active.length ? ` - ${paidN} de ${active.length} pagos este mês` : ""}` : ""}{onEdit && <button className="link" onClick={() => onEdit(null)}>+ fixo</button>}</span></div>
+      <div className="card-head"><h2>{entrada ? "Entradas fixas" : "Gastos fixos"}</h2>
+        <span className="muted small">{fixos.length ? `${entrada ? "+" : ""}~${brl(total)} por mês${months && active.length ? ` - ${paidN} de ${active.length} ${entrada ? "recebidas" : "pagos"} este mês` : ""}` : ""}{onEdit && <button className="link" onClick={() => onEdit(null)}>{entrada ? "+ entrada" : "+ fixo"}</button>}</span></div>
       {fixos.length > 0 ? (
         <ul className="pend small">
           {fixos.map((f) => {
@@ -1339,8 +1411,8 @@ export function Fixos({ setup, months, onEdit }: { setup: GastosSetup; months?: 
                 {f.end && <span className={f.end < m ? "tag warn" : "tag"}>{f.end < m ? "terminou" : "até"} {monthLabel(f.end)}</span>}
                 <span>{f.varia ? "~" : ""}{brl(val(f))}</span>
                 {(() => { const b = billOf(f); if (!b) return null;
-                  return b.paid ? <span className="sit sit-paga" title={`${b.paid.desc} - ${brl(b.paid.v)}`}>pago {dm(b.paid.d)}</span>
-                    : b.d < today ? <span className="sit sit-atrasada">atrasado</span> : <span className="sit sit-aberta">a pagar</span>; })()}
+                  return b.paid ? <span className="sit sit-paga" title={`${b.paid.desc} - ${brl(b.paid.v)}`}>{entrada ? "recebido" : "pago"} {dm(b.paid.d)}</span>
+                    : b.d < today ? <span className="sit sit-atrasada">atrasado</span> : <span className="sit sit-aberta">{entrada ? "a receber" : "a pagar"}</span>; })()}
                 {onEdit && <button className="link" onClick={() => onEdit(f.id)}>alterar</button>}</li>
             );
           })}
@@ -1449,7 +1521,8 @@ function Simulator({ saldo, isNow, pending, sobrou }: { saldo: number | null; is
 
 const MES_OPTS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 // Formulario do gasto fixo (Lancamentos): novo ou alterar/remover um existente
-export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fixo | null; onDone: (msg?: string) => void }) {
+export function FixoForm({ setup, fixo, onDone, entrada }: { setup: GastosSetup; fixo: Fixo | null; onDone: (msg?: string) => void; entrada?: boolean }) {
+  const isIn = entrada ?? !!fixo?.entrada;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const cur = monthOf(todayBR());
@@ -1465,7 +1538,7 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
   const [start, setStart] = useState(fixo ? fixo.start ?? "" : cur); // novo fixo comeca neste mes
   const [end, setEnd] = useState(fixo?.end ?? "");
   const monthOpts = (back: number, fwd: number) => Array.from({ length: back + fwd + 1 }, (_, i) => addMonths(cur, i - back));
-  const finalCat = cat ?? categorize(desc, false, setup.rules).cat;
+  const finalCat = cat ?? categorize(desc, isIn, setup.rules).cat;
   const changed = !!fixo && Math.abs(num(v) - curV) > 0.005;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1486,7 +1559,7 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
     void _s; void _v; void _r; void _a; void _b;
     const f: Fixo = { ...rest, id: fixo?.id ?? newId(), desc: desc.trim(), v: base, cat: finalCat, dia: Math.max(1, Math.min(31, Math.round(num(dia)) || 1)),
       ...(st.length ? { steps: st } : {}), ...(varia ? { varia: true } : {}), ...(reaj ? { reaj } : {}),
-      ...(start ? { start } : {}), ...(end ? { end } : {}) };
+      ...(start ? { start } : {}), ...(end ? { end } : {}), ...(isIn ? { entrada: true } : {}) };
     setBusy(true); setErr("");
     try {
       await saveSetup({ fixos: setup.fixos.some((x) => x.id === f.id) ? setup.fixos.map((x) => (x.id === f.id ? f : x)) : [...setup.fixos, f] });
@@ -1494,17 +1567,17 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
       setBusy(false); setErr("Não salvou (sem conexão?). Tente de novo.");
       return;
     }
-    onDone(`${fixo ? "Salvo" : "Adicionado"}: ${f.desc}, ${f.varia ? "~" : ""}${brl(fixoValue(f, cur))} todo dia ${f.dia}${f.start ? `, a partir de ${monthLabel(f.start)}` : ""}${f.end ? ` até ${monthLabel(f.end)}` : ""}. Ele aparece em Contas e bens > Gastos fixos e nos previstos do mês.`);
+    onDone(`${fixo ? "Salvo" : "Adicionado"}: ${f.desc}, ${f.varia ? "~" : ""}${brl(fixoValue(f, cur))} todo dia ${f.dia}${f.start ? `, a partir de ${monthLabel(f.start)}` : ""}${f.end ? ` até ${monthLabel(f.end)}` : ""}. ${isIn ? "Ela aparece em Contas do mês como a receber e em Contas e bens > Entradas fixas." : "Ele aparece em Contas e bens > Gastos fixos e nos previstos do mês."}`);
   };
   const remove = async () => {
-    if (fixo && await ask(`Remover o fixo "${fixo.desc}"?`)) { await saveSetup({ fixos: setup.fixos.filter((x) => x.id !== fixo.id) }); onDone(`Removido: ${fixo.desc}.`); }
+    if (fixo && await ask(`Remover ${isIn ? "a entrada fixa" : "o fixo"} "${fixo.desc}"?`)) { await saveSetup({ fixos: setup.fixos.filter((x) => x.id !== fixo.id) }); onDone(`Removido: ${fixo.desc}.`); }
   };
   // historico: valor inicial e cada mudanca
   const hist = fixo ? [{ from: "", v: fixo.v }, ...steps] : [];
   return (
     <form className="fin-form" onSubmit={submit}>
       <div className="row wrapline">
-        <label className="grow">Descrição<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Aluguel, internet, escola..." /></label>
+        <label className="grow">Descrição<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={isIn ? "Aluguel recebido, salário, pensão..." : "Aluguel, internet, escola..."} /></label>
         <label>{varia ? "Valor médio (R$)" : "Valor (R$)"}<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
         {changed && (
           <label>Novo valor vale
@@ -1550,8 +1623,11 @@ export function FixoForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fi
         <button className="primary" type="submit" disabled={busy || !desc.trim() || !(num(v) > 0)}>{busy ? "Salvando..." : fixo ? "Salvar" : "Adicionar"}</button>
         {fixo && <button className="ghost" type="button" onClick={remove}>remover</button>}
       </div>
-      <Note>Todo mês ele aparece em &quot;Previstos&quot; até o pagamento aparecer num extrato. Mudou o valor (reajuste)? Altere aqui é
-        diga a partir de quando: os meses anteriores continuam com o valor antigo.</Note>
+      {isIn ? <Note>Todo mês ela aparece em &quot;Contas do mês&quot; como a receber, até a entrada aparecer no extrato (com o nome dela ou o
+        mesmo valor na mesma categoria) ou você marcar &quot;recebi&quot;. Sem mês de fim, continua para sempre. Mudou o valor (reajuste)? Altere
+        aqui e diga a partir de quando: os meses anteriores continuam com o valor antigo.</Note>
+        : <Note>Todo mês ele aparece em &quot;Previstos&quot; até o pagamento aparecer num extrato. Mudou o valor (reajuste)? Altere aqui e
+        diga a partir de quando: os meses anteriores continuam com o valor antigo.</Note>}
     </form>
   );
 }

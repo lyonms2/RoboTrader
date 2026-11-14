@@ -53,6 +53,12 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Se o valor muda todo mês (luz, água), marque essa opção: a previsão usa a média.",
       "Se tem reajuste anual (aluguel), escolha o mês: o site avisa quando chegar.",
     ], tips: ["Mudou o valor? Altere o fixo e diga a partir de quando: os meses anteriores ficam com o valor antigo."] },
+    { title: "Entrada fixa (aluguel recebido, salário...)", steps: [
+      "Em Lançamentos, clique em \"Entrada fixa\".",
+      "Informe descrição, valor, dia em que costuma cair e categoria. Sem mês de fim, ela continua todo mês.",
+      "Se o valor muda todo mês, marque essa opção (a previsão usa a média). Mudou o valor (reajuste)? Altere e diga a partir de quando.",
+      "Ela aparece em \"Contas do mês\" como a receber até a entrada vir no extrato, ou use \"recebi / ligar\".",
+    ] },
     { title: "Lançar uma conta a pagar (ainda não paga)", steps: [
       "Em Lançamentos, clique em \"Contas a pagar\" e escolha \"Uma vez só\".",
       "Informe descrição, valor, vencimento e categoria.",

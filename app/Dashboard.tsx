@@ -28,7 +28,7 @@ const CandidatesCard = dynamic(() => import("./CandidatesCard"), { loading: load
 const Manual = dynamic(() => import("./Manual"), { loading: loadingTab });
 import { buildAlerts } from "@/lib/alerts";
 import type { NetWorthDoc } from "@/lib/patrimonio";
-import { EMPTY_SETUP, debts, setCardsReg, accountBalance, avgMonthly, fixoActive, recvStatus, fixoReajPending, investFlows, setCustomCats, type GastosSetup, type MonthDoc } from "@/lib/gastos";
+import { EMPTY_SETUP, debts, monthIncomes, setCardsReg, accountBalance, avgMonthly, fixoActive, recvStatus, fixoReajPending, investFlows, setCustomCats, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import { financeSummary } from "@/lib/financeMath";
 import type { CandidatesDoc } from "@/lib/candidates";
 import { usePrices, type Prices } from "./usePrices";
@@ -536,7 +536,15 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
       for (const f of money.setup.fixos) if (fixoActive(f, cm) && fixoReajPending(f, cm))
         todo.push({ tone: "info", who: "Fixo", text: `${f.desc} reajusta este mês: atualize o novo valor (Lançamentos > Contas a pagar)`, tab: "financas", fin: "lanc" });
     }
-    const rc = reviewCount(money.months, money.setup);
+    // entrada fixa que costuma cair e ainda nao veio
+  {
+    const t0 = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
+    const cm = t0.slice(0, 7);
+    for (const b of monthIncomes(cm, money.months[cm]?.items ?? [], money.setup, money.months))
+      if (!b.paid && b.d < t0) todo.push({ tone: "info", who: "Receber", prio: 2, id: `inc:${b.ref}:${cm}`, tab: "financas", fin: "lanc",
+        text: `${b.desc} costuma cair até o dia ${b.d.slice(8, 10)} e ainda não veio no extrato (R$ ${fmt(b.v)})` });
+  }
+  const rc = reviewCount(money.months, money.setup);
     if (rc) todo.push({ tone: "info", who: "Finanças", text: `${rc} ${rc > 1 ? "pontos" : "ponto"} para revisar nos lançamentos (para os números ficarem certos)`, tab: "financas", fin: "lanc" });
 
     // Avisos inteligentes das financas

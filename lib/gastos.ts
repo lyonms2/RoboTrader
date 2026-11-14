@@ -83,6 +83,7 @@ export type Fixo = {
   notIds?: string[]; // lancamentos que voce disse "nao e este" (nao contam como pagamento deste fixo)
   // conta a pagar avulsa (uma vez so, ex.: boleto, conserto): start = end = mes do vencimento, due = data do vencimento
   once?: boolean; due?: string;
+  entrada?: boolean; // entrada fixa: dinheiro que entra todo mes (aluguel recebido, salario...), reconhecida pelas entradas do extrato
 };
 // O fixo existe neste mes?
 export const fixoActive = (f: Fixo, m: string) => (!f.start || m >= f.start) && (!f.end || m <= f.end);
@@ -440,7 +441,7 @@ export function fixoHistory(f: Fixo, m: string, months: Record<string, MonthDoc>
   const out: { m: string; v: number }[] = [];
   for (let k = 1; k <= 6 && out.length < 3; k++) {
     const mm = addMonths(m, -k);
-    const hit = (months[mm]?.items ?? []).find((i) => i.tipo === "gasto" && fixoLinked(f, i));
+    const hit = (months[mm]?.items ?? []).find((i) => (f.entrada ? !i.card && i.tipo !== "gasto" && dirOf(i) > 0 : i.tipo === "gasto") && fixoLinked(f, i));
     if (hit) out.push({ m: mm, v: hit.v });
   }
   return out;
@@ -463,7 +464,7 @@ export const fixoReajPending = (f: Fixo, m: string) =>
 export type BillHow = "ligado" | "nome" | "valor-cat" | "valor";
 export type Bill = {
   ref: string; desc: string; v: number; cat: string; d: string; card?: string; parc?: [number, number]; varia?: boolean; reaj?: boolean;
-  fixo?: boolean; once?: boolean; paid?: Gasto; how?: BillHow;
+  fixo?: boolean; once?: boolean; entrada?: boolean; paid?: Gasto; how?: BillHow;
 };
 // Conta a pagar avulsa: aparece no mes do vencimento; se ficou sem pagar, continua no mes atual (atrasada) ate ser paga
 function onceSettled(f: Fixo, setup: GastosSetup, months: Record<string, MonthDoc> | undefined, before: string) {
@@ -502,7 +503,7 @@ export function monthBills(m: string, items: Gasto[], setup: GastosSetup, months
   };
   const out: Bill[] = [];
   for (const f of setup.fixos) {
-    if (!billActive(f, m, setup, months)) continue;
+    if (f.entrada || !billActive(f, m, setup, months)) continue;
     const v = fixoExpected(f, m, months);
     const words = nameWords(f.desc);
     // pelo nome: descricao aprendida, ou o nome do fixo no texto do extrato; valor que varia aceita ate 50% de diferenca
@@ -522,6 +523,30 @@ export function monthBills(m: string, items: Gasto[], setup: GastosSetup, months
   }
   return out;
 }
+// Entradas fixas do mes (aluguel recebido, salario...): recebida quando ha uma entrada no extrato ligada a ela, com o nome dela
+// (ou descricao ja aprendida) ou com o mesmo valor (2%) na mesma categoria. So entradas: gasto e compra no cartao nunca contam
+export function monthIncomes(m: string, items: Gasto[], setup: GastosSetup, months?: Record<string, MonthDoc>): Bill[] {
+  const used = new Set<string>();
+  const out: Bill[] = [];
+  for (const f of setup.fixos) {
+    if (!f.entrada || !fixoActive(f, m)) continue;
+    const v = fixoExpected(f, m, months);
+    const words = nameWords(f.desc);
+    const tol = f.varia ? 0.5 : 0.1;
+    const free = items.filter((i) => !used.has(i.id) && !i.card && i.tipo !== "gasto" && dirOf(i) > 0 && !(i.ref && i.ref !== f.id) && !(f.notIds ?? []).includes(i.id));
+    const tries: [Gasto | undefined, BillHow][] = [
+      [free.find((i) => i.ref === f.id), "ligado"],
+      [free.find((i) => !i.ref && (fixoLinked(f, i) || (words.length > 0 && words.some((w) => plain(i.desc).includes(w)) && Math.abs(i.v - v) <= v * tol))), "nome"],
+      [free.find((i) => !i.ref && i.cat === f.cat && Math.abs(i.v - v) <= v * 0.02), "valor-cat"],
+    ];
+    const hit = tries.find(([g]) => g);
+    if (hit) used.add(hit[0]!.id);
+    out.push({ ref: f.id, desc: f.desc, v, cat: f.cat, d: dayIn(m, f.dia), varia: f.varia, reaj: fixoReajPending(f, m), fixo: true, entrada: true,
+      ...(hit ? { paid: hit[0]!, how: hit[1] } : {}) });
+  }
+  return out;
+}
+
 // Previstos do mes que ainda nao foram pagos
 export function pendingFor(m: string, items: Gasto[], setup: GastosSetup, months?: Record<string, MonthDoc>) {
   return monthBills(m, items, setup, months).filter((b) => !b.paid);

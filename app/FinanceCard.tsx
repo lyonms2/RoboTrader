@@ -253,6 +253,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
 
       <h3 className="bal-title">Compromissos todo mês</h3>
       <Fixos setup={setup} months={months} onEdit={(id) => goEdit("fixo", id)} />
+      <Fixos setup={setup} months={months} entrada onEdit={(id) => goEdit("entrada", id)} />
 
       <section className="card">
         <h2>Seus dados</h2>
@@ -781,10 +782,10 @@ function Dividends({ rows, fin }: { rows: FinRow[]; fin: FinanceDoc | null }) {
 }
 
 // ---------- "O que voce quer lancar?" (unico lugar de entrada) ----------
-export type EntryType = "mov" | "import" | "inv" | "bem" | "fixo" | "pagar" | "conta";
+export type EntryType = "mov" | "import" | "inv" | "bem" | "fixo" | "pagar" | "entrada" | "conta";
 const ENTRY_TYPES: { id: EntryType; label: string }[] = [
   { id: "mov", label: "Gasto ou entrada" }, { id: "import", label: "Importar extrato" },
-  { id: "fixo", label: "Contas a pagar" }, { id: "conta", label: "Conta / saldo" },
+  { id: "fixo", label: "Contas a pagar" }, { id: "entrada", label: "Entrada fixa" }, { id: "conta", label: "Conta / saldo" },
 ];
 
 function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, onRemoveInv }: {
@@ -806,7 +807,8 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
   // Itens existentes de cada tipo (para alterar ou remover)
   const existing: Record<string, { id: string; label: string }[]> = {
     // contas a pagar: as que repetem todo mes (fixos) e as de uma vez so
-    fixo: [...setup.fixos.filter((f) => !f.once).map((f) => ({ id: f.id, label: `${f.desc} (todo mês)` })),
+    entrada: setup.fixos.filter((f) => f.entrada).map((f) => ({ id: f.id, label: `${f.desc} (todo dia ${f.dia})` })),
+    fixo: [...setup.fixos.filter((f) => !f.once && !f.entrada).map((f) => ({ id: f.id, label: `${f.desc} (todo mês)` })),
       ...setup.fixos.filter((f) => f.once).map((f) => ({ id: f.id, label: `${f.desc} (uma vez, vence ${f.due ? `${f.due.slice(8, 10)}/${f.due.slice(5, 7)}` : "-"})` }))],
     conta: accounts.map((a) => ({ id: a.id, label: a.name })),
   };
@@ -850,6 +852,7 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
           <button type="button" role="radio" aria-checked={onceMode} className={onceMode ? "pill on" : "pill"} onClick={() => setOnceMode(true)}>Uma vez só (boleto, conserto, IPVA)</button>
         </div>
       )}
+      {type === "entrada" && <FixoForm key={`${id ?? "novo"}-${n}-in`} setup={setup} fixo={cur && cur.entrada ? cur : null} entrada onDone={done} />}
       {(type === "fixo" || type === "pagar") && !isOnce && <FixoForm key={`${id ?? "novo"}-${n}`} setup={setup} fixo={cur} onDone={done} />}
       {(type === "fixo" || type === "pagar") && isOnce && <PayableForm key={`${id ?? "novo"}-${n}-once`} setup={setup} fixo={cur} onDone={done} />}
       {type === "conta" && (

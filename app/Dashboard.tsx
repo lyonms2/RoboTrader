@@ -36,6 +36,7 @@ import { ask, askText, tell } from "./Dialog";
 
 import Note from "./Note";
 import ExportData from "./ExportData";
+import ScrollHints from "./ScrollHints";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 // Sem arredondar: quantidades com ate 8 casas (precisao da corretora) e precos com 2 a 8 casas
 const fmtQty = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 8 });
@@ -378,6 +379,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             <button className="ghost" onClick={() => signOut(auth())}>Sair</button>
           </div>
         </div>
+        <ScrollHints />
         <nav className="tabs" role="tablist">
           {tabs.map((t) => (
             <button key={t.id} role="tab" aria-selected={t.id === "cripto" ? inCrypto : tab === t.id}

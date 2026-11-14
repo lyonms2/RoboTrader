@@ -923,3 +923,33 @@ html { -webkit-text-size-adjust: 100%; touch-action: manipulation; }
 .nota-table input { width: 100%; min-width: 140px; }
 .nota-table tr.off { opacity: .45; }
 .nota-table th:first-child, .nota-table td:first-child { width: 32px; }
+
+/* ===== celular: nada fora da tela ===== */
+.wrapline { flex-wrap: wrap; }
+.row.wrapline > label { min-width: 0; max-width: 100%; }
+input, select, textarea { max-width: 100%; }
+.mbars, .mbars.six, .mbars.twelve { grid-template-columns: repeat(var(--cols, 12), minmax(0, 1fr)); }
+.mbars.six { --cols: 6; }
+.mbar { min-width: 0; }
+.mbar small { overflow: hidden; white-space: nowrap; text-overflow: clip; }
+@media (max-width: 600px) {
+  .mbars.twelve { gap: 2px; }
+  .mbars.twelve small { font-size: 8.5px; letter-spacing: -.2px; }
+  .limit { margin-bottom: 38px; }
+  .limit small { white-space: normal; right: 0; line-height: 1.35; }
+  .shop-prod form > label.grow, .shop-prod form > button { flex: 1 1 100%; }
+}
+
+/* ===== barras de abas: seta e sombra quando ha mais abas para o lado ===== */
+.hs-on::before, .hs-on::after { position: sticky; flex: none; align-self: stretch; width: 34px; display: grid; place-items: center;
+  font-size: 24px; font-weight: 700; line-height: 1; color: var(--accent); pointer-events: none; z-index: 2; opacity: 0; transition: opacity .15s; }
+.hs-on::before { content: "‹"; left: 0; margin-right: -34px; background: linear-gradient(to right, var(--bg) 45%, transparent); }
+.hs-on::after { content: "›"; right: 0; margin-left: -34px; background: linear-gradient(to left, var(--bg) 45%, transparent); }
+.hs-on.can-left::before, .hs-on.can-right::after { opacity: 1; }
+.tabs.hs-on::before { background: linear-gradient(to right, var(--bg) 45%, transparent); }
+/* a seta cobre tambem o espaco lateral da barra (padding), para ficar colada na borda da tela */
+.subtabs:not(.inner), .subtabs.inner { --hs-pad: 16px; }
+.toolbar .subtabs:not(.inner) { --hs-pad: 0px; }
+.tabs { --hs-pad: 12px; }
+.hs-on::after { right: calc(-1 * var(--hs-pad, 0px)); width: calc(34px + var(--hs-pad, 0px)); margin-left: calc(-34px - var(--hs-pad, 0px)); padding-right: var(--hs-pad, 0px); }
+.hs-on::before { left: calc(-1 * var(--hs-pad, 0px)); width: calc(34px + var(--hs-pad, 0px)); margin-right: calc(-34px - var(--hs-pad, 0px)); padding-left: var(--hs-pad, 0px); }

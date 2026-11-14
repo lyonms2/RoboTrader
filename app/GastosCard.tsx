@@ -872,7 +872,7 @@ function HowItWorks() {
   return (
     <details className="how small">
       <summary>Como o site conta cada coisa (cartão, empréstimo, cripto, cofrinho, fixos)</summary>
-      <table>
+      <div className="table-scroll"><table>
         <thead><tr><th>Situação</th><th>Gasto do mês</th><th>Saldo da conta</th><th>Patrimônio</th></tr></thead>
         <tbody>
           <tr><td><b>Compra no cartão</b></td><td>não entra no mês da compra (fica na fatura, em Cartões e empréstimos)</td><td>não mexe</td><td>vira dívida da fatura</td></tr>
@@ -885,7 +885,7 @@ function HowItWorks() {
           <tr><td><b>Dinheiro que você passa para alguém pagar por você</b> (conta sem extrato)</td><td>só quando você lança o que foi pago (&quot;Pago com&quot; essa conta)</td><td>sai da sua, fica &quot;a discriminar&quot; na outra</td><td>não muda até virar gasto</td></tr>
           <tr><td><b>Gasto fixo</b> (aluguel, internet...)</td><td>conta quando aparece no extrato</td><td>sai da conta</td><td>diminui</td></tr>
         </tbody>
-      </table>
+      </table></div>
       <p className="muted">Fixos e parcelas ficam em &quot;Ainda a pagar&quot; até aparecer no mês um gasto com o mesmo valor (2%), em qualquer categoria.
         Só use &quot;marcar pago&quot; se o pagamento não vai aparecer em nenhum extrato importado. Lançamento repetido (mesmo valor, até 3 dias)
         vem desmarcado na importação.</p>

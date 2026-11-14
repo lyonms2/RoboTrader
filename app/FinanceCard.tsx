@@ -13,6 +13,9 @@ import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
 import { ask, askText, tell } from "./Dialog";
 
 import Note from "./Note";
+import ExportData from "./ExportData";
+// membro: dados em users/{uid}/ (o dono exporta tambem as operacoes manuais)
+const isMemberBase = () => P("").startsWith("users/");
 // Resumo = ver como esta; Lancamentos = unico lugar onde o dinheiro se move; Contas e bens = unico lugar com saldos e cadastros
 // O resumo (patrimonio, mes, proximos pagamentos, evolucao) fica na Visao geral
 export type Sub = "lanc" | "invest" | "cards" | "bens";
@@ -218,6 +221,11 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
 
       <h3 className="bal-title">Compromissos todo mês</h3>
       <Fixos setup={setup} months={months} onEdit={(id) => goEdit("fixo", id)} />
+
+      <section className="card">
+        <h2>Seus dados</h2>
+        <ExportData owner={!isMemberBase()} />
+      </section>
       </>}
     </>
   );

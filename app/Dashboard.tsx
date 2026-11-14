@@ -31,6 +31,7 @@ import { usePrices, type Prices } from "./usePrices";
 import { ask, askText, tell } from "./Dialog";
 
 import Note from "./Note";
+import ExportData from "./ExportData";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 // Sem arredondar: quantidades com ate 8 casas (precisao da corretora) e precos com 2 a 8 casas
 const fmtQty = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 8 });
@@ -1376,6 +1377,9 @@ function MyAccount({ user, onClose }: { user: User; onClose: () => void }) {
         <li>Carteiras cripto: só o endereço público, lido em modo leitura. Nunca peça nem informe frase secreta ou chave privada.</li>
         <li>Nada aqui é recomendação de investimento: é uma ferramenta educacional de organização.</li>
       </ul>
+      <h3>Exportar meus dados</h3>
+      <ExportData owner={false} />
+      <h3>Apagar</h3>
       <div className="row"><button className="danger" disabled={busy} onClick={wipe}>{busy ? "Apagando..." : "Apagar meus dados"}</button></div>
     </section>
   );

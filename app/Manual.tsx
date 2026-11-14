@@ -149,6 +149,11 @@ const TOPICS: { group: string; items: Topic[] }[] = [
     ] },
   ] },
   { group: "Sua conta", items: [
+    { title: "Exportar meus dados (backup)", steps: [
+      "Em Finanças → Contas e bens, no fim da página, ou em \"Minha conta\" (membros).",
+      "\"Exportar tudo\" baixa um arquivo com tudo o que você lançou: guarde como backup.",
+      "\"Lançamentos em planilha\" baixa um CSV que abre no Excel ou no Google Planilhas.",
+    ], tips: ["O arquivo inclui os endereços públicos das carteiras: guarde num lugar seu e não compartilhe."] },
     { title: "Pedir ajuda (modo suporte) e privacidade", steps: [
       "Em \"Minha conta\", clique em \"Permitir suporte por 24 horas\" para o SeuBitico ver seus dados, sem poder alterar.",
       "Você pode clicar em \"Encerrar agora\" quando quiser; depois de 24 horas o acesso fecha sozinho.",

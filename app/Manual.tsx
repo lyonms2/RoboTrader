@@ -93,6 +93,14 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Na próxima lista, o item já vem com o último preço. Mudou o preço? O site compara: menor preço, barato, na média ou caro (+%).",
       "Em \"Produtos salvos\" (embaixo da lista) você vê último, menor e média de cada produto e pode salvar um preço sem estar comprando.",
     ], tips: ["Use sempre o mesmo nome e o preço da mesma unidade (ex.: o pacote de 5 kg), para a comparação fazer sentido."] },
+    { title: "Lista de compras inteligente", steps: [
+      "Mercado de hoje: escolha no topo da lista; os preços digitados ficam com o mercado e a tabela mostra onde cada produto saiu mais barato.",
+      "Tamanho da embalagem (Produtos salvos, \"+ tamanho\"): aparece o preço por kg/litro, para comparar pacotes diferentes e marcas.",
+      "Depois de 2 compras terminadas, o site sabe de quanto em quanto tempo você compra cada coisa e mostra \"Está na hora de comprar\".",
+      "\"Bom para estocar\": item que você compra sempre, no menor preço da sua história.",
+      "No fim da lista: quanto ela custaria em cada mercado e quanto o Mercado do mês ficaria (com o orçamento, se tiver).",
+      "Sua inflação no mercado: quanto os seus produtos subiram em 3, 6 e 12 meses, ao lado do IPCA.",
+    ] },
   ] },
   { group: "Orçamento e metas", items: [
     { title: "Definir um orçamento por categoria", steps: [

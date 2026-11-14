@@ -137,7 +137,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
     <EntryPanel entry={entry} setEntry={setEntry} months={months} setup={setup} invest={items} fin={fin}
       onSaveInv={upsert} onRemoveInv={remove} />
   );
-  if (sub === "compras") return <>{nav}<ShoppingList months={months} setup={setup} /></>;
+  if (sub === "compras") return <>{nav}<ShoppingList months={months} setup={setup} ipca12m={fin?.ipca12m ?? null} /></>;
   if (sub === "cards") return <>{nav}<CardsLoans months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} /></>;
   if (sub === "invest") return (
     <>{nav}<InvestPart items={items} rows={rows} fin={fin} months={months} reserve={s.reserve} reserveMonths={s.reserveMonths}

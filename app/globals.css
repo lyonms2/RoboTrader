@@ -814,3 +814,11 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 .bal-eq li.total { border-bottom: 0; border-top: 1px solid var(--text); margin-top: 2px; padding-top: 8px; font-size: 15px; }
 .bal-eq li.total span { color: var(--text); font-weight: 600; }
 .bal-title .bal-sum { order: 2; font-size: 13px; color: var(--text); letter-spacing: 0; text-transform: none; font-weight: 600; }
+
+/* Visao geral: a conta do patrimonio recolhida */
+.eq-more { margin: -4px 0 14px; }
+.eq-more > summary { cursor: pointer; font-size: 13px; color: var(--accent); list-style: none; display: inline-block; padding: 2px 0; }
+.eq-more > summary::-webkit-details-marker { display: none; }
+.eq-more > summary::before { content: "\203A"; display: inline-block; margin-right: 6px; transition: transform .15s; }
+.eq-more[open] > summary::before { transform: rotate(90deg); }
+.eq-more[open] > summary { margin-bottom: 6px; }

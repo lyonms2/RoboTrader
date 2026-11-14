@@ -59,6 +59,25 @@ export function FinBar({ byGroup }: { byGroup: Record<FinGroup, number> }) {
   );
 }
 
+// A conta do patrimonio linha a linha: o que tem - o que deve = liquido (cripto so quando informada)
+export function BalanceEq({ contas, investido, crypto, bens, recv, cards, loans }: {
+  contas: number; investido: number; crypto?: number; bens: number; recv: number; cards: number; loans: number;
+}) {
+  const liquido = contas + investido + (crypto ?? 0) + bens + recv - cards - loans;
+  return (
+    <ul className="bal-eq">
+      <li><span>Contas</span><b>{brl(contas)}</b></li>
+      <li><span>Investimentos</span><b>{brl(investido)}</b></li>
+      {crypto !== undefined && <li><span>Cripto</span><b>{brl(crypto)}</b></li>}
+      {bens > 0 && <li><span>Bens (imóveis, veículos)</span><b>{brl(bens)}</b></li>}
+      {recv > 0 && <li><span>A receber</span><b className="pos">{brl(recv)}</b></li>}
+      {cards > 0 && <li className="minus"><span>Cartões (faturas e parcelas)</span><b>-{brl(cards)}</b></li>}
+      {loans > 0 && <li className="minus"><span>Empréstimos</span><b>-{brl(loans)}</b></li>}
+      <li className="total"><span>Líquido</span><b className={liquido < 0 ? "neg" : "pos"}>{brl(liquido)}</b></li>
+    </ul>
+  );
+}
+
 // ---------- blocos da Visao geral ----------
 type Ctx = {
   cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; spend: { value: number; months: number } | null;
@@ -101,6 +120,11 @@ export function PatrimonioCard({ cfg, fin, wallet, spend, debt, months, setup, o
             {wallet && !s.usd && <small className="warn">falta o dólar: Atualizar cotações em Investimentos</small>}
           </div>
         </div>
+        <details className="eq-more">
+          <summary>ver a conta: o que você tem - o que deve</summary>
+          <BalanceEq contas={s.byGroup.conta} investido={s.total - s.byGroup.cripto - s.byGroup.dolar - s.byGroup.conta - s.bens}
+            crypto={s.byGroup.cripto + s.byGroup.dolar} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} />
+        </details>
         <div className="kpis">
           <div><span>Reserva de emergência</span><b>{brl(s.reserve)}</b>
             <small className="muted">{s.reserveMonths !== null ? `cobre ${fmt(s.reserveMonths, 1)} meses de gastos` : "a média de gastos aparece depois do 1o mês completo de lançamentos"}{spend ? ` (média de ${spend.months} ${spend.months > 1 ? "meses" : "mês"})` : ""}</small></div>

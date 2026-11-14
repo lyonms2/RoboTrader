@@ -99,6 +99,11 @@ export function HistoryLine({ history }: { history: WalletHistoryDoc[] }) {
   const last = history[history.length - 1];
   const chg = last.total - first.total;
   const cur = idx !== null ? history[idx] : null;
+  // O que mais mudou por classe (do primeiro dia ate o ponto mostrado) e dias em que a lista de carteiras mudou
+  const shown = cur ?? last;
+  const parts = CLASSES.map((c) => ({ k: c.label, v: (shown.byClass?.[c.key] ?? 0) - (first.byClass?.[c.key] ?? 0) }))
+    .filter((x) => Math.abs(x.v) >= 1).sort((a, b) => Math.abs(b.v) - Math.abs(a.v)).slice(0, 4);
+  const addrChanges = history.filter((h, i) => i > 0 && h.addr && history[i - 1].addr && h.addr !== history[i - 1].addr);
   const date = (t: number) => new Date(t).toLocaleDateString("pt-BR");
   function move(e: React.MouseEvent<SVGSVGElement>) {
     const r = e.currentTarget.getBoundingClientRect();
@@ -120,6 +125,7 @@ export function HistoryLine({ history }: { history: WalletHistoryDoc[] }) {
         <text x={W - 2} y={y(lo) + 12} className="axis" textAnchor="end">{fmt(lo, 0)}</text>
         <text x={2} y={H - 2} className="axis">{date(first.t)}</text>
         <text x={W - 2} y={H - 2} className="axis" textAnchor="end">{date(last.t)}</text>
+        {addrChanges.map((h) => { const i = history.indexOf(h); return <line key={h.t} x1={x(i)} x2={x(i)} y1={0} y2={H - 16} className="mark-line"><title>{`${date(h.t)}: carteiras cadastradas mudaram`}</title></line>; })}
         <path d={path} className="l-real" />
         {cur && idx !== null && (
           <>
@@ -128,6 +134,13 @@ export function HistoryLine({ history }: { history: WalletHistoryDoc[] }) {
           </>
         )}
       </svg>
+      {parts.length > 0 && shown !== first && (
+        <p className="nw-why small"><span className="muted">O que mais mudou desde {date(first.t)}:</span>
+          {parts.map((x) => <span key={x.k} className="chip"><span className="muted">{x.k}</span> <b className={x.v >= 0 ? "pos" : "neg"}>{x.v >= 0 ? "+" : "-"}{fmt(Math.abs(x.v))} USD</b></span>)}
+        </p>
+      )}
+      <p className="muted small">Mostra o total das carteiras, não só ganho ou perda: dinheiro que entrou ou saiu das carteiras também move a linha.
+        {addrChanges.length ? " A linha tracejada marca o dia em que as carteiras cadastradas mudaram." : ""}</p>
     </figure>
   );
 }

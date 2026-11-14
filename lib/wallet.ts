@@ -228,8 +228,9 @@ export async function refreshWallet({ force, base = "" }: { force: boolean; base
   await ref.set(JSON.parse(JSON.stringify(doc)));
   // Um retrato por dia (o ultimo do dia vale) para o grafico de evolucao; so com a leitura completa
   if (!doc.errors.length) {
-    const day = new Date(doc.at).toISOString().slice(0, 10);
-    await db.doc(`${base}wallet_history/${day}`).set({ t: doc.at, total: doc.total, byClass: walletTotals(doc).byClass });
+    // dia no horario de Brasilia (antes era UTC: depois das 21:00 o retrato caia no dia seguinte)
+    const day = new Date(doc.at - 3 * 3_600_000).toISOString().slice(0, 10);
+    await db.doc(`${base}wallet_history/${day}`).set({ t: doc.at, total: doc.total, byClass: walletTotals(doc).byClass, addr: doc.address });
   }
   return { skipped: false, total: doc.total, errors: doc.errors };
 }

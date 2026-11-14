@@ -778,3 +778,5 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 .info-box b { color: var(--text); font-weight: 600; }
 
 .members .lvl-sel { font-size: 12.5px; padding: 3px 6px; }
+
+.chart .mark-line { stroke: var(--muted); stroke-dasharray: 3 3; stroke-width: 1; }

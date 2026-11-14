@@ -139,7 +139,8 @@ export type WalletDoc = {
 };
 
 // Documento wallet_history/{AAAA-MM-DD}: ultimo retrato do dia, para o grafico de evolucao
-export type WalletHistoryDoc = { t: number; total: number; byClass: Record<WalletItem["cls"], number> };
+// addr = carteiras lidas naquele dia (para marcar quando uma carteira entrou ou saiu da conta)
+export type WalletHistoryDoc = { t: number; total: number; byClass: Record<WalletItem["cls"], number>; addr?: string };
 
 // Documento fichas/main: ficha de cada token (oferta, avaliacao, receita), gerada pelo servidor
 export type TokenFicha = {

@@ -245,6 +245,9 @@ td button.link.small { margin: 0 0 0 6px; }
   table.stack tr.detail td, table.stack tr.editing td { display: block; }
   table.stack td.actions { justify-content: flex-end; }
   .fichas.stack td { white-space: normal; }
+  table.stack td > * { min-width: 0; }
+  table.stack .sit { white-space: normal; text-align: left; line-height: 1.35; margin-right: 0; }
+  table.stack td .cell { max-width: 72%; align-items: flex-end; }
 }
 @media (max-width: 600px) { table.stack .cell { text-align: right; } }
 

@@ -294,5 +294,22 @@ export async function refreshFichas({ force, strategy }: { force: boolean; strat
     doc.errors.push(`situação: ${String(e)}`);
   }
   await ref.set(JSON.parse(JSON.stringify(doc)));
+  await db.doc("fichas_pub/main").set(JSON.parse(JSON.stringify(publicFichas(doc))));
   return { skipped: false, count: doc.items.length, missing: doc.missing, errors: doc.errors };
+}
+
+// Copia das fichas para membros: sem o que depende da carteira do dono (quanto tem, alvo, acao e situacoes como "Manter"/"Reduzir")
+export function publicFichas(doc: FichaDoc): FichaDoc {
+  const gen = (s: Situacao | null): Situacao | null => {
+    if (!s) return s;
+    switch (s.code) {
+      case "manter": return { code: "tendencia", label: "Em tendência", detail: s.detail };
+      case "reduzir": return { code: "observar", label: "Alerta de saída", detail: s.detail };
+      case "fora_sistema": return { code: "fora", label: "Fora da tendência", detail: "não está em tendência pelo rompimento 55/20" };
+      case "sem_vaga": return { code: "entrada", label: "Entrada", detail: "rompeu a máxima de 55 dias com o BTC em alta" };
+      case "saida": return { ...s, label: "Saiu da tendência" };
+      default: return s;
+    }
+  };
+  return { ...doc, items: doc.items.map((f) => ({ ...f, held: 0, target: null, action: null, situacao: gen(f.situacao) })) };
 }

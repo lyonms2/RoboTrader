@@ -1,7 +1,7 @@
 "use client";
 
 // Manual de uso (aba Ajuda): passo a passo curto de cada parte do site. O membro so ve o que existe para ele.
-type Topic = { title: string; intro?: string; steps: string[]; tips?: string[]; owner?: boolean };
+type Topic = { title: string; intro?: string; steps: string[]; tips?: string[]; owner?: boolean; robo?: boolean };
 
 const START: string[] = [
   "Cadastre suas contas e informe o saldo de hoje (Finanças → Lançamentos → Conta / saldo).",
@@ -139,7 +139,7 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Clique em \"Atualizar\" para ler os saldos.",
       "Em Carteira → Meus tokens, informe o preço médio para ver lucro e prejuízo.",
     ], tips: ["É só leitura: o site nunca pede frase secreta nem chave privada, e não movimenta nada."] },
-    { title: "Robô: estudo da regra", steps: [
+    { title: "Robô: estudo da regra", robo: true, steps: [
       "Em Cripto → Robô, cada moeda aparece em relação à regra (SMA 150 + HMA 100), com o comportamento da regra no passado.",
       "É estudo educacional: não é recomendação de compra ou venda.",
     ] },
@@ -155,15 +155,16 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "\"Apagar meus dados\" remove tudo o que você lançou no site.",
     ] },
     { title: "Liberar membros e dar suporte", owner: true, steps: [
-      "Em \"Membros\", digite o e-mail Google do membro e clique em \"Liberar acesso\".",
+      "Em \"Membros\", digite o e-mail Google do membro, escolha o nível (com ou sem Robô e tokens) e clique em \"Liberar acesso\".",
+      "Para mudar o nível de quem já entra, troque na lista de membros.",
       "Quando o membro permitir o suporte, aparece \"Ver conta (suporte)\" ao lado do e-mail dele: abre a conta em modo leitura.",
       "Clique em \"Sair do suporte\" para voltar à sua conta.",
     ] },
   ] },
 ];
 
-export default function Manual({ member }: { member: boolean }) {
-  const groups = TOPICS.map((g) => ({ ...g, items: g.items.filter((t) => !t.owner || !member) })).filter((g) => g.items.length);
+export default function Manual({ member, robo = true }: { member: boolean; robo?: boolean }) {
+  const groups = TOPICS.map((g) => ({ ...g, items: g.items.filter((t) => (!t.owner || !member) && (!t.robo || robo)) })).filter((g) => g.items.length);
   return (
     <>
       <section className="card manual-start">

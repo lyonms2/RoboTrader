@@ -85,6 +85,7 @@ export type Demo = {
   walletHistory: WalletHistoryDoc[]; fichas: FichaDoc | null; candidates?: CandidatesDoc | null; finance?: FinanceDoc | null;
   months?: Record<string, MonthDoc>; setup?: GastosSetup; nwHist?: NetWorthDoc[];
   member?: boolean; // demo vista como membro
+  robo?: boolean; // demo de membro com "Robo e tokens"
 };
 
 export default function Dashboard({ demo }: { demo?: Demo }) {
@@ -135,6 +136,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   useEffect(() => (demo ? undefined : firebaseConfigured ? onAuthStateChanged(auth(), setUser) : setUser(null)), [demo]);
   // Quem entrou: dono (le a raiz, como sempre), membro (access/{email} -> users/{uid}/) ou sem acesso
   const [role, setRole] = useState<"owner" | "member" | "none" | null>(demo ? (demo.member ? "member" : "owner") : null);
+  // nivel do membro: com "Robo e tokens" (padrao) ou sem
+  const [robo, setRobo] = useState(demo ? demo.robo !== false : true);
   useEffect(() => {
     if (demo || !user) return;
     let alive = true;
@@ -144,7 +147,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         const a = await getDoc(doc(db(), "access", email));
         if (a.exists() && (a.data() as { role?: string }).role === "member") {
           setDataBase(memberBase(user.uid));
-          if (alive) setRole("member");
+          if (alive) { setRobo((a.data() as { robo?: boolean }).robo !== false); setRole("member"); }
           return;
         }
       } catch { /* sem regra de acesso ainda: segue para o teste de dono */ }
@@ -159,6 +162,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     return () => { alive = false; };
   }, [user, demo]);
   const member = role === "member" || !!support;
+  // acesso ao Robo e tokens: dono sempre; membro conforme o nivel (no suporte, o dono ve como o membro ve o resto)
+  const canRobo = !member || !!support || robo;
   // a autorizacao expira sozinha
   useEffect(() => {
     if (!support) return;
@@ -176,7 +181,10 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     return () => ro.disconnect();
   }, [user, role]);
   // Tokens agora fica junto do Robo; membro nao tem Operacoes manuais: cai no Robo (estudo)
-  useEffect(() => { if (tab === "tokens" || (member && tab === "operacoes")) setTabState("sinais"); }, [member, tab]);
+  useEffect(() => {
+    if (tab === "tokens" || (member && tab === "operacoes")) setTabState(canRobo ? "sinais" : "carteira");
+    else if (tab === "sinais" && !canRobo) setTabState("carteira");
+  }, [member, tab, canRobo]);
 
   useEffect(() => {
     if (!user || demo || (role !== "owner" && role !== "member")) return;
@@ -184,14 +192,15 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     const owner = role === "owner" && !support;
     const none = () => undefined;
     const u1 = onSnapshot(doc(db(), P("config/main")), (s) => s.exists() && setCfg({ ...DEFAULT_CONFIG, ...(s.data() as AppConfig) }), onErr);
-    const u2 = onSnapshot(collection(db(), "latest"), (s) => setLatest(s.docs.map((d) => d.data() as LatestDoc)), onErr);
+    const u2 = !owner && !robo ? none : onSnapshot(collection(db(), "latest"), (s) => setLatest(s.docs.map((d) => d.data() as LatestDoc)), onErr);
     const u3 = !owner ? none : onSnapshot(query(collection(db(), "trades"), orderBy("t", "desc")),
       (s) => setTrades(s.docs.map((d) => ({ id: d.id, ...(d.data() as TradeDoc) }))), onErr);
     const u4 = onSnapshot(doc(db(), P("wallet/main")), (s) => setWallet(s.exists() ? (s.data() as WalletDoc) : null), onErr);
     const u5 = onSnapshot(query(collection(db(), P("wallet_history")), orderBy("t"), limitToLast(365)),
       (s) => setWalletHistory(s.docs.map((d) => d.data() as WalletHistoryDoc)), onErr);
     const u6 = !owner ? none : onSnapshot(doc(db(), "sync/lighter"), (s) => setSync(s.exists() ? (s.data() as LighterSyncDoc) : null), onErr);
-    const u7 = !owner ? none : onSnapshot(doc(db(), "fichas/main"), (s) => setFichas(s.exists() ? (s.data() as FichaDoc) : null), onErr);
+    // membro com Robo e tokens le a copia publica (sem a carteira do dono)
+    const u7 = owner || robo ? onSnapshot(doc(db(), owner ? "fichas/main" : "fichas_pub/main"), (s) => setFichas(s.exists() ? (s.data() as FichaDoc) : null), () => setFichas(null)) : none;
     const u8 = !owner ? none : onSnapshot(doc(db(), "candidates/main"), (s) => setCandidates(s.exists() ? (s.data() as CandidatesDoc) : null), onErr);
     const u9 = onSnapshot(doc(db(), P("finance/main")), (s) => setFinance(s.exists() ? (s.data() as FinanceDoc) : null), onErr);
     // Gastos: config/gastos-AAAA-MM (um por mes) e config/gastos-setup
@@ -208,7 +217,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     const u11 = onSnapshot(query(collection(db(), P("patrimonio_history")), orderBy("t"), limitToLast(1500)),
       (s) => setNwHist(s.docs.map((d) => d.data() as NetWorthDoc)), onErr);
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); u11(); };
-  }, [user, demo, role, support]);
+  }, [user, demo, role, support, robo]);
 
   // Financas (cotacoes, CDI, Tesouro) numa chamada separada: o arquivo do Tesouro e grande e nao pode atrasar os sinais
   async function refreshFinance() {
@@ -318,7 +327,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   ] as const;
   const cryptoSubs = [
     { id: "carteira", label: "Carteira" },
-    { id: "sinais", label: member ? "Robô" : "Robô e tokens" },
+    { id: "sinais", label: "Robô e tokens" },
     { id: "operacoes", label: "Operações manuais" },
   ] as const;
   const inCrypto = CRYPTO_TABS.includes(tab);
@@ -373,7 +382,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         {inCrypto && (
           <div className="toolbar">
             <nav className="subtabs" role="tablist" aria-label="Cripto">
-              {cryptoSubs.filter((x) => !member || x.id === "sinais" || x.id === "carteira").map((x) => (
+              {cryptoSubs.filter((x) => !member || x.id === "carteira" || (x.id === "sinais" && canRobo)).map((x) => (
                 <button key={x.id} role="tab" aria-selected={tab === x.id} className={tab === x.id ? "pill on" : "pill"} onClick={() => setTab(x.id)}>{x.label}</button>
               ))}
             </nav>
@@ -390,7 +399,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             </div>}
           </div>
         )}
-        {tab === "sinais" && (
+        {tab === "sinais" && canRobo && (
           <>
             {member && <p className="banner">Estudo educacional: mostra como a regra do robô (SMA 150 + HMA 100) se comportou e onde está cada moeda em relação a ela.
               Não é recomendação de compra ou venda.</p>}
@@ -404,10 +413,10 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             {SHOW_CANDIDATES && <CandidatesCard doc={candidates} />}
             {/* resultado real x estrategia e as fichas dos tokens ficam junto do robo */}
             {!member && <Performance cfg={eff} latest={latest} trades={trades} prices={prices} />}
-            {!member && <div id="fichas"><FichasCard fichas={fichas} /></div>}
+            <div id="fichas"><FichasCard fichas={fichas} /></div>
           </>
         )}
-        {tab === "ajuda" && <Manual member={member} />}
+        {tab === "ajuda" && <Manual member={member} robo={canRobo} />}
         {tab === "financas" && <FinanceCard cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup}
           onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }}
           onQuotes={support ? undefined : async () => { const p = await refreshFinance(); if (p.length) setError(p.join("; ")); else setNotice(`Cotações atualizadas às ${new Date().toLocaleTimeString("pt-BR")}.`); }} />}
@@ -1242,12 +1251,13 @@ function MemberConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => voi
 function MembersAdmin({ onClose, onSupport }: { onClose: () => void; onSupport: (x: { uid: string; email: string; until: number }) => void }) {
   const [grants, setGrants] = useState<{ uid: string; email: string; until: number }[]>([]);
   useEffect(() => onSnapshot(collection(db(), "support"), (s) => setGrants(s.docs.map((d) => ({ uid: d.id, ...(d.data() as { email: string; until: number }) }))), () => undefined), []);
-  const [list, setList] = useState<{ email: string; name?: string; at?: number }[] | null>(null);
+  const [list, setList] = useState<{ email: string; name?: string; at?: number; robo?: boolean }[] | null>(null);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [lvl, setLvl] = useState<"robo" | "basico">("robo");
   const [err, setErr] = useState("");
   useEffect(() => onSnapshot(collection(db(), "access"), (s) => setList(s.docs.filter((d) => (d.data() as { role?: string }).role === "member")
-    .map((d) => ({ email: d.id, ...(d.data() as { name?: string; at?: number }) })).sort((a, b) => (b.at ?? 0) - (a.at ?? 0))),
+    .map((d) => ({ email: d.id, ...(d.data() as { name?: string; at?: number; robo?: boolean }) })).sort((a, b) => (b.at ?? 0) - (a.at ?? 0))),
     (e) => setErr(e.message.includes("permission") ? "As regras do Firestore ainda não foram atualizadas (veja firestore.rules)." : e.message)), []);
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1255,9 +1265,12 @@ function MembersAdmin({ onClose, onSupport }: { onClose: () => void; onSupport: 
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return setErr("E-mail inválido.");
     setErr("");
     try {
-      await setDoc(doc(db(), "access", em), { role: "member", at: Date.now(), ...(name.trim() ? { name: name.trim() } : {}) });
+      await setDoc(doc(db(), "access", em), { role: "member", at: Date.now(), robo: lvl === "robo", ...(name.trim() ? { name: name.trim() } : {}) });
       setEmail(""); setName("");
     } catch (x) { setErr(`Não salvou: ${String(x)}`); }
+  };
+  const setLevel = async (em: string, on: boolean) => {
+    try { await setDoc(doc(db(), "access", em), { robo: on }, { merge: true }); } catch (x) { setErr(`Não salvou: ${String(x)}`); }
   };
   const remove = async (em: string) => {
     if (!(await ask(`Remover o acesso de ${em}? Os dados dele continuam guardados; ele só não entra mais.`))) return;
@@ -1266,10 +1279,18 @@ function MembersAdmin({ onClose, onSupport }: { onClose: () => void; onSupport: 
   return (
     <section className="cfg">
       <div className="modal-head"><h2>Membros</h2><button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button></div>
-      <p className="muted small">Só entra quem estiver nesta lista (o e-mail da conta Google). Cada membro tem os próprios dados; ninguém vê os seus nem os de outro membro.</p>
+      <p className="muted small">Só entra quem estiver nesta lista (o e-mail da conta Google). Cada membro tem os próprios dados; ninguém vê os seus nem os de outro membro.
+        Nível: &quot;com Robô e tokens&quot; vê os sinais do robô (como estudo) e as fichas dos tokens, sem nada da sua carteira; &quot;sem&quot; vê só finanças e a própria carteira cripto.
+        Mudar o nível vale no próximo acesso do membro.</p>
       <form className="row wrapline" onSubmit={add}>
         <label className="grow">E-mail Google<input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="membro@gmail.com" /></label>
         <label>Nome (opcional)<input value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label>Nível
+          <select value={lvl} onChange={(e) => setLvl(e.target.value as "robo" | "basico")}>
+            <option value="robo">Com Robô e tokens</option>
+            <option value="basico">Sem Robô e tokens</option>
+          </select>
+        </label>
         <button className="primary" type="submit">Liberar acesso</button>
       </form>
       {err && <p className="error small">{err}</p>}
@@ -1277,6 +1298,11 @@ function MembersAdmin({ onClose, onSupport }: { onClose: () => void; onSupport: 
         <ul className="pend small members">
           {list.map((m) => (
             <li key={m.email}><b>{m.email}</b>{m.name && <span className="muted">{m.name}</span>}
+              <select className="lvl-sel" value={m.robo === false ? "basico" : "robo"} aria-label={`Nível de ${m.email}`}
+                onChange={(e) => setLevel(m.email, e.target.value === "robo")}>
+                <option value="robo">com Robô e tokens</option>
+                <option value="basico">sem Robô e tokens</option>
+              </select>
               <span className="muted">{m.at ? `desde ${new Date(m.at).toLocaleDateString("pt-BR")}` : ""}</span>
               {(() => { const g = grants.find((x) => x.email === m.email && x.until > Date.now()); return g
                 ? <button className="primary small-btn" onClick={() => onSupport(g)}>Ver conta (suporte)</button> : <span className="muted">sem suporte liberado</span>; })()}

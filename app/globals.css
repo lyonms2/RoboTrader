@@ -776,3 +776,5 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 .info-box { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; line-height: 1.5; color: var(--muted);
   border: 1px solid color-mix(in srgb, var(--move) 40%, var(--line)); background: color-mix(in srgb, var(--move) 8%, transparent); }
 .info-box b { color: var(--text); font-weight: 600; }
+
+.members .lvl-sel { font-size: 12.5px; padding: 3px 6px; }

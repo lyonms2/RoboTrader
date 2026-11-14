@@ -7,6 +7,7 @@ import { runJob } from "@/lib/job";
 import { requireUser } from "@/lib/ownerAuth";
 import { SYMBOLS } from "@/lib/types";
 import { refreshWallet } from "@/lib/wallet";
+import { markMember } from "@/lib/members";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
   };
   // Membro: so a carteira dele (no maximo a cada 30 min, para poupar a cota da Zerion) e a foto do patrimonio
   if (who.role === "member") {
+    await step(() => markMember(who.base, who.email));
     const wallet = await step(() => refreshWallet({ force: false, base: who.base }));
     const patrimonio = await step(() => snapshotNetWorth(who.base));
     return NextResponse.json({ ok: true, member: true, wallet, patrimonio });

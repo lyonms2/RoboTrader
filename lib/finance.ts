@@ -131,13 +131,19 @@ export async function refreshFinance({ force, base = "" }: { force: boolean; bas
   }
   const needTesouro = items.some((i) => i.kind === "tesouro") || !prev?.tesouro;
   const tesouroStale = !prev?.tesouro || Date.now() - prev.tesouro.at > TESOURO_MS;
+  // Membro: reaproveita os precos do Tesouro ja baixados pelo dono (o arquivo e grande, ~15 MB) quando estao em dia
+  let shared: FinanceDoc["tesouro"] = null;
+  if (base && needTesouro && tesouroStale) {
+    const root = (await db.doc("finance/main").get()).data() as FinanceDoc | undefined;
+    if (root?.tesouro && Date.now() - root.tesouro.at < TESOURO_MS) shared = root.tesouro;
+  }
   const [cdi, ptax, ipca, tesouro] = await Promise.all([
     cdiSeries().catch((e) => { errors.push(`CDI (Banco Central): ${String(e)}`); return prev?.cdi ?? { d: [], v: [] }; }),
     usdPtax().catch((e) => { errors.push(`Dolar (Banco Central): ${String(e)}`); return prev?.usdbrl ?? null; }),
     bcb(13522, "/ultimos/1").then((r) => ({ v: Number(r[0].valor) / 100, ref: r[0].data.slice(3) }))
       .catch(() => (prev?.ipca12m != null ? { v: prev.ipca12m, ref: prev.ipcaRef ?? "" } : null)),
     needTesouro && tesouroStale
-      ? tesouroToday().catch((e) => { errors.push(String(e instanceof Error ? e.message : e)); return prev?.tesouro ?? null; })
+      ? shared ? Promise.resolve(shared) : tesouroToday().catch((e) => { errors.push(String(e instanceof Error ? e.message : e)); return prev?.tesouro ?? null; })
       : Promise.resolve(prev?.tesouro ?? null),
   ]);
   const doc: FinanceDoc = {

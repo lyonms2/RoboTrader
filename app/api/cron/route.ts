@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { runJob } from "@/lib/job";
+import { refreshMembers } from "@/lib/members";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,8 +17,12 @@ export async function GET(req: Request) {
   if (secret.length < 16 || !timingSafeEqual(digest(got), digest(`Bearer ${secret}`))) {
     return NextResponse.json({ error: "nao autorizado" }, { status: 401 });
   }
+  const start = Date.now();
   try {
-    return NextResponse.json({ ok: true, ...(await runJob({ force: false })) });
+    const job = await runJob({ force: false });
+    // membros em rodizio com o tempo que sobrar (para antes de ~45 s; a chamada tem 60 s)
+    const members = await refreshMembers(start + 45_000).catch((e) => ({ error: String(e) }));
+    return NextResponse.json({ ok: true, ...job, members });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

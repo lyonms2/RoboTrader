@@ -567,10 +567,26 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
   const pctOf = (v: number) => (total ? `${fmt((v / total) * 100, 1)}%` : "");
   const hasMoney = !!(cfg.finance?.length || Object.keys(money.months).length || money.setup.cards.length || money.setup.loans.length);
   const go = (t: Todo) => (t.fin ? onFin(t.fin) : onTab(t.tab));
+  // numeros do cripto: dentro do quadro Patrimonio (ou sozinhos, se ainda nao ha financas)
+  const cryptoKpis = (
+    <div className="kpis compact">
+      <div><span>{hasMoney ? "Carteira cripto" : "Patrimônio"}</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
+        <small className="muted">{total === null ? "cadastre as carteiras" : member ? "suas carteiras" : `núcleo $${fmt(cfg.capitalUsdt)}`}</small></div>
+      {!member && <><div><span>Lucro aberto (robô)</span><b className={pnlClass(open)}>{signed(open)}</b>
+        <small className="muted">{invested > 0 ? `${signed((open / invested) * 100, 1)}% sobre $${fmt(invested)}` : "sem posição"}</small></div>
+      <div><span>Realizado</span><b className={pnlClass(realized)}>{signed(realized)}</b><small className="muted">vendas registradas</small></div>
+      <div><span>Total</span><b className={pnlClass(open + realized)}>{signed(open + realized)}</b><small className="muted">sem taxas e funding</small></div></>}
+    </div>
+  );
 
   return (
     <>
-      {hasMoney && <PatrimonioCard {...money} onBens={() => onFin("bens")} />}
+      {hasMoney && <PatrimonioCard {...money} start={money.cfg.nwStart ?? null} onBens={() => onFin("bens")}>
+        <div className="sub-block">
+          <div className="sub-head"><b>Cripto</b><button className="link" onClick={() => onTab("carteira")}>ver cripto &rsaquo;</button></div>
+          {cryptoKpis}
+        </div>
+      </PatrimonioCard>}
 
       <section className="card">
         <h2>O que fazer hoje</h2>
@@ -597,17 +613,12 @@ function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, mo
       {hasMoney && <MonthAndUpcoming months={money.months} setup={money.setup} onLanc={() => onFin("lanc")} onBens={() => onFin("bens")} />}
       {hasMoney && <NetWorthBlock {...money} />}
 
-      <section className="card">
-        <div className="card-head"><h2>Cripto</h2><button className="link" onClick={() => onTab("carteira")}>ver cripto &rsaquo;</button></div>
-        <div className="kpis">
-          <div><span>{hasMoney ? "Carteira cripto" : "Patrimônio"}</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
-            <small className="muted">{total === null ? "cadastre as carteiras" : member ? "suas carteiras" : `núcleo $${fmt(cfg.capitalUsdt)}`}</small></div>
-          {!member && <><div><span>Lucro aberto (robô)</span><b className={pnlClass(open)}>{signed(open)}</b>
-            <small className="muted">{invested > 0 ? `${signed((open / invested) * 100, 1)}% sobre $${fmt(invested)}` : "sem posição"}</small></div>
-          <div><span>Realizado</span><b className={pnlClass(realized)}>{signed(realized)}</b><small className="muted">vendas registradas</small></div>
-          <div><span>Total</span><b className={pnlClass(open + realized)}>{signed(open + realized)}</b><small className="muted">sem taxas e funding</small></div></>}
-        </div>
-      </section>
+      {!hasMoney && (
+        <section className="card">
+          <div className="card-head"><h2>Cripto</h2><button className="link" onClick={() => onTab("carteira")}>ver cripto &rsaquo;</button></div>
+          {cryptoKpis}
+        </section>
+      )}
 
 
       {!member && <details className="more-block">

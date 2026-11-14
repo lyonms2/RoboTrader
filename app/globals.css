@@ -783,3 +783,25 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 
 .nw-start { margin: 6px 0 0; }
 .chart.nw { cursor: pointer; }
+
+/* Patrimonio: bruto em destaque */
+.hero { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: stretch; margin: 2px 0 14px; padding: 16px 18px; border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--brand-yellow) 9%, transparent) 60%, transparent); }
+.hero-main { display: flex; flex-direction: column; gap: 2px; flex: 1 1 260px; }
+.hero-main > span { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--brand-yellow); }
+.hero-main > b { font-size: 36px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.1;
+  background: linear-gradient(90deg, var(--brand-yellow), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero-main > small { color: var(--muted); font-size: 12.5px; }
+.hero-chip { align-self: flex-start; margin-top: 6px; font-style: normal; font-size: 12.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+.hero-chip.up { color: var(--buy); background: color-mix(in srgb, var(--buy) 14%, transparent); }
+.hero-chip.down { color: var(--sell); background: color-mix(in srgb, var(--sell) 14%, transparent); }
+.hero-side { display: flex; flex-direction: column; gap: 10px; justify-content: center; flex: 0 1 260px; }
+.hero-side > div { display: flex; flex-direction: column; gap: 1px; }
+.hero-side span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; color: var(--muted); }
+.hero-side b { font-size: 20px; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .hero { padding: 14px; } .hero-main > b { font-size: 30px; } .hero-side { flex-basis: 100%; flex-direction: row; flex-wrap: wrap; gap: 8px 20px; justify-content: flex-start; } }
+/* sub-bloco dentro de um quadro (ex.: Cripto dentro de Patrimonio) */
+.sub-block { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.sub-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.sub-head b { font-size: 15px; }

@@ -780,3 +780,6 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 .members .lvl-sel { font-size: 12.5px; padding: 3px 6px; }
 
 .chart .mark-line { stroke: var(--muted); stroke-dasharray: 3 3; stroke-width: 1; }
+
+.nw-start { margin: 6px 0 0; }
+.chart.nw { cursor: pointer; }

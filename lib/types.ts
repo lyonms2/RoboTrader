@@ -22,6 +22,7 @@ export type AppConfig = {
   // Financas fora da cripto (cofrinho, Tesouro, acoes/FIIs, outros), em reais. Lancadas a mao; precos automaticos
   finance?: FinItem[];
   monthlyCost?: number; // gasto mensal em R$ (para dizer quantos meses a reserva cobre)
+  nwStart?: string; // AAAA-MM-DD: grafico da evolucao do patrimonio comeca neste dia (dias antes ficam guardados, so nao aparecem)
 };
 
 // Investimento fora da cripto. Valores em R$

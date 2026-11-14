@@ -1,5 +1,5 @@
 "use client";
-import { doc, setDoc } from "firebase/firestore";
+import { deleteField, doc, setDoc } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { P } from "@/lib/paths";
@@ -865,7 +865,12 @@ export function MonthAndUpcoming({ months, setup, onLanc, onBens }: { months: Re
 }
 
 export function NetWorthBlock({ cfg, fin, wallet, months, setup, nwHist }: Ctx & { nwHist: NetWorthDoc[] }) {
-  return <NetWorthChart hist={nwHist} live={netWorth(cfg, fin, wallet, months, setup)} />;
+  // comeco do grafico: guardado na configuracao (os dias anteriores nao sao apagados)
+  const onStart = async (d: string | null) => {
+    guardWrite();
+    await setDoc(doc(db(), P("config/main")), { nwStart: d ?? deleteField() }, { merge: true });
+  };
+  return <NetWorthChart hist={nwHist} live={netWorth(cfg, fin, wallet, months, setup)} start={cfg.nwStart ?? null} onStart={onStart} />;
 }
 
 // ---------- "O que voce quer lancar?" (unico lugar de entrada) ----------

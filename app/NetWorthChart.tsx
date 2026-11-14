@@ -14,10 +14,16 @@ const RANGES = [
 type RangeId = (typeof RANGES)[number]["id"];
 
 // Evolucao do patrimonio liquido: 1 ponto por dia (foto gravada no Atualizar tudo / agendador) + o valor de agora
-export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; live: NetWorthDoc | null }) {
+export default function NetWorthChart({ hist: allHist, live, start = null, onStart }: {
+  hist: NetWorthDoc[]; live: NetWorthDoc | null; start?: string | null; onStart?: (d: string | null) => Promise<void>;
+}) {
+  // dias antes do comeco escolhido ficam de fora (continuam guardados)
+  const hist = start ? allHist.filter((h) => h.day >= start) : allHist;
+  const hidden = allHist.length - hist.length;
   const [range, setRange] = useState<RangeId>("tudo");
   const [withBens, setWithBens] = useState(false);
   const [idx, setIdx] = useState<number | null>(null);
+  const [sel, setSel] = useState<number | null>(null); // dia escolhido com clique/toque (para "comecar o grafico aqui")
   // Largura real do grafico (para o texto nao encolher no celular)
   const box = useRef<HTMLElement>(null);
   const [width, setWidth] = useState(640);
@@ -136,7 +142,7 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
           <figcaption className="small muted"><i className="key k-net" /> patrimônio líquido <i className="key k-bens" /> tudo o que você tem (antes das dívidas)</figcaption>
         )}
         <svg viewBox={`0 0 ${W} ${H}`} className="chart nw" role="img" aria-label="Evolução do patrimônio líquido"
-          onPointerMove={move} onPointerLeave={() => setIdx(null)}>
+          onPointerMove={move} onPointerLeave={() => setIdx(null)} onClick={() => setSel(idx)}>
           <line x1={0} x2={W} y1={y(hi)} y2={y(hi)} className="grid" />
           <line x1={0} x2={W} y1={y(lo)} y2={y(lo)} className="grid" />
           <text x={W - 2} y={y(hi) - 4} className="axis" textAnchor="end">{brl(hi)}</text>
@@ -159,6 +165,14 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
           <li key={g.key}><i className={`g-${g.key}`} />{g.label} <b>{brl(cur.byGroup[g.key])}</b></li>
         ))}
       </ul>
+      {onStart && (
+        <p className="small muted nw-start">
+          {start ? <>Mostrando desde {start.slice(8, 10)}/{start.slice(5, 7)}/{start.slice(0, 4)}{hidden > 0 ? ` (${hidden} ${hidden > 1 ? "dias anteriores escondidos" : "dia anterior escondido"})` : ""}. </> : null}
+          {sel !== null && pts[sel] && sel > 0 && <button className="link" onClick={async () => { await onStart(pts[sel].day); setSel(null); }}>começar o gráfico em {date(pts[sel].t)}</button>}
+          {(sel === null || sel === 0) && !start && "Para o gráfico começar num dia (ex.: depois de terminar os cadastros), clique ou toque nesse dia no gráfico."}
+          {start && <button className="link" onClick={async () => { await onStart(null); setSel(null); }}>mostrar tudo</button>}
+        </p>
+      )}
       <Note>
         Uma foto por dia, gravada pelo agendador (ou quando você clica em &quot;Atualizar&quot;, em Cripto); o último ponto e o valor de agora.
         A linha não mostra só ganho ou perda: cadastrar uma dívida, um cartão ou um investimento novo também muda o patrimônio daquele dia

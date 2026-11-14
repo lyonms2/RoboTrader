@@ -902,15 +902,26 @@ export function cardStatus(c: Card, months: Record<string, MonthDoc>, today = to
     if (f) f.paid += take;
     if (p.v - take > 0.005) extra.push({ d: p.d, v: p.v - take });
   }
-  for (const p of [...cardPayments(c, months), ...extra]) {
-    let left = p.v;
-    // primeiro as faturas ja fechadas, da mais antiga para a mais nova; o que sobrar (pagou antes de fechar) vai para as abertas
-    for (const f of [...list.filter((x) => x.close <= p.d), ...list.filter((x) => x.close > p.d)]) {
-      if (left <= 0.005) break;
-      const take = Math.min(left, f.v - f.paid);
-      if (take > 0.005) { f.paid += take; left -= take; }
+  const pays = [...cardPayments(c, months), ...extra].sort((a, b) => a.d.localeCompare(b.d));
+  // 1) cada pagamento abate as faturas ja fechadas naquele dia, da mais antiga para a mais nova
+  const left = pays.map((p) => {
+    let l = p.v;
+    for (const f of list) {
+      if (l <= 0.005) break;
+      if (f.close > p.d) continue;
+      const take = Math.min(l, f.v - f.paid);
+      if (take > 0.005) { f.paid += take; l -= take; }
     }
-  }
+    return l;
+  });
+  // 2) o que sobrou (pagou antes de fechar) abate so a fatura do ciclo em que foi pago (a primeira que fecha depois);
+  //    sobra de pagamento de fatura que o site nao acompanha (ex.: anterior aos lancamentos) e ignorada
+  pays.forEach((p, i) => {
+    const f = list.find((x) => x.close > p.d);
+    if (!f || left[i] <= 0.005) return;
+    const take = Math.min(left[i], f.v - f.paid);
+    if (take > 0.005) f.paid += take;
+  });
   const faturas = list.map((f) => ({ ...f, rest: Math.max(0, f.v - f.paid), status: f.v - f.paid <= 0.5 ? "paga" as const : f.due < today ? "vencida" as const : f.close <= today ? "fechada" as const : "aberta" as const }))
     .filter((f) => f.v > 0.005);
   const pend = faturas.filter((f) => f.status !== "paga");

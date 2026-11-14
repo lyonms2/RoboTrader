@@ -111,7 +111,7 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
           </div>
         ) : (
           <div>
-            <span className="muted small">bens - dívidas</span>
+            <span className="muted small">tem - deve</span>
             <b className="small-b">{brl(cur.bens)} - {brl(cur.dividas)}</b>
           </div>
         )}
@@ -133,7 +133,7 @@ export default function NetWorthChart({ hist, live }: { hist: NetWorthDoc[]; liv
       })()}
       <figure className="viz" ref={box}>
         {hasDebt && (
-          <figcaption className="small muted"><i className="key k-net" /> patrimônio líquido <i className="key k-bens" /> bens (sem descontar dívidas)</figcaption>
+          <figcaption className="small muted"><i className="key k-net" /> patrimônio líquido <i className="key k-bens" /> tudo o que você tem (antes das dívidas)</figcaption>
         )}
         <svg viewBox={`0 0 ${W} ${H}`} className="chart nw" role="img" aria-label="Evolução do patrimônio líquido"
           onPointerMove={move} onPointerLeave={() => setIdx(null)}>

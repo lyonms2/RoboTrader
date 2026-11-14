@@ -199,7 +199,10 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     // historicos: um documento por mes (dias dentro); enquanto o servidor nao gravou no formato novo, le os dias
     const monthly = <T extends { t: number }>(col: string, months: number, days: number, set: (v: T[]) => void) => {
       let old: (() => void) | null = null;
-      const un = onSnapshot(query(collection(db(), P(`${col}_m`)), orderBy(documentId()), limitToLast(months)), (s) => {
+      // meses a partir de um corte (filtro pelo nome do documento, AAAA-MM: nao precisa de indice extra no Firebase)
+      const d0 = new Date(Date.now() - 3 * 3_600_000);
+      d0.setUTCDate(1); d0.setUTCMonth(d0.getUTCMonth() - (months - 1));
+      const un = onSnapshot(query(collection(db(), P(`${col}_m`)), where(documentId(), ">=", d0.toISOString().slice(0, 7))), (s) => {
         if (s.empty) {
           if (!old) old = onSnapshot(query(collection(db(), P(col)), orderBy("t"), limitToLast(days)), (x) => set(x.docs.map((d) => d.data() as T)), onErr);
           return;

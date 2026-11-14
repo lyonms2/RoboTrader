@@ -1144,11 +1144,11 @@ export function ImportPanel({ months, setup, invest, onDone, mode = "conta" }: {
   return (
     <div className="fin-form">
       <p className="small">No app do banco, exporte o extrato ou a fatura em <b>OFX</b> (quase todos os bancos) ou <b>CSV</b> (PicPay, Nubank, Inter, Itaú, Bradesco, BB, C6, Mercado Pago...) e escolha o arquivo.
-        Ele e lido aqui no navegador; nada e enviado para o banco e nenhuma senha e pedida.</p>
+        Ele é lido aqui no navegador; nada é enviado para o banco e nenhuma senha é pedida.</p>
       <div className="row wrapline">
         <label className="file-btn">Escolher arquivo<input type="file" accept=".ofx,.csv,.txt,.qfx" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} /></label>
         <span className="muted small">{file}</span>
-        <label>De onde e<select value={dest} onChange={(e) => setDest(e.target.value)}>
+        <label>De onde é<select value={dest} onChange={(e) => setDest(e.target.value)}>
           {mode === "conta" && accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>Conta {renameTo && a.id === "main" ? renameTo : a.name}</option>)}
           {mode === "cartao" && setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>Fatura do cartão {c.name}</option>)}
           {mode === "conta" && <option value="new">+ nova conta{bank ? `: ${bank}` : ""}</option>}
@@ -1685,7 +1685,7 @@ function EditItem({ g, m, months, setup, onDone }: { g: Gasto; m: string; months
         <button className="primary" type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar"}</button>
         <button className="ghost" type="button" onClick={onDone}>Cancelar</button>
       </div>
-      {neutral && g.cat === TRANSFER_CAT && <p className="muted small">Transferência: &quot;saiu&quot; = desta conta para a conta escolhida em &quot;foi para&quot;; &quot;entrou&quot; = veio de la para esta.</p>}
+      {neutral && g.cat === TRANSFER_CAT && <p className="muted small">Transferência: &quot;saiu&quot; = desta conta para a conta escolhida em &quot;foi para&quot;; &quot;entrou&quot; = veio de lá para esta.</p>}
       {!neutral && <p className="muted small">Gasto sempre sai e renda sempre entra; para mudar isso, troque a categoria.</p>}
     </form>
   );

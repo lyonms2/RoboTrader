@@ -333,7 +333,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         <img className="brand-mark" src="/seubitico-256.png" alt="SeuBitico" width={96} height={96} />
         <h1 className="brand-name">Seu<span className="bb">Bitico</span></h1>
         <p>O e-mail <b>{user.email}</b> ainda não tem acesso.</p>
-        <p className="muted small">A área e para membros do canal. Se você e membro, envie este e-mail para o SeuBitico liberar o acesso.</p>
+        <p className="muted small">A área é para membros do canal. Se você é membro, envie este e-mail para o SeuBitico liberar o acesso.</p>
         <button className="ghost" onClick={() => signOut(auth())}>Sair</button>
       </main>
     );

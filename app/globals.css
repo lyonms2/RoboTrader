@@ -837,3 +837,7 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 .flow-more > summary { color: var(--text); }
 .flow-more > summary::before { color: var(--accent); }
 .flow-more[open] > summary { margin-bottom: 8px; }
+
+/* "O que voce quer lancar?": fechar no canto, na linha da pergunta */
+.entry-bar { position: relative; padding-right: 56px; }
+.entry-bar .entry-close { position: absolute; top: 2px; right: 0; margin: 0; }

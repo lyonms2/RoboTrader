@@ -782,9 +782,9 @@ function Dividends({ rows, fin }: { rows: FinRow[]; fin: FinanceDoc | null }) {
 }
 
 // ---------- "O que voce quer lancar?" (unico lugar de entrada) ----------
-export type EntryType = "mov" | "import" | "inv" | "bem" | "fixo" | "pagar" | "entrada" | "conta";
+export type EntryType = "mov" | "cartao" | "import" | "inv" | "bem" | "fixo" | "pagar" | "entrada" | "conta";
 const ENTRY_TYPES: { id: EntryType; label: string }[] = [
-  { id: "mov", label: "Gasto ou entrada" }, { id: "import", label: "Importar extrato" },
+  { id: "mov", label: "Gasto ou entrada" }, { id: "cartao", label: "Compra no cartão" }, { id: "import", label: "Importar extrato" },
   { id: "fixo", label: "Contas a pagar" }, { id: "entrada", label: "Entrada fixa" }, { id: "conta", label: "Conta / saldo" },
 ];
 
@@ -834,7 +834,7 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
         {open && <button type="button" className="link entry-close" onClick={() => setOpen(false)}>fechar</button>}
       </div>
       {open && <>
-      <p className="muted small entry-hint">Investimentos e bens: em Investimentos. Compras no cartão e empréstimos: em Cartões e empréstimos.</p>
+      <p className="muted small entry-hint">Investimentos e bens: em Investimentos. Cadastrar cartão, empréstimo e a receber: em Cartões e empréstimos.</p>
       {opts && (
         <label className="entry-pick small">Novo ou alterar:
           <select value={id ?? ""} onChange={(e) => { setMsg(""); setEntry({ type, id: e.target.value || null }); }}>
@@ -844,6 +844,9 @@ function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, on
         </label>
       )}
       {type === "mov" && <QuickAdd months={months} setup={setup} invest={invest} defaultDate={todayBR()} />}
+      {type === "cartao" && (setup.cards.length
+        ? <QuickAdd key="cartao" mode="cartao" months={months} setup={setup} invest={invest} defaultDate={todayBR()} />
+        : <p className="muted small">Cadastre um cartão primeiro, em Cartões e empréstimos (&quot;Cadastrar cartão&quot;).</p>)}
       {type === "import" && <ImportPanel months={months} setup={setup} invest={invest} onDone={() => setEntry({ type: "mov", id: null })} />}
       {msg && <p className="small pos entry-msg">&#10003; {msg}</p>}
       {(type === "fixo" || type === "pagar") && !cur && (

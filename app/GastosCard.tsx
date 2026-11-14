@@ -509,7 +509,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
                         {[dm(g.d), card ? `cartão ${card.name}` : accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, g.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === g.by)?.name ?? "outra pessoa"} - não saiu da sua conta` : null, isFaturaOut(g) ? "conta nos gastos do mês (fatura paga)" : g.tipo === "neutro" ? (dirOf(g) > 0 ? "entrou na conta - não é renda (dinheiro seu voltando)" : "saiu da conta - não é gasto") : null].filter(Boolean).join(" - ")}
                       </small></span></span></td>
                       <td data-label="Categoria"><span className="cell">
-                        <CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} />
+                        <CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} dir={dirOf(g) > 0 ? "in" : "out"} />
                         {(g.cat === RECV_OUT_CAT || g.cat === RECV_BACK_CAT) && <RecvSelect g={g} m={m} months={months} setup={setup} />}
                         {g.cat === INVEST_CAT && <InvSelect value={g.inv} desc={g.desc} invest={invest} out={dirOf(g) < 0} onChange={(id) => linkInv(g, id)} />}
                         {g.cat === TRANSFER_CAT && !g.card && (
@@ -557,7 +557,13 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
 
 // Escolha da categoria. "Outros"/"Outras entradas" so aparecem quando o lancamento ainda esta nelas (importacao sem categoria);
 // para algo novo, "+ nova categoria" cria uma sua
-export function CatSelect({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+// dir: "out" (saiu: gastos e o que sai da conta sem ser gasto) ou "in" (entrou: entradas e o que volta). Sem dir: tudo.
+// "ver todas as categorias" abre a lista completa quando precisar
+const NEUTRO_OUT = ["Investimento", "Compra de cripto", "Transferencia entre contas", "Emprestei dinheiro"];
+const NEUTRO_IN = ["Investimento", "Venda de cripto", "Transferencia entre contas", "Emprestimo recebido", "Devolucao de emprestimo"];
+export function CatSelect({ value, onChange, dir }: { value: string; onChange: (c: string) => void; dir?: "in" | "out" }) {
+  const [all, setAll] = useState(false);
+  const only = all ? undefined : dir;
   const mine = customCats();
   const create = async (tipo: "gasto" | "receita", suggestion = "") => {
     const raw = await askText(tipo === "gasto" ? "O que é esse gasto? (vira uma categoria sua, ex.: Presentes, Pet, Academia)"
@@ -575,6 +581,7 @@ export function CatSelect({ value, onChange }: { value: string; onChange: (c: st
     return name;
   };
   const pick = async (v: string) => {
+    if (v === "__all") { setAll(true); return; }
     if (v === "__new_g" || v === "__new_r") {
       const n = await create(v === "__new_g" ? "gasto" : "receita");
       if (n) onChange(n);
@@ -584,16 +591,24 @@ export function CatSelect({ value, onChange }: { value: string; onChange: (c: st
   };
   const g = mine.filter((c) => c.tipo === "gasto").map((c) => c.name);
   const r = mine.filter((c) => c.tipo === "receita").map((c) => c.name);
+  const gastos = [...CATS_GASTO.filter((c) => c !== "Outros"), ...g];
+  const entradas = [...CATS_RECEITA.filter((c) => c !== "Outras entradas"), ...r];
+  const neutros = only === "out" ? NEUTRO_OUT : only === "in" ? NEUTRO_IN : CATS_NEUTRO.filter((c) => c !== CARD_PAY_CAT);
+  const shown = new Set([...(only !== "in" ? [...gastos, CARD_PAY_CAT] : []), ...(only !== "out" ? entradas : []), ...neutros]);
+  // a categoria atual aparece sempre (mesmo se for do outro sentido)
+  const extra = value && !GENERIC_CATS.includes(value) && !shown.has(value);
   return (
     <select value={value} onChange={(e) => pick(e.target.value)} className={`cat-sel${GENERIC_CATS.includes(value) ? " unlinked" : ""}`}>
       {GENERIC_CATS.includes(value) && <option value={value} disabled>{value}: escolha a categoria</option>}
-      <optgroup label="Gastos">{[...CATS_GASTO.filter((c) => c !== "Outros"), ...g].map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
+      {extra && <option value={value}>{catLabel(value)}</option>}
+      {only !== "in" && <optgroup label="Gastos">{gastos.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
         <option value={CARD_PAY_CAT}>Fatura do cartão (pagamento)</option>
-        <option value="__new_g">+ nova categoria de gasto</option></optgroup>
-      <optgroup label="Entradas">{[...CATS_RECEITA.filter((c) => c !== "Outras entradas"), ...r].map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
-        <option value="__new_r">+ nova categoria de entrada</option></optgroup>
-      <optgroup label="Nem gasto nem renda (seu dinheiro mudando de lugar)">{CATS_NEUTRO.filter((c) => c !== CARD_PAY_CAT).map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}</optgroup>
-      {!tipoOfCat(value) && !GENERIC_CATS.includes(value) && <option>{value}</option>}
+        <option value="__new_g">+ nova categoria de gasto</option></optgroup>}
+      {only !== "out" && <optgroup label="Entradas">{entradas.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
+        <option value="__new_r">+ nova categoria de entrada</option></optgroup>}
+      <optgroup label={only === "out" ? "Saiu, mas não é gasto (seu dinheiro mudando de lugar)" : only === "in" ? "Entrou, mas não é renda (seu dinheiro voltando)" : "Nem gasto nem renda (seu dinheiro mudando de lugar)"}>
+        {neutros.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}</optgroup>
+      {only && <option value="__all">ver todas as categorias...</option>}
     </select>
   );
 }
@@ -1019,7 +1034,7 @@ export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta", o
         <label>Data<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
         <label className="grow">Descrição<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={entrada ? "Salario" : "Mercado, ifood, aluguel..."} /></label>
         <label>Valor (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="0,00" /></label>
-        <label>Categoria<CatSelect value={finalCat} onChange={setCat} /></label>
+        <label>Categoria<CatSelect key={entrada ? "in" : "out"} value={finalCat} onChange={setCat} dir={entrada ? "in" : "out"} /></label>
         {finalCat === TRANSFER_CAT && <label>{entrada ? "Veio de" : "Foi para"}<ToAccSelect value={toAcc ?? suggestToAcc(desc, acc || null, setup) ?? ""} from={acc || null} out={!entrada} setup={setup} onChange={setToAcc} /></label>}
         {finalCat === CARD_PAY_CAT && setup.cards.length > 0 && <label>Cartão pago<CardPaySelect value={finalPay} cards={setup.cards} onChange={setPayCard} /></label>}
         {finalCat === INVEST_CAT && <label>{entrada ? "Veio de" : "Foi para"}<InvSelect value={finalInv} desc={desc} invest={invest} out={!entrada} onChange={setInv} /></label>}
@@ -1185,7 +1200,7 @@ export function ImportPanel({ months, setup, invest, onDone, mode = "conta" }: {
                     <td data-label="Data">{dm(r.d)}</td>
                     <td data-label="Descrição"><span className="cell">{r.desc}{r.dup && <small className="warn">{r.dup}</small>}</span></td>
                     <td data-label="Categoria"><span className="cell">
-                      <CatSelect value={r.cat} onChange={(c) => setRow(i, { cat: c, tipo: tipoOfCat(c) ?? r.tipo, inv: c === INVEST_CAT ? suggestInv(r.desc, invest, setup.invRules) : undefined,
+                      <CatSelect value={r.cat} dir={r.amount > 0 ? "in" : "out"} onChange={(c) => setRow(i, { cat: c, tipo: tipoOfCat(c) ?? r.tipo, inv: c === INVEST_CAT ? suggestInv(r.desc, invest, setup.invRules) : undefined,
                         payCard: c === CARD_PAY_CAT ? suggestCard(r.desc, Math.abs(r.amount), setup.cards, months) : undefined,
                         toAcc: c === TRANSFER_CAT ? suggestToAcc(r.desc, null, setup) : undefined })} />
                       {r.cat === TRANSFER_CAT && !card && <ToAccSelect value={r.toAcc} from={targetId && targetId !== "__new" ? targetId : null} out={r.amount < 0} setup={setup} onChange={async (id) => {
@@ -1461,7 +1476,7 @@ export function PayableForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo:
         <label className="grow">Descrição<input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Boleto do conserto, IPVA, dentista..." /></label>
         <label>Valor (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
         <label>Vence em<input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></label>
-        <label>Categoria<CatSelect value={finalCat} onChange={setCat} /></label>
+        <label>Categoria<CatSelect value={finalCat} onChange={setCat} dir="out" /></label>
       </div>
       {err && <p className="error small">{err}</p>}
       <div className="row">
@@ -1593,7 +1608,7 @@ export function FixoForm({ setup, fixo, onDone, entrada }: { setup: GastosSetup;
           </label>
         )}
         <label>Dia<input value={dia} inputMode="numeric" onChange={(e) => setDia(e.target.value)} style={{ width: 60 }} /></label>
-        <label>Categoria<CatSelect value={finalCat} onChange={setCat} /></label>
+        <label>Categoria<CatSelect value={finalCat} onChange={setCat} dir={isIn ? "in" : "out"} /></label>
         <label>Começa em
           <select value={start} onChange={(e) => setStart(e.target.value)}>
             <option value="">desde sempre</option>
@@ -1719,7 +1734,7 @@ function SplitForm({ g, m, items, onDone }: { g: Gasto; m: string; items: Gasto[
       {lines.map((l, i) => (
         <div className="row wrapline" key={i}>
           <label className="grow">Parte {i + 1}<input value={l.desc} onChange={(e) => set(i, { desc: e.target.value })} placeholder="Aluguel, água, luz, internet..." /></label>
-          <label>Categoria<CatSelect value={l.cat} onChange={(c) => set(i, { cat: c })} /></label>
+          <label>Categoria<CatSelect value={l.cat} onChange={(c) => set(i, { cat: c })} dir={dirOf(g) > 0 ? "in" : "out"} /></label>
           <label>Valor (R$)<input value={l.v} inputMode="decimal" onChange={(e) => set(i, { v: e.target.value })} placeholder="0,00" /></label>
           {left > 0.004 && !l.v && <button type="button" className="link" onClick={() => set(i, { v: fmt(left) })}>usar o restante</button>}
           {lines.length > 2 && <button type="button" className="link" onClick={() => setLines(lines.filter((_, k) => k !== i))}>tirar</button>}
@@ -1772,7 +1787,7 @@ function BudgetCard({ months, setup, m }: { months: Record<string, MonthDoc>; se
         <span className="muted small">{list.length ? `${brl(totalSpent, 0)} de ${brl(totalLim, 0)}` : ""}<button className="link" onClick={() => setAdding(!adding)}>{adding ? "fechar" : "+ categoria"}</button></span></div>
       {adding && (
         <form className="row wrapline fin-form" onSubmit={add}>
-          <label>Categoria<CatSelect value={cat} onChange={setCat} /></label>
+          <label>Categoria<CatSelect value={cat} onChange={setCat} dir="out" /></label>
           <label>Limite por mês (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="600,00" /></label>
           <button className="primary" type="submit" disabled={!(num(v) > 0)}>Salvar</button>
         </form>

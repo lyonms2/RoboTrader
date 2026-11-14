@@ -457,7 +457,7 @@ function MoveForm({ mode, r, months, setup, onDone }: { mode: MoveMode; r: Recv;
             </select>
           </label>
         )}
-        {mode === "conta" && !fx && <label>Categoria<CatSelect value={cat || "Moradia"} onChange={setCat} /></label>}
+        {mode === "conta" && !fx && <label>Categoria<CatSelect value={cat || "Moradia"} onChange={setCat} dir="out" /></label>}
         {mode === "ajuste" && (
           <label>Tipo
             <select value={sign} onChange={(e) => setSign(e.target.value as "mais" | "menos")}>

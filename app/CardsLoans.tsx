@@ -373,7 +373,7 @@ function FaturaView({ card, st, fm, months, setup }: {
               {list.map(({ m, g }) => (<Fragment key={g.id}>
                 <tr>
                   <td><span className="cell">{g.desc}<small className="muted">{[dm(g.d), g.sub ? "assinatura" : null, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null].filter(Boolean).join(" - ")}</small></span></td>
-                  <td data-label="Categoria">{g.sub ? catLabel(g.cat) : <span className="cell"><CatSelect value={g.cat} onChange={(c) => setCat(g, c)} />
+                  <td data-label="Categoria">{g.sub ? catLabel(g.cat) : <span className="cell"><CatSelect value={g.cat} onChange={(c) => setCat(g, c)} dir="out" />
                     {g.cat === RECV_OUT_CAT && <RecvSelect g={g} m={m} months={months} setup={setup} />}</span>}</td>
                   <td data-label="Valor" className={g.tipo === "receita" ? "pos" : ""}>{g.tipo === "receita" ? "+" : "-"}{brl(g.v)}</td>
                   <td className="actions"><button className="link" onClick={() => setEditId(editId === g.id ? null : g.id)}>alterar</button>
@@ -786,7 +786,7 @@ function EditSub({ sub, card, setup, onDone }: { sub: CardSub; card: Card; setup
         <label className="grow">Descrição<input value={desc} onChange={(e) => setDesc(e.target.value)} /></label>
         <label>Valor por mês (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
         <label>Dia<input value={day} inputMode="numeric" onChange={(e) => setDay(e.target.value)} style={{ width: 60 }} /></label>
-        <label>Categoria<CatSelect value={cat} onChange={setCat} /></label>
+        <label>Categoria<CatSelect value={cat} onChange={setCat} dir="out" /></label>
         <label>Último mês
           <select value={end} onChange={(e) => setEnd(e.target.value)}>
             <option value="">sem fim (ativa)</option>

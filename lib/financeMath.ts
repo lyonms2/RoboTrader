@@ -194,11 +194,13 @@ export function financeSummary(items: FinItem[], f: FinanceDoc | null, wallet: W
   if (cash) byGroup.conta += cash;
   const total = Object.values(byGroup).reduce((s, v) => s + v, 0);
   // Lucro/prejuizo: so dos investimentos (bens ficam fora)
-  const withCost = rows.filter((r) => r.cost !== null && r.value !== null && r.item.kind !== "bem");
+  // itens marcados "fora do patrimonio" tambem ficam fora do lucro e do rendimento
+  const live = rows.filter((r) => !r.item.ignore);
+  const withCost = live.filter((r) => r.cost !== null && r.value !== null && r.item.kind !== "bem");
   const cost = withCost.reduce((s, r) => s + r.cost!, 0);
   const gain = withCost.reduce((s, r) => s + r.value! - r.cost!, 0);
-  const monthly = rows.reduce((s, r) => s + (r.monthly ?? 0), 0);
-  const dividends = rows.filter((r) => r.item.kind === "acao").reduce((s, r) => s + (r.monthly ?? 0), 0);
+  const monthly = live.reduce((s, r) => s + (r.monthly ?? 0), 0);
+  const dividends = live.filter((r) => r.item.kind === "acao").reduce((s, r) => s + (r.monthly ?? 0), 0);
   const reserve = byGroup.reserva;
   return {
     rows, byGroup, total, usd, cost, gain, monthly, dividends, reserve,

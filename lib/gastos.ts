@@ -410,13 +410,16 @@ export function faturaItems(c: Card, months: Record<string, MonthDoc>, fm: strin
 export function commitments(months: Record<string, MonthDoc>, setup: GastosSetup, n = 12) {
   const start = monthOf(todayBR());
   const st = setup.cards.map((c) => cardStatus(c, months));
+  // parcelas ainda por pagar (a do mes atual ja paga pelo extrato ou marcada nao entra)
+  const today = todayBR();
+  const lr = setup.loans.map((l) => ({ l, rows: loanRows(l, today, { months, setup }) }));
   return Array.from({ length: n }, (_, k) => {
     const m = addMonths(start, k);
     // assinaturas das faturas seguintes a aberta entram so nesta previsao (nao contam como divida)
     const subs = setup.cards.reduce((t, c) => m > faturaMonth(c, todayBR())
       ? t + subCharges(c, m).filter((g) => faturaMonth(c, g.d) === m).reduce((a, g) => a + g.v, 0) : t, 0);
     const cards = subs + st.reduce((s, x) => s + (x.all.find((f) => f.m === m)?.rest ?? 0), 0);
-    const loans = setup.loans.reduce((s, l) => s + (loanInstallment(l, m) ? l.parcela : 0), 0);
+    const loans = lr.reduce((s, { l, rows }) => s + (rows.some((r) => r.m === m && (r.status === "aberta" || r.status === "atrasada")) ? l.parcela : 0), 0);
     return { m, cards, loans };
   });
 }

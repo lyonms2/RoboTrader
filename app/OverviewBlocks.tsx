@@ -115,7 +115,7 @@ export function PatrimonioCard({ cfg, fin, wallet, spend, debt, months, setup, o
           </div>
           <div className="hero-side">
             <div><span>{debt.total > 0 ? "Líquido (depois das dívidas)" : "Líquido"}</span><b className={liquido < 0 ? "neg" : ""}>{brl(liquido)}</b>
-              <small className="muted">{debt.total > 0 ? `${brl(debt.total, 0)} de dívidas` : "sem dívidas"}{debt.recv > 0 ? ` - inclui ${brl(debt.recv, 0)} a receber` : ""}</small></div>
+              <small className="muted">{debt.total > 0 ? `${brl(debt.total, 0)} de dívidas` : "sem dívidas"}{debt.recv > 0 ? ` (o bruto já conta ${brl(debt.recv, 0)} a receber)` : ""}</small></div>
             {s.bens > 0 && <div><span>Sem bens</span><b>{brl(liquido - s.bens)}</b><small className="muted">{brl(s.bens, 0)} em imóveis, veículos...</small></div>}
             {wallet && !s.usd && <small className="warn">falta o dólar: Atualizar cotações em Investimentos</small>}
           </div>

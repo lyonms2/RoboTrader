@@ -822,3 +822,13 @@ body { font-family: var(--font-sans, system-ui), system-ui, -apple-system, "Sego
 .eq-more > summary::before { content: "\203A"; display: inline-block; margin-right: 6px; transition: transform .15s; }
 .eq-more[open] > summary::before { transform: rotate(90deg); }
 .eq-more[open] > summary { margin-bottom: 6px; }
+
+/* listas com barra (Contas e bens: investimentos, a receber) */
+.item-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.item-bars li { display: flex; flex-direction: column; gap: 5px; }
+.ib-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+.ib-top b:last-child { font-variant-numeric: tabular-nums; }
+.ib-top .dot { margin-right: 6px; }
+.ib-bar { height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--text) 7%, transparent); overflow: hidden; }
+.ib-bar > span { display: block; height: 100%; border-radius: 999px; }
+.ib-sub { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }

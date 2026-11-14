@@ -756,17 +756,20 @@ export function AccountsPanel({ months, setup, m, onEdit }: { months: Record<str
         {st.rows.map((r) => (
           <li key={r.acc.id}>
             <span className="acc-name">{r.acc.name}</span>
-            <span><b className={r.now < 0 ? "neg" : ""}>{brl(r.now)}</b> <span className="muted">hoje</span>
+            <span><b className={r.now < 0 ? "neg" : ""}>{brl(r.now)}</b>
               {isNow && (() => { const lt = accountMoves(months, accounts, r.acc.id, todayBR(), `${m}-31`); const sum = lt.reduce((t, x) => t + x.v, 0);
-                return lt.length ? <span className="muted"> - {brl(r.now + sum)} depois de {lt.length} {lt.length > 1 ? "agendados" : "agendado"}</span> : null; })()}</span>
-            <span className={r.informed ? "muted" : "warn"}>
-              {r.acc.noStatement ? (r.now > 0.005 ? `sem extrato: ${brl(r.now)} recebidos ainda a discriminar (lance o que foi pago com "Pago com: ${r.acc.name}")`
-                : r.now < -0.005 ? `sem extrato: saiu ${brl(-r.now)} a mais do que entrou - falta ligar a transferência que mandou dinheiro para ela (Pix como "Transferência entre contas" -> ${r.acc.name}), ou algum gasto foi lançado nela por engano`
-                : "sem extrato: tudo discriminado")
-                : r.acc.at ? `saldo conferido em ${dm(r.acc.at)}; o resto vem dos lançamentos` : r.used ? "sem saldo conferido: só o movimento desde o 1o lançamento" : "sem lançamentos"}
+                return lt.length ? <span className="muted" title={`${lt.length} lançamento(s) com data mais adiante neste mês`}> &rarr; {brl(r.now + sum)} com agendados</span> : null; })()}</span>
+            {/* situacao em poucas palavras; a explicacao completa fica no "title" (passe o mouse) */}
+            <span className={r.informed ? "muted" : "warn"} title={r.acc.noStatement
+              ? (r.now > 0.005 ? `Recebeu ${brl(r.now)} que ainda não foram discriminados: lance o que foi pago com "Pago com: ${r.acc.name}".`
+                : r.now < -0.005 ? `Saiu ${brl(-r.now)} a mais do que entrou: falta ligar a transferência que mandou dinheiro para ela (Pix como "Transferência entre contas" -> ${r.acc.name}), ou algum gasto foi lançado nela por engano.`
+                : "Tudo discriminado.")
+              : r.acc.at ? "O saldo foi conferido nessa data; o resto vem dos lançamentos." : r.used ? "Sem saldo conferido: o valor é só o movimento desde o primeiro lançamento." : ""}>
+              {r.acc.noStatement ? (r.now > 0.005 ? `sem extrato - ${brl(r.now)} a discriminar` : r.now < -0.005 ? "sem extrato - falta ligar uma transferência" : "sem extrato - em dia")
+                : r.acc.at ? `conferido ${dm(r.acc.at)}` : r.used ? "sem saldo conferido" : "sem lançamentos"}
             </span>
             <span className="acc-btns">
-              <button className="link" onClick={() => setOpen(open === r.acc.id ? null : r.acc.id)}>{open === r.acc.id ? "fechar" : "ver movimentos"}</button>
+              <button className="link" onClick={() => setOpen(open === r.acc.id ? null : r.acc.id)}>{open === r.acc.id ? "fechar" : "movimentos"}</button>
               <button className="link" onClick={() => (onEdit ? onEdit(r.acc.id) : setEdit(r.acc.id))}>{onEdit ? "alterar" : r.acc.noStatement ? "editar" : r.informed ? "conferir saldo" : "informar saldo"}</button>
             </span>
             {open === r.acc.id && (() => {
@@ -1311,12 +1314,18 @@ export function LoanForm({ l, onSave, onCancel }: { l: Loan; onSave: (l: Loan) =
 export function Fixos({ setup, months, onEdit }: { setup: GastosSetup; months?: Record<string, MonthDoc>; onEdit?: (id: string | null) => void }) {
   const m = monthOf(todayBR());
   const val = (f: Fixo) => fixoExpected(f, m, months);
-  const fixos = setup.fixos.filter((f) => !f.once);
+  const fixos = setup.fixos.filter((f) => !f.once).sort((a, b) => a.dia - b.dia);
   const total = fixos.filter((f) => fixoActive(f, m)).reduce((s, f) => s + val(f), 0);
+  // situacao de cada fixo neste mes (pago, a pagar, atrasado)
+  const bills = months ? monthBills(m, months[m]?.items ?? [], setup, months) : [];
+  const billOf = (f: Fixo) => bills.find((b) => b.ref === f.id);
+  const active = fixos.filter((f) => fixoActive(f, m));
+  const paidN = active.filter((f) => billOf(f)?.paid).length;
+  const today = todayBR();
   return (
     <section className="card">
       <div className="card-head"><h2>Gastos fixos</h2>
-        <span className="muted small">{fixos.length ? `~${brl(total)} por mês` : ""}{onEdit && <button className="link" onClick={() => onEdit(null)}>+ fixo</button>}</span></div>
+        <span className="muted small">{fixos.length ? `~${brl(total)} por mês${months && active.length ? ` - ${paidN} de ${active.length} pagos este mês` : ""}` : ""}{onEdit && <button className="link" onClick={() => onEdit(null)}>+ fixo</button>}</span></div>
       {fixos.length > 0 ? (
         <ul className="pend small">
           {fixos.map((f) => {
@@ -1329,6 +1338,9 @@ export function Fixos({ setup, months, onEdit }: { setup: GastosSetup; months?: 
                 {f.start && f.start > m && <span className="tag">começa em {monthLabel(f.start)}</span>}
                 {f.end && <span className={f.end < m ? "tag warn" : "tag"}>{f.end < m ? "terminou" : "até"} {monthLabel(f.end)}</span>}
                 <span>{f.varia ? "~" : ""}{brl(val(f))}</span>
+                {(() => { const b = billOf(f); if (!b) return null;
+                  return b.paid ? <span className="sit sit-paga" title={`${b.paid.desc} - ${brl(b.paid.v)}`}>pago {dm(b.paid.d)}</span>
+                    : b.d < today ? <span className="sit sit-atrasada">atrasado</span> : <span className="sit sit-aberta">a pagar</span>; })()}
                 {onEdit && <button className="link" onClick={() => onEdit(f.id)}>alterar</button>}</li>
             );
           })}

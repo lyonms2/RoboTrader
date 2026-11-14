@@ -121,6 +121,8 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   const liquido = bruto - debt.total;
   const finGroups = { ...s.byGroup, cripto: 0, dolar: 0 };
   const invRows = rows.filter((r) => r.item.kind !== "bem");
+  const invTot = invRows.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.value ?? 0), 0);
+  const invMonthly = invRows.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.monthly ?? 0), 0);
   const bemRows = rows.filter((r) => r.item.kind === "bem");
 
   const nav = (
@@ -159,31 +161,40 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
             {s.bens > 0 && <div><span>Líquido sem bens</span><b className={liquido - s.bens < 0 ? "neg" : ""}>{brl(liquido - s.bens)}</b></div>}
           </div>
         </div>
-        <BalanceEq contas={contas} investido={investido} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} />
+        <details className="eq-more">
+          <summary>ver a conta: o que você tem - o que deve</summary>
+          <BalanceEq contas={contas} investido={investido} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} />
+        </details>
         <FinBar byGroup={finGroups} />
         <Note>Só o que está nas abas de Finanças. A cripto ({brl(crypto, 0)}) fica na aba Cripto; o patrimônio da Visão geral soma tudo.
           Aqui só se vê: para lançar ou alterar, use Lançamentos (contas e contas a pagar), Investimentos (investimentos e bens),
           Cartões e empréstimos, ou o link &quot;alterar&quot; de cada item.</Note>
       </section>
 
-      <h3 className="bal-title">O que você tem <span className="bal-sum">{brl(bruto)}</span></h3>
       <section className="card">
         <div className="card-head"><h2>Contas</h2><span className="muted small">{brl(acct?.value ?? 0)}</span></div>
         <AccountsPanel months={months} setup={setup} m={mon.m} onEdit={(id) => goEdit("conta", id)} />
       </section>
 
       <section className="card">
-        <div className="card-head"><h2>Investimentos</h2><span className="muted small">{brl(invRows.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.value ?? 0), 0))}
+        <div className="card-head"><h2>Investimentos</h2><span className="muted small">{brl(invTot)}{invMonthly > 0 ? ` - rende ~${brl(invMonthly, 0)}/mês` : ""}
           <button className="link" onClick={() => setSub("invest")}>ver investimentos &rsaquo;</button></span></div>
         {invRows.length ? (
-          <ul className="pend small">
+          <ul className="item-bars">
             {invRows.map((r) => {
               const gain = r.cost !== null && r.value !== null ? r.value - r.cost : null;
+              const pct = invTot > 0 && r.value ? r.value / invTot : 0;
               return (
                 <li key={r.item.id}>
-                  <b>{r.item.name}</b> <span className="tag">{r.kindLabel}</span>{r.item.reserva && <span className="tag">reserva</span>}
-                  <span className={gain !== null ? pnlClass(gain) : "muted"}>{gain !== null && Math.abs(gain) >= 0.01 ? signed(gain) : gain === null ? r.problem ?? "" : ""}</span>
-                  <span>{r.value !== null ? brl(r.value, 0) : "-"}</span>
+                  <div className="ib-top">
+                    <span><i className={`dot g-${r.group}`} aria-hidden="true" /><b>{r.item.name}</b> <span className="tag">{r.kindLabel}</span>{r.item.reserva && <span className="tag">reserva</span>}</span>
+                    <b>{r.value !== null ? brl(r.value) : "-"}</b>
+                  </div>
+                  <div className="ib-bar"><span className={`g-${r.group}`} style={{ width: `${Math.max(1, pct * 100)}%` }} /></div>
+                  <div className="ib-sub">
+                    <span className="muted">{pctS(pct, 0)} do investido{r.yieldYear !== null ? ` - ${pctS(r.yieldYear, 1)} ao ano` : ""}{r.monthly ? ` - rende ~${brl(r.monthly)}/mês` : ""}</span>
+                    {gain !== null && Math.abs(gain) >= 0.01 ? <span className={pnlClass(gain)}>{signed(gain)} de lucro</span> : r.problem ? <span className="warn">{r.problem}</span> : null}
+                  </div>
                 </li>
               );
             })}
@@ -212,17 +223,25 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
         <section className="card">
           <div className="card-head"><h2>A receber</h2><span className="muted small">{brl(debt.recv)}
             <button className="link" onClick={() => { setCardsEntry({ type: "recv", id: null }); setSub("cards"); }}>ver a receber &rsaquo;</button></span></div>
-          <ul className="pend small">
+          <ul className="item-bars">
             {(setup.recvs ?? []).map((r) => {
               const st = recvStatus(r, months);
+              const conta = r.kind === "conta";
+              const pct = !conta && r.n ? st.got / r.n : 0;
               return (
-                <li key={r.id}><b>{r.name}</b> <span className="tag">{r.kind === "emprestei" ? "empréstimo" : r.kind === "venda" ? "venda" : "conta com a pessoa"}</span>
-                  {r.kind === "conta"
-                    ? <span className="muted">{st.saldo >= 0 ? "te deve" : "você deve a ela"}</span>
-                    : <span className="muted">{st.got} de {r.n} recebidas</span>}
-                  {st.late > 0 && <span className="warn">{st.late} atrasada{st.late > 1 ? "s" : ""}</span>}
-                  <span className={st.saldo < 0 ? "warn" : ""}>{brl(r.kind === "conta" ? Math.abs(st.saldo) : st.leftV, 0)}</span>
-                  <button className="link" onClick={() => { setCardsEntry({ type: "recv", id: r.id }); setSub("cards"); }}>abrir</button></li>
+                <li key={r.id}>
+                  <div className="ib-top">
+                    <span><b>{r.name}</b> <span className="tag">{r.kind === "emprestei" ? "empréstimo" : r.kind === "venda" ? "venda" : "conta com a pessoa"}</span>
+                      {st.late > 0 && <span className="chip warn-chip">{st.late} atrasada{st.late > 1 ? "s" : ""}</span>}</span>
+                    <b className={conta && st.saldo < 0 ? "warn" : "pos"}>{brl(conta ? Math.abs(st.saldo) : st.leftV)}</b>
+                  </div>
+                  {!conta && <div className="ib-bar"><span className="g-acoes" style={{ width: `${Math.max(1, pct * 100)}%` }} /></div>}
+                  <div className="ib-sub">
+                    <span className="muted">{conta ? (st.saldo >= 0 ? "te deve hoje" : "você deve a ela")
+                      : `${st.got} de ${r.n} parcelas recebidas${st.next && !st.late ? ` - próxima ${dm(st.next)}` : ""}`}{st.late > 0 ? ` - ${brl(st.lateV)} atrasado` : ""}</span>
+                    <button className="link" onClick={() => { setCardsEntry({ type: "recv", id: r.id }); setSub("cards"); }}>abrir &rsaquo;</button>
+                  </div>
+                </li>
               );
             })}
           </ul>

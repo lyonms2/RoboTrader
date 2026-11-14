@@ -11,7 +11,23 @@ import Note from "./Note";
 // Lista de compras do mercado: guardada em config/compras (no espaco de quem esta logado).
 // freq = quantas vezes cada item ja entrou na lista (vira atalho de "itens frequentes")
 type Item = { id: string; name: string; qty?: string; price?: number; done?: boolean };
-type ListDoc = { items: Item[]; freq: Record<string, number> };
+// prices = produtos salvos: historico de precos de cada produto (por nome), para preencher sozinho e comparar
+type PriceRec = { v: number; d: string };
+type Product = { name: string; hist: PriceRec[] };
+type ListDoc = { items: Item[]; freq: Record<string, number>; prices: Record<string, Product> };
+
+// Novo preco x historico do produto (sem contar o registro de hoje): menor, barato, na media ou caro
+export function verdict(prod: Product | undefined, v: number, today: string) {
+  const prev = (prod?.hist ?? []).filter((h) => h.d !== today).slice(-10);
+  if (!prev.length || !(v > 0)) return null;
+  const vals = prev.map((h) => h.v);
+  const avg = vals.reduce((t, x) => t + x, 0) / vals.length;
+  const min = Math.min(...vals);
+  const diff = v / avg - 1;
+  const tag = v < min - 0.005 ? { cls: "good", t: "menor preço" } : diff <= -0.03 ? { cls: "good", t: "barato" }
+    : diff >= 0.08 ? { cls: "bad", t: `caro (+${fmt(diff * 100, 0)}%)` } : { cls: "", t: "na média" };
+  return { ...tag, avg, min, last: prev[prev.length - 1] };
+}
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number) => `R$ ${fmt(v)}`;
@@ -33,17 +49,18 @@ function parseItem(raw: string): { name: string; qty?: string } {
 }
 
 export default function ShoppingList({ months, setup }: { months: Record<string, MonthDoc>; setup: GastosSetup }) {
-  const [data, setData] = useState<ListDoc>({ items: [], freq: {} });
+  const [data, setData] = useState<ListDoc>({ items: [], freq: {}, prices: {} });
   const [loaded, setLoaded] = useState(false);
   const [text, setText] = useState("");
   const [msg, setMsg] = useState("");
+  const [warn, setWarn] = useState("");
   const [buy, setBuy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     try {
       return onSnapshot(doc(db(), P("config/compras")), (s) => {
         const d = s.data() as Partial<ListDoc> | undefined;
-        setData({ items: d?.items ?? [], freq: d?.freq ?? {} });
+        setData({ items: d?.items ?? [], freq: d?.freq ?? {}, prices: d?.prices ?? {} });
         setLoaded(true);
       }, () => setLoaded(true));
     } catch { setLoaded(true); return undefined; }
@@ -51,8 +68,8 @@ export default function ShoppingList({ months, setup }: { months: Record<string,
   const save = async (next: ListDoc) => {
     guardWrite();
     setData(next); // na tela na hora; o banco confirma em seguida (sem internet, o Firebase guarda e envia quando voltar)
-    try { await setDoc(doc(db(), P("config/compras")), JSON.parse(JSON.stringify(next))); }
-    catch { setMsg("Não salvou no servidor ainda (sem conexão?). Confira quando a internet voltar."); }
+    try { await setDoc(doc(db(), P("config/compras")), JSON.parse(JSON.stringify(next))); setWarn(""); }
+    catch { setWarn("Não salvou no servidor ainda (sem conexão?). Confira quando a internet voltar."); }
   };
 
   const add = async (raw: string) => {
@@ -65,14 +82,26 @@ export default function ShoppingList({ months, setup }: { months: Record<string,
       const k = key(it.name);
       const dup = items.find((x) => key(x.name) === k && !x.done);
       if (dup) { if (it.qty) dup.qty = it.qty; continue; }
-      items.push({ id: newId(), name: it.name, ...(it.qty ? { qty: it.qty } : {}) });
+      const h = data.prices[k]?.hist ?? []; const last = h.length ? h[h.length - 1].v : undefined;
+      items.push({ id: newId(), name: it.name, ...(it.qty ? { qty: it.qty } : {}), ...(last ? { price: last } : {}) });
       freq[k] = (freq[k] ?? 0) + 1;
     }
     setText("");
-    await save({ items, freq });
+    await save({ ...data, items, freq });
     input.current?.focus();
   };
   const update = (id: string, patch: Partial<Item>) => save({ ...data, items: data.items.map((x) => (x.id === id ? { ...x, ...patch } : x)) });
+  const today = todayBR();
+  // guarda o preco no produto (um registro por dia; ate 30 por produto)
+  const withPrice = (prices: Record<string, Product>, name: string, v: number) => {
+    const k = key(name);
+    const hist = (prices[k]?.hist ?? []).filter((h) => h.d !== today);
+    return { ...prices, [k]: { name: prices[k]?.name ?? cap(name), hist: [...hist, { v, d: today }].slice(-30) } };
+  };
+  const setPrice = (x: Item, v: number) => save({
+    ...data, items: data.items.map((y) => (y.id === x.id ? { ...y, price: v > 0 ? v : undefined } : y)),
+    prices: v > 0 ? withPrice(data.prices, x.name, v) : data.prices,
+  });
   const remove = (id: string) => save({ ...data, items: data.items.filter((x) => x.id !== id) });
 
   const open = data.items.filter((x) => !x.done);
@@ -83,6 +112,7 @@ export default function ShoppingList({ months, setup }: { months: Record<string,
     const inList = new Set(data.items.map((x) => key(x.name)));
     return Object.entries(data.freq).filter(([k]) => !inList.has(k)).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([k]) => cap(k));
   }, [data.freq, data.items]);
+  const products = Object.entries(data.prices).sort((a, b) => a[1].name.localeCompare(b[1].name));
 
   return (
     <>
@@ -112,9 +142,22 @@ export default function ShoppingList({ months, setup }: { months: Record<string,
                 <input className="shop-qty" value={x.qty ?? ""} placeholder="qtd" aria-label={`Quantidade de ${x.name}`}
                   onChange={(e) => setData({ ...data, items: data.items.map((y) => (y.id === x.id ? { ...y, qty: e.target.value } : y)) })}
                   onBlur={(e) => update(x.id, { qty: e.target.value.trim() || undefined })} />
-                <input className="shop-price" inputMode="decimal" defaultValue={x.price ? fmt(x.price) : ""} placeholder="R$" aria-label={`Preço de ${x.name}`}
-                  onBlur={(e) => { const v = num(e.target.value); if (v !== (x.price ?? 0)) void update(x.id, { price: v > 0 ? v : undefined }); }} />
+                <input key={`${x.id}-${x.price ?? ""}`} className="shop-price" inputMode="decimal" defaultValue={x.price ? fmt(x.price) : ""} placeholder="R$" aria-label={`Preço de ${x.name}`}
+                  onBlur={(e) => { const v = num(e.target.value); if (v !== (x.price ?? 0)) void setPrice(x, v); }} />
                 <button type="button" className="link shop-x" aria-label={`Tirar ${x.name}`} onClick={() => remove(x.id)}>x</button>
+                {(() => {
+                  const prod = data.prices[key(x.name)];
+                  const vd = x.price ? verdict(prod, x.price, today) : null;
+                  const prev = (prod?.hist ?? []).filter((h) => h.d !== today);
+                  if (!vd && !prev.length) return null;
+                  return (
+                    <div className="shop-info">
+                      {vd && <span className={`shop-tag ${vd.cls}`}>{vd.t}</span>}
+                      {prev.length > 0 && <span className="muted">último {brl(prev[prev.length - 1].v)} ({prev[prev.length - 1].d.slice(8, 10)}/{prev[prev.length - 1].d.slice(5, 7)})
+                        {prev.length > 1 ? ` - média ${brl(prev.reduce((t, h) => t + h.v, 0) / prev.length)} - menor ${brl(Math.min(...prev.map((h) => h.v)))}` : ""}</span>}
+                    </div>
+                  );
+                })()}
               </li>
             ))}
           </ul>
@@ -128,12 +171,67 @@ export default function ShoppingList({ months, setup }: { months: Record<string,
         )}
         {buy && <LaunchForm setup={setup} months={months} estimate={est(done)} onDone={async (m) => { setBuy(false); setMsg(m); await save({ ...data, items: open }); }} />}
         {msg && <p className="small pos">&#10003; {msg}</p>}
+        {warn && <p className="small warn">{warn}</p>}
+        <Products products={products} today={today}
+          onSave={(name, v) => save({ ...data, prices: withPrice(data.prices, name, v) })}
+          onRemove={(k) => save({ ...data, prices: Object.fromEntries(Object.entries(data.prices).filter(([x]) => x !== k)) })}
+          onAdd={(name) => add(name)} />
         <Note>Escreva vários itens de uma vez separados por vírgula; a quantidade pode vir antes ou depois (&quot;2 leite&quot;, &quot;sabão 3&quot;).
+          O preço que você digita fica salvo no produto: na próxima lista ele já vem preenchido e, quando muda, o site compara com
+          os preços anteriores (menor preço, barato, na média ou caro). Use sempre o preço da mesma unidade (ex.: o pacote de 5 kg).
           No mercado, marque o que já pegou: vai para o fim da lista. O preço é opcional e serve para estimar o total. Ao terminar,
           &quot;lançar o gasto&quot; registra a compra em Lançamentos (categoria Mercado) e tira da lista o que foi comprado.
           Os itens que você mais usa aparecem em &quot;Frequentes&quot; para adicionar com um toque.</Note>
       </section>
     </>
+  );
+}
+
+// Produtos salvos: ultimo, menor e media de preco; salvar um produto com o preco (sem estar comprando)
+function Products({ products, today, onSave, onRemove, onAdd }: {
+  products: [string, Product][]; today: string; onSave: (name: string, v: number) => Promise<void>; onRemove: (k: string) => Promise<void>; onAdd: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [v, setV] = useState("");
+  const [q, setQ] = useState("");
+  const shown = products.filter(([, p]) => !q || key(p.name).includes(key(q)));
+  const prev = name.trim() ? products.find(([k]) => k === key(name))?.[1] : undefined;
+  const vd = prev && num(v) > 0 ? verdict(prev, num(v), today) : null;
+  return (
+    <details className="eq-more shop-prod">
+      <summary>Produtos salvos ({products.length}): preços para comparar</summary>
+      <form className="row wrapline" onSubmit={async (e) => { e.preventDefault(); if (!name.trim() || !(num(v) > 0)) return; await onSave(name, num(v)); setName(""); setV(""); }}>
+        <label className="grow">Produto<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Café (o mesmo nome da lista)" list="shop-prod-names" /></label>
+        <label>Preço (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="0,00" /></label>
+        <button className="primary" type="submit" disabled={!name.trim() || !(num(v) > 0)}>Salvar preço</button>
+        <datalist id="shop-prod-names">{products.map(([k, p]) => <option key={k} value={p.name} />)}</datalist>
+      </form>
+      {vd && <p className="small"><span className={`shop-tag ${vd.cls}`}>{vd.t}</span> <span className="muted">média {brl(vd.avg)} - menor {brl(vd.min)}</span></p>}
+      {products.length > 6 && <input className="shop-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Procurar produto..." aria-label="Procurar produto" />}
+      {shown.length ? (
+        <div className="table-scroll">
+          <table className="stack shop-table">
+            <thead><tr><th>Produto</th><th>Último</th><th>Menor</th><th>Média</th><th /></tr></thead>
+            <tbody>
+              {shown.map(([k, p]) => {
+                const vals = p.hist.map((h) => h.v);
+                const last = p.hist[p.hist.length - 1];
+                return (
+                  <tr key={k}>
+                    <td><b>{p.name}</b><div className="muted small">{p.hist.length} {p.hist.length > 1 ? "preços" : "preço"}</div></td>
+                    <td data-label="Último">{brl(last.v)} <small className="muted">{last.d.slice(8, 10)}/{last.d.slice(5, 7)}</small></td>
+                    <td data-label="Menor">{brl(Math.min(...vals))}</td>
+                    <td data-label="Média">{brl(vals.reduce((t, x) => t + x, 0) / vals.length)}</td>
+                    <td className="actions"><button className="link" onClick={() => onAdd(p.name)}>+ lista</button>
+                      <button className="link" onClick={() => onRemove(k)} aria-label={`Apagar ${p.name}`}>apagar</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : <p className="muted small">{products.length ? "Nenhum produto com esse nome." : "Nenhum produto salvo ainda. Digite o preço de um item da lista, ou salve aqui."}</p>}
+    </details>
   );
 }
 

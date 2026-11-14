@@ -83,6 +83,11 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Ao terminar, clique em \"Terminei: lançar o gasto\", informe o valor do cupom e com o que pagou: a compra entra em Lançamentos (Mercado).",
       "Os itens que você mais usa aparecem em \"Frequentes\" para adicionar com um toque.",
     ] },
+    { title: "Salvar o preço dos produtos e ver se está caro", steps: [
+      "Digite o preço de um item da lista: ele fica salvo no produto, com a data.",
+      "Na próxima lista, o item já vem com o último preço. Mudou o preço? O site compara: menor preço, barato, na média ou caro (+%).",
+      "Em \"Produtos salvos\" (embaixo da lista) você vê último, menor e média de cada produto e pode salvar um preço sem estar comprando.",
+    ], tips: ["Use sempre o mesmo nome e o preço da mesma unidade (ex.: o pacote de 5 kg), para a comparação fazer sentido."] },
   ] },
   { group: "Orçamento e metas", items: [
     { title: "Definir um orçamento por categoria", steps: [

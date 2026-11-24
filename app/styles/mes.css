@@ -13,10 +13,11 @@
 .mes-today { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; }
 .mes-more { position: relative; }
 .mes-more .sh-menu { min-width: 240px; }
-.mes-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.mes-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
 .mes-stats .ui-stat.compact { background: var(--surface); padding: 8px; }
 .mes-stats .ui-stat-label { font-size: 11px; }
 .mes-stats .ui-money { font-size: var(--fs-md); }
+@media (max-width: 379px) { .mes-stats .ui-money { font-size: 13px; } .mes-stats .ui-stat.compact { padding: 8px 6px; } }
 .mes-line { margin: 0; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.5; }
 .mes-line b { color: var(--text-2); }
 .mes-empty { margin: 0; font-size: var(--fs-sm); color: var(--text-3); }

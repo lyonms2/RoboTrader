@@ -17,8 +17,6 @@ import { Badge, Button, Card, InfoTip, Money, Section, Stat, Stats } from "./ui"
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$\u00a0${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
-const signed = (v: number) => `${v > 0 ? "+" : v < 0 ? "-" : ""}R$\u00a0${fmt(Math.abs(v))}`;
-const pnlClass = (v: number) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
 const pctS = (v: number, d = 1) => `${fmt(v * 100, d)}%`;
 
 // Barra 100%: patrimonio por grupo (cor fixa por grupo)

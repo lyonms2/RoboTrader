@@ -66,3 +66,7 @@
 .ls-soft { color: var(--text-3); font-weight: 400; }
 .ls-msg { color: var(--pos); font-size: var(--fs-sm); margin: var(--s-3) 0 0; }
 @media (max-width: 360px) { .ls-tile { padding: 12px 10px; gap: 8px; } .ls-ico { width: 34px; height: 34px; } }
+
+/* entrada e carregamento inicial */
+.login .login-btn { min-width: 220px; height: 48px; font-size: var(--fs-lg); }
+.brand-mark.boot { animation: ui-fade var(--t-med) ease-out; }

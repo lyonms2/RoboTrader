@@ -2,7 +2,7 @@
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
-import { Button, Card as UiCard, EmptyState, Fold, InfoTip, Money, Sheet, Stat, Stats } from "./ui";
+import { Button, Card as UiCard, EmptyState, Fold, InfoTip, Money, Sheet, Skeleton, Stat, Stats } from "./ui";
 import { db } from "@/lib/firebaseClient";
 import { P } from "@/lib/paths";
 import { accountsOf, budgetSpent, monthOf, newId, todayBR, type GastosSetup, type MonthDoc } from "@/lib/gastos";
@@ -354,7 +354,7 @@ export default function ShoppingList({ months, setup, ipca12m }: { months: Recor
         )}
       </UiCard>
 
-      {!loaded ? <UiCard><p className="mes-empty">Carregando...</p></UiCard> : !data.items.length ? (
+      {!loaded ? <div className="ui-loading" role="status" aria-label="Carregando"><Skeleton w="100%" h={52} /><Skeleton w="100%" h={52} /></div> : !data.items.length ? (
         <UiCard><EmptyState title="Lista vazia" text="Escreva os itens acima, vários de uma vez, separados por vírgula." /></UiCard>
       ) : (
         <UiCard flush>

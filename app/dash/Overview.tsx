@@ -1,7 +1,6 @@
 "use client";
 import { useMemo, useState, type ReactNode } from "react";
 import { ArrowDownLeft, Bot, CalendarClock, CheckCircle2, ChevronRight, Coins, CreditCard, Lightbulb, ListChecks, Plus, Repeat, TrendingDown, TrendingUp, TriangleAlert, Wallet, X } from "lucide-react";
-import { P } from "@/lib/paths";
 import { allocOf } from "@/lib/positions";
 import { allocationBlocks, walletNotices } from "@/lib/allocation";
 import { walletAddresses, walletKey } from "@/lib/addresses";

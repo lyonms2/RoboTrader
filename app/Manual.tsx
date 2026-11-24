@@ -1,7 +1,7 @@
 "use client";
 
 // Manual de uso (aba Ajuda): passo a passo curto de cada parte do site. O membro so ve o que existe para ele.
-type Topic = { title: string; intro?: string; steps: string[]; tips?: string[]; owner?: boolean; robo?: boolean };
+type Topic = { title: string; intro?: string; steps: string[]; tips?: string[]; owner?: boolean; robo?: boolean; member?: boolean };
 
 const START: string[] = [
   "Cadastre suas contas e informe o saldo de hoje (Finanças → Lançamentos → Conta / saldo).",
@@ -191,9 +191,16 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Você pode clicar em \"Encerrar agora\" quando quiser; depois de 24 horas o acesso fecha sozinho.",
       "\"Apagar meus dados\" remove tudo o que você lançou no site.",
     ] },
+    { title: "Sua assinatura", member: true, steps: [
+      "Em \"Minha conta\" aparece até quando a sua assinatura está paga.",
+      "Uma semana antes de vencer, um aviso aparece no topo do site.",
+      "Para renovar, fale com o SeuBitico: seus dados continuam guardados.",
+    ] },
     { title: "Liberar membros e dar suporte", owner: true, steps: [
-      "Em \"Membros\", digite o e-mail Google do membro, escolha o nível (com ou sem Robô e tokens) e clique em \"Liberar acesso\".",
-      "Para mudar o nível de quem já entra, troque na lista de membros.",
+      "Em \"Membros\", digite o e-mail Google do membro, escolha a data de vencimento (padrão: daqui a 1 mês) e clique em \"Liberar acesso\".",
+      "Membros veem finanças e a própria carteira cripto; o Robô e as fichas dos tokens são só seus.",
+      "A lista mostra primeiro os atrasados (vermelho) e os que vencem em até 7 dias (amarelo). O vencimento é só um lembrete: ninguém é bloqueado sozinho.",
+      "Quando o membro pagar, clique em \"+1 mês\" (soma a partir do vencimento, ou de hoje se já venceu) ou ajuste a data. Quem não pagou, clique em \"remover\".",
       "Quando o membro permitir o suporte, aparece \"Ver conta (suporte)\" ao lado do e-mail dele: abre a conta em modo leitura.",
       "Clique em \"Sair do suporte\" para voltar à sua conta.",
     ] },
@@ -201,7 +208,7 @@ const TOPICS: { group: string; items: Topic[] }[] = [
 ];
 
 export default function Manual({ member, robo = true }: { member: boolean; robo?: boolean }) {
-  const groups = TOPICS.map((g) => ({ ...g, items: g.items.filter((t) => (!t.owner || !member) && (!t.robo || robo)) })).filter((g) => g.items.length);
+  const groups = TOPICS.map((g) => ({ ...g, items: g.items.filter((t) => (!t.owner || !member) && (!t.member || member) && (!t.robo || robo)) })).filter((g) => g.items.length);
   return (
     <>
       <section className="card manual-start">

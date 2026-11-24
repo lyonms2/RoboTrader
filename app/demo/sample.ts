@@ -32,6 +32,7 @@ export function sampleDemo(member: boolean): Demo {
       { id: "f1", desc: "Aluguel", v: 1200, cat: "Moradia", dia: 10 },
       { id: "f2", desc: "Luz", v: 130, cat: "Contas (luz, agua, internet)", dia: 15, varia: true },
       { id: "f3", desc: "Academia", v: 107, cat: "Saude", dia: Math.min(28, Number(t.slice(8, 10)) + 1) },
+      { id: "f4", desc: "Aluguel recebido", v: 900, cat: "Renda extra", dia: 28, entrada: true },
     ],
     budgets: { Moradia: 1300, Mercado: 900, Compras: 400 },
     loans: [{ id: "l1", name: "Empréstimo pessoal", parcela: 480, n: 24, first: addMonths(m, -6), dueDay: 15, paidBefore: 5 }],

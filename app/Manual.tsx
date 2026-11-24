@@ -79,6 +79,7 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Se já veio no extrato, toque no lançamento (o \"parece ser\" aparece no topo).",
       "Se não vem em extrato, escolha com que conta ou cartão pagou, o valor e a data, e toque em \"Lançar o pagamento\".",
       "Outra pessoa pagou com o dinheiro dela? Escolha o nome dela em \"Pagou com\": abate o que ela te deve.",
+      "No topo do Mês, \"A receber\" soma as entradas fixas e as parcelas de quem te deve que ainda não caíram; a linha embaixo mostra quanto deve sobrar no fim do mês.",
     ], tips: ["Ligou errado? Toque na conta paga em \"ver as contas pagas\" e altere."] },
     { title: "Somar alguns lançamentos ou simular valores", steps: [
       "Somar: em Lançamentos, toque em \"somar\" e depois nos lançamentos. A barra embaixo mostra entradas, saídas e o total.",

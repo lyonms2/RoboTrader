@@ -71,6 +71,8 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
   // o que paga no cartao (assinatura, fixo no cartao) entra pela fatura: nao soma no "ainda a pagar" da conta
   const pending = bills.filter((b) => !b.paid && !b.card);
   const pendingTotal = pending.reduce((a, p) => a + p.v, 0);
+  // o que ainda deve cair no mes: entradas fixas nao recebidas + parcelas de quem te deve
+  const toGet = incLeft.reduce((a, b) => a + b.v, 0) + recLeft.reduce((a, x) => a + (x.row.v ?? x.r.parcela), 0);
   const prevAvg = useMemo(() => {
     // media por categoria nos 3 meses anteriores ao mes aberto
     const keys = [1, 2, 3].map((k) => addMonths(m, -k)).filter((k) => months[k]?.items.length);
@@ -311,9 +313,12 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
           <Stat compact label="Entrou" value={<Money value={s.receitas} cents={false} prefix="" />} />
           <Stat compact label="Saiu" value={<Money value={s.gastos} cents={false} prefix="" tone={avg && s.gastos > avg.value * 1.1 ? "warn" : undefined} />} />
           <Stat compact label="Sobrou" value={<Money value={s.receitas - s.gastos} cents={false} prefix="" tone="auto" />} />
+          <Stat compact label="A receber" value={<Money value={toGet} cents={false} prefix="" tone={toGet > 0 ? "pos" : undefined} />} />
           <Stat compact label="A pagar" value={<Money value={pendingTotal} cents={false} prefix="" tone={pendingTotal > 0 ? "warn" : undefined} />} />
         </div>
         <p className="mes-line">
+          {(toGet > 0 || pendingTotal > 0) && <>Previsto no fim do mês: entra {brl(s.receitas + toGet, 0)}, sai {brl(s.gastos + pendingTotal, 0)},
+            sobra <b className={s.receitas + toGet - s.gastos - pendingTotal >= 0 ? "pos" : "neg"}>{brl(s.receitas + toGet - s.gastos - pendingTotal, 0)}</b><br /></>}
           {avg ? <>média de gastos {brl(avg.value, 0)}</> : "a média aparece no 2º mês"}
           {s.receitas > 0 && <> · sobrou {fmt(((s.receitas - s.gastos) / s.receitas) * 100, 0)}% das entradas</>}
           {acSt.rows.some((r) => r.used || r.informed) && <> · {isNow ? "nas contas hoje" : "nas contas no fim do mês"} <b className={acSt.end < 0 ? "neg" : ""}>{brl(acSt.end, 0)}</b>

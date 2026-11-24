@@ -16,13 +16,14 @@ import { BalanceEq, FinBar } from "./OverviewBlocks";
 export { NetWorthBlock } from "./OverviewBlocks";
 import ExportData from "./ExportData";
 import ShoppingList from "./ShoppingList";
-import { Segmented, Sheet } from "./ui";
+import { Badge, Button, Card as UiCard, EmptyState, Fold, InfoTip, List, ListRow, Money, Progress, Section, Segmented, Sheet, Stat, Stats } from "./ui";
+import { Bitcoin, CalendarClock, CreditCard, House, Landmark, PiggyBank, Plus, RefreshCw, UserRound } from "lucide-react";
 // membro: dados em users/{uid}/ (o dono exporta tambem as operacoes manuais)
 const isMemberBase = () => P("").startsWith("users/");
 // Resumo = ver como esta; Lancamentos = unico lugar onde o dinheiro se move; Contas e bens = unico lugar com saldos e cadastros
 // O resumo (patrimonio, mes, proximos pagamentos, evolucao) fica na Visao geral
-export type Sub = "lanc" | "invest" | "cards" | "bens" | "compras";
-const OLD_SUB: Record<string, Sub> = { gastos: "lanc", dividas: "bens", resumo: "lanc", loans: "cards", recv: "cards" };
+export type Sub = "lanc" | "invest" | "cards" | "loans" | "recv" | "bens" | "compras";
+const OLD_SUB: Record<string, Sub> = { gastos: "lanc", dividas: "bens", resumo: "lanc" };
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$\u00a0${fmt(v, d)}`;
@@ -48,7 +49,7 @@ const KINDS: { key: FinKind; label: string; hint: string }[] = [
 // Aba Financas: tudo num lugar so (cripto das carteiras + reserva, Tesouro, acoes/FIIs e outros), em reais
 export type FinView = "mes" | "patrimonio" | "compras";
 const PAT_SUBS: { id: Sub; label: string }[] = [
-  { id: "bens", label: "Contas e bens" }, { id: "invest", label: "Investimentos" }, { id: "cards", label: "Cartões e empréstimos" },
+  { id: "bens", label: "Contas" }, { id: "invest", label: "Investimentos" }, { id: "cards", label: "Cartões" }, { id: "loans", label: "Empréstimos" }, { id: "recv", label: "A receber" },
 ];
 export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spend, debt, months, setup, view, onView }: {
   cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; onChanged: () => void; onQuotes?: () => Promise<void>;
@@ -81,20 +82,13 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   };
   const [entry, setEntry] = useState<{ type: EntryType; id: string | null } | null>(null); // folha de cadastro/alteracao aberta
   // "loans" (aviso de parcela atrasada na Visao geral) abre direto em Emprestimos
-  const [cardsEntry, setCardsEntry] = useState<CardsEntry>(() => {
-    try {
-      const v = localStorage.getItem("finSub");
-      if (v === "loans") return { type: "loan", id: null };
-      if (v === "recv") return { type: "recv", id: null };
-    } catch { /* sem armazenamento */ }
-    return { type: "compra", id: null };
-  });
+  const [cardsEntry, setCardsEntry] = useState<CardsEntry>({ type: "compra", id: null });
   // investimento aberto para incluir/alterar na sub-aba Investimentos (undefined = fechado, null = novo)
   const [invEdit, setInvEdit] = useState<string | null | undefined>(undefined);
   const [bemEdit, setBemEdit] = useState<string | null | undefined>(undefined); // bens tambem se cadastram em Investimentos
   // cartao e emprestimo se lancam em Cartoes e emprestimos; investimento em Investimentos; o resto em Lancamentos
   const goEdit = (type: EntryType | "card" | "loan", id: string | null) => {
-    if (type === "card" || type === "loan") { setCardsEntry({ type, id }); setSub("cards"); return; }
+    if (type === "card" || type === "loan") { setCardsEntry({ type, id }); setSub(type === "card" ? "cards" : "loans"); return; }
     if (type === "inv") { setInvEdit(id); setSub("invest"); return; }
     if (type === "bem") { setBemEdit(id); setSub("invest"); return; }
     setEntry({ type, id });
@@ -136,12 +130,27 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   const bemRows = rows.filter((r) => r.item.kind === "bem");
 
   // so o Patrimonio tem partes; Mes e Lista de compras sao uma tela so
-  const nav = view !== "patrimonio" ? null : (
-    <div className="pat-nav"><Segmented label="Patrimônio" value={patSub} onChange={setSub} options={PAT_SUBS} /></div>
-  );
+  // Tem / Deve / Liquido igual ao Inicio (com a cripto); a conta completa no "i"
+  const tem = s.total + debt.recv;
+  const nav = view !== "patrimonio" ? null : (<>
+    <div className="pat-head">
+      <div className="pat-title"><h1>Patrimônio</h1>
+        <InfoTip label="Como é calculado"><b>O que você tem − o que deve</b>
+          <BalanceEq contas={contas} investido={investido} crypto={crypto} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} />
+          {s.bens > 0 && <span className="home-tip-line">Sem os bens: {brl(tem - debt.total - s.bens)}</span>}</InfoTip></div>
+      <div className="pat-bal">
+        <div><span>Tem</span><Money value={tem} cents={false} size="md" /></div>
+        <div><span>Deve</span><Money value={debt.total} cents={false} size="md" tone={debt.total > 0 ? "neg" : undefined} /></div>
+        <div><span>Líquido</span><Money value={tem - debt.total} cents={false} size="md" tone={tem - debt.total < 0 ? "neg" : "brand"} /></div>
+      </div>
+    </div>
+    <div className="pat-tabs" role="tablist" aria-label="Partes do patrimônio">
+      {PAT_SUBS.map((x) => <button key={x.id} type="button" role="tab" aria-selected={patSub === x.id} className={patSub === x.id ? "pat-tab on" : "pat-tab"} onClick={() => setSub(x.id)}>{x.label}</button>)}
+    </div>
+  </>);
   const entrySheet = <EntrySheet entry={entry} onClose={() => setEntry(null)} months={months} setup={setup} />;
   if (sub === "compras") return <>{nav}<ShoppingList months={months} setup={setup} ipca12m={fin?.ipca12m ?? null} />{entrySheet}</>;
-  if (sub === "cards") return <>{nav}<CardsLoans months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} />{entrySheet}</>;
+  if (sub === "cards" || sub === "loans" || sub === "recv") return <>{nav}<CardsLoans key={sub} part={sub} months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} />{entrySheet}</>;
   if (sub === "invest") return (
     <>{nav}<InvestPart items={items} rows={rows} fin={fin} months={months} reserve={s.reserve} reserveMonths={s.reserveMonths}
       setup={setup} onQuotes={onQuotes} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} />{entrySheet}</>
@@ -151,120 +160,38 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   return (
     <>
       {nav}
-      {sub === "bens" && <>
-      <section className="card">
-        <h2>Balanço</h2>
-        <div className="hero">
-          <div className="hero-main">
-            <span>O que você tem em Finanças</span>
-            <b>{brl(bruto)}</b>
-            <small>contas, investimentos{s.bens > 0 ? ", bens" : ""}{debt.recv > 0 ? " e o que te devem" : ""} - sem a cripto</small>
-          </div>
-          <div className="hero-side">
-            <div><span>Líquido (depois das dívidas)</span><b className={liquido < 0 ? "neg" : ""}>{brl(liquido)}</b>
-              <small className="muted">{debt.total > 0 ? `${brl(debt.total, 0)} de dívidas` : "sem dívidas"}</small></div>
-            {s.bens > 0 && <div><span>Líquido sem bens</span><b className={liquido - s.bens < 0 ? "neg" : ""}>{brl(liquido - s.bens)}</b></div>}
-          </div>
-        </div>
-        <details className="eq-more">
-          <summary>ver a conta: o que você tem - o que deve</summary>
-          <BalanceEq contas={contas} investido={investido} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} />
-        </details>
-        <FinBar byGroup={finGroups} />
-        <Note>Só o que está nas abas de Finanças. A cripto ({brl(crypto, 0)}) fica na aba Cripto; o patrimônio da Visão geral soma tudo.
-          Aqui só se vê: para lançar ou alterar, use Lançamentos (contas e contas a pagar), Investimentos (investimentos e bens),
-          Cartões e empréstimos, ou o link &quot;alterar&quot; de cada item.</Note>
-      </section>
+      {sub === "bens" && <div className="pat-part">
+      <Section title="Contas">
+        <UiCard><AccountsPanel months={months} setup={setup} m={mon.m} onEdit={(id) => goEdit("conta", id)} /></UiCard>
+      </Section>
 
-      <section className="card">
-        <div className="card-head"><h2>Contas</h2><span className="muted small">{brl(acct?.value ?? 0)}</span></div>
-        <AccountsPanel months={months} setup={setup} m={mon.m} onEdit={(id) => goEdit("conta", id)} />
-      </section>
+      {/* o resto do patrimonio: so atalhos (cada coisa se cadastra num lugar so) */}
+      <Section title="O resto do patrimônio">
+        <List>
+          <ListRow icon={<PiggyBank size={18} />} iconTone="pos" title="Investimentos" sub={invMonthly > 0 ? `rende ~${brl(invMonthly, 0)} por mês` : `${invRows.length} ${invRows.length === 1 ? "cadastrado" : "cadastrados"}`}
+            value={brl(invTot, 0)} onClick={() => setSub("invest")} />
+          <ListRow icon={<House size={18} />} iconTone="info" title="Imóveis e veículos" sub={bemRows.length ? bemRows.map((r) => r.item.name).join(", ") : "nenhum cadastrado"}
+            value={bemRows.length ? brl(s.bens, 0) : undefined} onClick={() => (bemRows.length ? setSub("invest") : goEdit("bem", null))} />
+          {crypto > 0 && <ListRow icon={<Bitcoin size={18} />} iconTone="brand" title="Cripto" sub="carteiras (em Mais > Cripto)" value={brl(crypto, 0)} />}
+          <ListRow icon={<UserRound size={18} />} iconTone="pos" title="A receber" sub={(setup.recvs ?? []).length ? `${(setup.recvs ?? []).length} ${(setup.recvs ?? []).length === 1 ? "cadastrado" : "cadastrados"}` : "ninguém te deve"}
+            value={debt.recv > 0 ? brl(debt.recv, 0) : undefined} onClick={() => setSub("recv")} />
+          <ListRow icon={<CreditCard size={18} />} iconTone="neg" title="Cartões" sub="faturas a pagar e parcelas futuras" value={debt.cards > 0 ? <span className="neg">−{brl(debt.cards, 0)}</span> : undefined} onClick={() => setSub("cards")} />
+          <ListRow icon={<Landmark size={18} />} iconTone="neg" title="Empréstimos" sub="saldo devedor" value={debt.loans > 0 ? <span className="neg">−{brl(debt.loans, 0)}</span> : undefined} onClick={() => setSub("loans")} />
+          <ListRow icon={<CalendarClock size={18} />} iconTone="warn" title="Contas a pagar e entradas fixas" sub="ficam em Mês > Contas do mês" onClick={() => setSub("lanc")} />
+        </List>
+      </Section>
 
-      <section className="card">
-        <div className="card-head"><h2>Investimentos</h2><span className="muted small">{brl(invTot)}{invMonthly > 0 ? ` - rende ~${brl(invMonthly, 0)}/mês` : ""}
-          <button className="link" onClick={() => setSub("invest")}>ver investimentos &rsaquo;</button></span></div>
-        {invRows.length ? (
-          <ul className="item-bars">
-            {invRows.map((r) => {
-              const gain = r.cost !== null && r.value !== null ? r.value - r.cost : null;
-              const pct = invTot > 0 && r.value ? r.value / invTot : 0;
-              return (
-                <li key={r.item.id}>
-                  <div className="ib-top">
-                    <span><i className={`dot g-${r.group}`} aria-hidden="true" /><b>{r.item.name}</b> <span className="tag">{r.kindLabel}</span>{r.item.reserva && <span className="tag">reserva</span>}</span>
-                    <b>{r.value !== null ? brl(r.value) : "-"}</b>
-                  </div>
-                  <div className="ib-bar"><span className={`g-${r.group}`} style={{ width: `${Math.max(1, pct * 100)}%` }} /></div>
-                  <div className="ib-sub">
-                    <span className="muted">{pctS(pct, 0)} do investido{r.yieldYear !== null ? ` - ${pctS(r.yieldYear, 1)} ao ano` : ""}{r.monthly ? ` - rende ~${brl(r.monthly)}/mês` : ""}</span>
-                    {gain !== null && Math.abs(gain) >= 0.01 ? <span className={pnlClass(gain)}>{signed(gain)} de lucro</span> : r.problem ? <span className="warn">{r.problem}</span> : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        ) : <p className="muted small">Nenhum investimento cadastrado. Cofrinho, Tesouro, ações e FIIs se cadastram em Investimentos.</p>}
-        {!bemRows.length && <p className="muted small">Imóveis e veículos: nenhum cadastrado. <button className="link" onClick={() => goEdit("bem", null)}>+ bem</button></p>}
-      </section>
+      <Section title="Onde está o dinheiro">
+        <UiCard>
+          <FinBar byGroup={s.byGroup} />
+          <p className="mes-line">A conta completa (o que você tem − o que deve) fica no &quot;i&quot; do topo.</p>
+        </UiCard>
+      </Section>
 
-      {bemRows.length > 0 && <section className="card">
-        <div className="card-head"><h2>Bens</h2><span className="muted small">{brl(s.bens)}<button className="link" onClick={() => goEdit("bem", null)}>+ bem</button><button className="link" onClick={() => setSub("invest")}>ver em investimentos &rsaquo;</button></span></div>
-        {bemRows.length ? (
-          <ul className="pend small">
-            {bemRows.map((r) => (
-              <li key={r.item.id}>
-                <b>{r.item.name}</b> <span className="tag">{r.kindLabel}</span>
-                <span className="muted">{r.note}{r.cost !== null && r.value !== null ? ` - pagou ${brl(r.cost, 0)}` : ""}</span>
-                <span className={r.item.ignore ? "muted" : ""}>{r.value !== null ? brl(r.value, 0) : "-"}</span>
-                <button className="link" onClick={() => goEdit("bem", r.item.id)}>alterar</button>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="muted small">Nenhum bem cadastrado. Imóveis, terrenos e veículos entram no patrimônio &quot;com bens&quot;, separados do financeiro.</p>}
-      </section>}
-
-      {(setup.recvs ?? []).length > 0 && (
-        <section className="card">
-          <div className="card-head"><h2>A receber</h2><span className="muted small">{brl(debt.recv)}
-            <button className="link" onClick={() => { setCardsEntry({ type: "recv", id: null }); setSub("cards"); }}>ver a receber &rsaquo;</button></span></div>
-          <ul className="item-bars">
-            {(setup.recvs ?? []).map((r) => {
-              const st = recvStatus(r, months);
-              const conta = r.kind === "conta";
-              const pct = !conta && r.n ? st.got / r.n : 0;
-              return (
-                <li key={r.id}>
-                  <div className="ib-top">
-                    <span><b>{r.name}</b> <span className="tag">{r.kind === "emprestei" ? "empréstimo" : r.kind === "venda" ? "venda" : "conta com a pessoa"}</span>
-                      {st.late > 0 && <span className="chip warn-chip">{st.late} atrasada{st.late > 1 ? "s" : ""}</span>}</span>
-                    <b className={conta && st.saldo < 0 ? "warn" : "pos"}>{brl(conta ? Math.abs(st.saldo) : st.leftV)}</b>
-                  </div>
-                  {!conta && <div className="ib-bar"><span className="g-acoes" style={{ width: `${Math.max(1, pct * 100)}%` }} /></div>}
-                  <div className="ib-sub">
-                    <span className="muted">{conta ? (st.saldo >= 0 ? "te deve hoje" : "você deve a ela")
-                      : `${st.got} de ${r.n} parcelas recebidas${st.next && !st.late ? ` - próxima ${dm(st.next)}` : ""}`}{st.late > 0 ? ` - ${brl(st.lateV)} atrasado` : ""}</span>
-                    <button className="link" onClick={() => { setCardsEntry({ type: "recv", id: r.id }); setSub("cards"); }}>abrir &rsaquo;</button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
-      <h3 className="bal-title">O que você deve <span className="bal-sum">{brl(debt.total)}</span></h3>
-      <DebtsBlock months={months} setup={setup} onEdit={(t, id) => goEdit(t, id)} />
-
-      <h3 className="bal-title">Compromissos todo mês</h3>
-      <Fixos setup={setup} months={months} onEdit={(id) => goEdit("fixo", id)} />
-      <Fixos setup={setup} months={months} entrada onEdit={(id) => goEdit("entrada", id)} />
-
-      <section className="card">
-        <h2>Seus dados</h2>
-        <ExportData owner={!isMemberBase()} />
-      </section>
-      </>}
+      <Fold title="Seus dados">
+        <UiCard><ExportData owner={!isMemberBase()} /></UiCard>
+      </Fold>
+      </div>}
       {entrySheet}
     </>
   );
@@ -306,75 +233,61 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
   const cur = edit ? items.find((i) => i.id === edit) ?? null : null;
   const shown = allMoves ? moves : moves.slice(0, 8);
   return (
-    <>
-      <section className="card">
-        <div className="card-head"><h2>Investimentos</h2>
-          <span className="head-actions">
-            {onQuotes && <button className="ghost small-btn" disabled={qBusy} title="Ações, FIIs, Tesouro, CDI, IPCA e dólar"
-              onClick={async () => { setQBusy(true); try { await onQuotes(); } finally { setQBusy(false); } }}>{qBusy ? "Atualizando..." : "Atualizar cotações"}</button>}
-            <button className="primary small-btn" onClick={() => setEdit(null)}>+ novo investimento</button>
-          </span></div>
-        {fin && <p className="muted small head-note">Cotações de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} (atualizam sozinhas varias vezes ao dia)</p>}
-        <div className="kpis">
-          <div><span>Investido hoje</span><b>{brl(total)}</b><small className="muted">{live.length} {live.length === 1 ? "investimento" : "investimentos"}, fora cripto</small></div>
-          <div><span>Lucro / prejuízo</span><b className={pnlClass(gain)}>{cost > 0 ? signed(gain) : "-"}</b>
-            <small className="muted">{cost > 0 ? `${pctS(gain / cost)} sobre ${brl(cost, 0)} aplicados` : "informe os preços médios"}</small></div>
-          <div><span>Rende por mês (estimado)</span><b>{brl(monthly)}</b><small className="muted">{monthly > 0 ? `~${brl(monthly * 12, 0)} por ano, antes de IR` : "juros + proventos"}</small></div>
-          <div><span>Reserva de emergência</span><b>{brl(reserve)}</b>
-            <small className="muted">{reserveMonths !== null ? `cobre ${fmt(reserveMonths, 1)} meses de gastos` : reserve > 0 ? "quantos meses cobre: depois do 1o mês de lançamentos" : "marque \"reserva\" no investimento"}</small></div>
-          <div><span>Guardou em 12 meses</span><b className={pnlClass(put - took)}>{moves.length ? signed(put - took) : "-"}</b>
-            <small className="muted">{moves.length ? `aplicou ${brl(put, 0)} - resgatou ${brl(took, 0)}` : "aportes lançados no extrato"}</small></div>
-        </div>
-        <FinBar byGroup={byGroup} />
-      </section>
+    <div className="pat-part">
+      <div className="pat-inv-acts">
+        <Button variant="primary" size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setEdit(null)}>Investimento</Button>
+        {onQuotes && <Button size="sm" icon={<RefreshCw size={15} aria-hidden="true" />} disabled={qBusy} title="Ações, FIIs, Tesouro, CDI, IPCA e dólar"
+          onClick={async () => { setQBusy(true); try { await onQuotes(); } finally { setQBusy(false); } }}>{qBusy ? "Atualizando..." : "Atualizar cotações"}</Button>}
+        {fin && <span className="mes-line">cotações de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>}
+      </div>
+      <Stats scroll cols={5}>
+        <Stat label="Investido hoje" value={<Money value={total} size="md" cents={false} />} hint={`${live.length} ${live.length === 1 ? "investimento" : "investimentos"}, fora cripto`} />
+        <Stat label="Lucro / prejuízo" value={cost > 0 ? <Money value={gain} size="md" cents={false} tone="auto" signed /> : "-"} hint={cost > 0 ? `${pctS(gain / cost)} sobre ${brl(cost, 0)}` : "informe os preços médios"} />
+        <Stat label="Rende por mês" value={<Money value={monthly} size="md" cents={false} />} hint={monthly > 0 ? `~${brl(monthly * 12, 0)} por ano` : "juros + proventos"} />
+        <Stat label="Reserva" value={<Money value={reserve} size="md" cents={false} />} hint={reserveMonths !== null ? `${fmt(reserveMonths, 1)} meses de gastos` : "marque \"reserva\" no investimento"} />
+        <Stat label="Guardou em 12 meses" value={moves.length ? <Money value={put - took} size="md" cents={false} tone="auto" signed /> : "-"} hint={moves.length ? `aplicou ${brl(put, 0)}` : "aportes do extrato"} />
+      </Stats>
 
-      {edit !== undefined && (
-        <section className="card loan-panel" ref={panel}>
-          <div className="card-head"><h2>{cur ? `Alterar ${cur.name}` : "Novo investimento"}</h2></div>
+      <Section title="Sua carteira" action={<span>{brl(total, 0)}</span>}
+        info={<>Automático: cotação e proventos, preço do Tesouro (1 vez por dia), CDI, IPCA e dólar (Banco Central). À mão: quantidades, saldo do cofrinho e
+          preços médios, porque bancos e a B3 não têm API aberta para ler sua posição. Valores brutos, antes de IR e taxas.</>}>
+        {inv.length ? GROUPS.filter((g) => inv.some((r) => r.group === g.key)).map((g) => {
+          const gr = inv.filter((r) => r.group === g.key).sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+          const gv = gr.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.value ?? 0), 0);
+          return (
+            <div key={g.key} className="pat-grp">
+              <div className="pat-grp-head"><span><i className={`dot g-${g.key}`} aria-hidden="true" />{g.label}</span>
+                <span>{brl(gv, 0)}{total > 0 ? ` · ${pctS(gv / total, 0)}` : ""}</span></div>
+              <Progress value={total > 0 ? gv / total : 0} tone="info" label={`${g.label}: parte da carteira`} />
+              <List>
+                {gr.map((r) => {
+                  const gn = r.cost !== null && r.value !== null ? r.value - r.cost : null;
+                  return (
+                    <ListRow key={r.item.id} onClick={() => setEdit(r.item.id)} chevron={false} muted={!!r.item.ignore}
+                      title={<>{r.item.name}{r.item.reserva && <Badge tone="info">reserva</Badge>}</>}
+                      sub={r.problem ? <span className="warn">{r.problem}</span> : [r.kindLabel, r.yieldYear !== null ? `${pctS(r.yieldYear, 1)} ao ano` : null, r.monthly ? `rende ~${brl(r.monthly, 0)}/mês` : null].filter(Boolean).join(" · ")}
+                      value={<span className="pat-inv-v"><b>{r.value !== null ? brl(r.value) : "-"}</b>{gn !== null && Math.abs(gn) >= 0.01 && <small className={pnlClass(gn)}>{signed(gn)}</small>}</span>} />
+                  );
+                })}
+              </List>
+            </div>
+          );
+        }) : <UiCard><EmptyState title="Nenhum investimento" text="Cofrinho, Tesouro, ações, FIIs ou outros: cadastre e o site acompanha o rendimento."
+          action={<Button variant="primary" icon={<Plus size={18} aria-hidden="true" />} onClick={() => setEdit(null)}>Cadastrar investimento</Button>} /></UiCard>}
+      </Section>
+
+      <Sheet open={edit !== undefined} onClose={() => setEdit(undefined)} title={cur ? `Alterar ${cur.name}` : "Novo investimento"} width={640}>
+        {edit !== undefined && <div className="ls-form">
           <ItemForm key={edit ?? "novo"} initial={cur} fin={fin} onSave={onSave} onCancel={() => setEdit(undefined)} />
-          {cur && <button className="ghost small-btn" onClick={() => onRemove(cur)}>remover este investimento</button>}
-        </section>
-      )}
-
-      <section className="card">
-        <div className="card-head"><h2>Sua carteira</h2><span className="muted small">{brl(total)}</span></div>
-        {inv.length ? (
-          <div className="table-scroll">
-            <table className="stack fin grouped">
-              <thead><tr><th>Investimento</th><th>Quantidade</th><th>Preço</th><th>Valor</th><th>Lucro</th><th>Rende/mês</th><th /></tr></thead>
-              {GROUPS.filter((g) => inv.some((r) => r.group === g.key)).map((g) => {
-                const gr = inv.filter((r) => r.group === g.key).sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
-                const gv = gr.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.value ?? 0), 0);
-                const gm = gr.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.monthly ?? 0), 0);
-                return (
-                  <tbody key={g.key}>
-                    <tr className="grp-row">
-                      <td colSpan={7}>
-                        <span className="grp-name"><i className={`dot g-${g.key}`} aria-hidden="true" />{g.label}</span>
-                        <span className="grp-nums"><b>{brl(gv)}</b><span className="muted">{total > 0 ? pctS(gv / total) : ""}</span>
-                          {gm > 0 && <span className="muted">rende ~{brl(gm)}/mês</span>}</span>
-                      </td>
-                    </tr>
-                    {gr.map((r) => <ItemRow key={r.item.id} r={r} onEdit={() => setEdit(r.item.id)} />)}
-                  </tbody>
-                );
-              })}
-            </table>
-          </div>
-        ) : (
-          <p className="muted">Nenhum investimento cadastrado. Clique em &quot;+ novo investimento&quot; para incluir cofrinho, Tesouro, ações, FIIs ou outros.</p>
-        )}
-        <Note>
-          Automático: cotação e proventos (Yahoo Finance), preço do Tesouro (Tesouro Transparente, 1 vez por dia), CDI, IPCA e dólar
-          (Banco Central). À mão: quantidades, saldo do cofrinho e preços médios, porque bancos e a B3 não tem API aberta para ler sua
-          posição. Valores brutos, antes de IR e taxas.
-        </Note>
-      </section>
+          {cur && <Button variant="danger" size="sm" className="pay-remove" onClick={() => onRemove(cur)}>Remover este investimento</Button>}
+        </div>}
+      </Sheet>
 
       <CdiCard rows={rows} fin={fin} />
 
+      <Fold title="Aportes e resgates" meta={moves.length ? `guardou ${signed(put - took)}` : "últimos 12 meses"} count={unlinked || undefined} countTone="warn">
       <section className="card">
-        <div className="card-head"><h2>Aportes e resgates</h2><span className="muted small">últimos 12 meses<button className="link" onClick={onLanc}>ver lançamentos &rsaquo;</button></span></div>
+        <div className="card-head"><h2>Últimos 12 meses</h2><span className="muted small"><button className="link" onClick={onLanc}>ver lançamentos &rsaquo;</button></span></div>
         {moves.length > 0 && (() => {
           const per = (out: boolean) => {
             const by: Record<string, number> = {};
@@ -426,20 +339,21 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
           descontam o saldo sozinhos. Tesouro e ações: atualize a quantidade aqui depois de comprar ou vender.
         </Note>
       </section>
+      </Fold>
 
       <Dividends rows={rows} fin={fin} />
 
-      <GoalsCard setup={setup} rows={rows} />
+      <Fold title="Metas" count={(setup.goals ?? []).length || undefined} countTone="neutral"><GoalsCard setup={setup} rows={rows} /></Fold>
 
+      <Fold title="Imóveis e veículos" meta={bens.length ? brl(bensTotal, 0) : "nenhum"} defaultOpen={bemEdit !== undefined || bens.length > 0}>
       <section className="card">
         <div className="card-head"><h2>Bens</h2><span className="muted small"><b>{brl(bensTotal)}</b><button className="ghost small-btn" onClick={() => setBemEdit(null)}>+ novo bem</button></span></div>
-        {bemEdit !== undefined && (
-          <div className="loan-panel" ref={bemPanel}>
-            <p className="small"><b>{curBem ? `Alterar ${curBem.name}` : "Novo bem"}</b></p>
+        <Sheet open={bemEdit !== undefined} onClose={() => setBemEdit(undefined)} title={curBem ? `Alterar ${curBem.name}` : "Novo bem"} width={640}>
+          {bemEdit !== undefined && <div className="ls-form" ref={bemPanel}>
             <ItemForm key={bemEdit ?? "novo-bem"} only="bem" initial={curBem} fin={fin} onSave={onSave} onCancel={() => setBemEdit(undefined)} />
-            {curBem && <button className="ghost small-btn" onClick={() => onRemove(curBem)}>remover este bem</button>}
-          </div>
-        )}
+            {curBem && <Button variant="danger" size="sm" className="pay-remove" onClick={() => onRemove(curBem)}>Remover este bem</Button>}
+          </div>}
+        </Sheet>
         {bens.length ? (
           <ul className="asset-list">
             {[...bens].sort((a, b) => (b.value ?? 0) - (a.value ?? 0)).map((r) => {
@@ -459,7 +373,8 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
         <Note>Imóveis, terrenos e veículos: entram no patrimônio &quot;com bens&quot;, separados do financeiro, e não somam no
           &quot;Investido hoje&quot; acima. O valor anda sozinho se você informar quanto valoriza ou deprecia por ano.</Note>
       </section>
-    </>
+      </Fold>
+    </div>
   );
 }
 

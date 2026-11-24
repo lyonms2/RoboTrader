@@ -74,8 +74,8 @@ export function ConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => vo
 
       <fieldset>
         <legend>2. Carteiras</legend>
-        <label>Endereços públicos, um por linha (EVM 0x... da Rabby/Phantom e Solana da Phantom)
-          <textarea rows={3} value={walletText} placeholder={"0x... (Rabby)\n7xKX... (Phantom Solana)"} spellCheck={false}
+        <label>Endereços públicos, um por linha (EVM 0x... e Solana)
+          <textarea rows={3} value={walletText} placeholder={"0x... (EVM)\n7xKX... (Solana)"} spellCheck={false}
             onChange={(e) => setWalletText(e.target.value)} />
         </label>
         <label className="check">
@@ -183,7 +183,7 @@ export function MemberConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: ()
   return (
     <section className="cfg">
       <div className="modal-head"><h2>Suas carteiras</h2><button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button></div>
-      <p className="muted small">Endereços públicos das suas carteiras (Rabby, Phantom...), um por linha. Só leitura: o site nunca pede frase secreta nem movimenta nada.</p>
+      <p className="muted small">Endereços públicos das suas carteiras (EVM 0x... ou Solana), um por linha. Só leitura: o site nunca pede frase secreta nem movimenta nada.</p>
       <textarea className="wallets" rows={4} value={walletText} onChange={(e) => setWalletText(e.target.value)} placeholder="0x... ou endereço Solana" />
       {err && <p className="error small">{err}</p>}
       <div className="row"><button className="primary" disabled={saving} onClick={save}>{saving ? "Salvando..." : "Salvar"}</button>

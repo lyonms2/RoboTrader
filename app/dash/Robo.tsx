@@ -1,4 +1,5 @@
 "use client";
+import { Badge, Fold } from "../ui";
 import { performance } from "@/lib/performance";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
 import { health, referenceOf } from "@/lib/robotStats";
@@ -72,9 +73,10 @@ export function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppCon
   const h = stats ? health(stats, ref) : null;
 
   return (
-    <section className="card asset">
-      <div className="card-head">
-        <h2>{coin} <span className="muted small">{inMarket ? `comprado ${fmt(s.expo * 100, 0)}% da fatia` : "fora do mercado"}</span></h2>
+    <section className="card asset asset-v2">
+      <div className="asset-head">
+        <h2>{coin}</h2>
+        <Badge tone={inMarket ? "pos" : "neutral"}>{inMarket ? `comprado ${fmt(s.expo * 100, 0)}%` : "fora do mercado"}</Badge>
         <div className="price-now"><b>{fmtPx(cur.price)}</b><span className="muted small">{cur.live ? "ao vivo" : `recálculo ${ago(cur.at)}`}</span></div>
       </div>
 
@@ -92,8 +94,8 @@ export function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppCon
       )}
       {!study && pd && ps && (
         <div className={`preview-box ${pd.kind !== d.kind ? "changes" : ""}`}>
-          <span className="signal-tag">Prévia (não é sinal) - se o candle de hoje fechasse agora a {fmtPx(ps.close)}</span>
-          {pd.kind !== d.kind ? <b>{pd.label}</b> : <span className="muted">sem mudança</span>}
+          <span className="signal-tag">Prévia (não é sinal): se o candle de hoje fechasse agora a {fmtPx(ps.close)}</span>
+          {pd.kind !== d.kind ? <Badge tone="warn">mudaria para: {pd.label}</Badge> : <span className="muted">sem mudança</span>}
         </div>
       )}
 
@@ -123,15 +125,14 @@ export function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppCon
         </ul>
       </div>
 
-      <Chart chart={l.chart} />
-      <p className="legend small"><i className="k-close" /> preço <i className="k-sma" /> SMA {DEFAULT_PARAMS.sma} <i className="k-hma" /> HMA {DEFAULT_PARAMS.hma} <i className="k-band" /> comprado</p>
+      <Fold title="Gráfico">
+        <Chart chart={l.chart} />
+        <p className="legend small"><i className="k-close" /> preço <i className="k-sma" /> SMA {DEFAULT_PARAMS.sma} <i className="k-hma" /> HMA {DEFAULT_PARAMS.hma} <i className="k-band" /> comprado</p>
+      </Fold>
 
       {stats && h && (
+        <Fold title="Resultados do robô" meta={h.label} count={h.level === "bad" ? 1 : undefined} countTone="neg" defaultOpen={h.level === "bad"}>
         <div className="results">
-          <div className="card-head">
-            <h3>Resultados do robô</h3>
-            <span className={`health health-${h.level}`}>{h.label}</span>
-          </div>
           {h.reasons.length > 0 && <ul className="alerts small">{h.reasons.map((r) => <li key={r} className={h.level === "bad" ? "error" : "warn"}>{r}</li>)}</ul>}
           <div className="stat-grid">
             <div><span>Robô</span><b className={pnlClass(stats.totalRet)}>{pctFmt(stats.totalRet, 0)}</b><small>só segurar {pctFmt(stats.bhRet, 0)}</small></div>
@@ -159,6 +160,7 @@ export function AssetCard({ l, cfg, prices, study }: { l: LatestDoc; cfg: AppCon
             &quot;Teste&quot; = backtest até 07/2024. A estratégia para de fazer sentido se a queda ou as perdas seguidas passarem bem do teste.
           </Note>
         </div>
+        </Fold>
       )}
 
       <details className="history">

@@ -34,7 +34,7 @@
 .home-note { margin: var(--s-2) 0 0; font-size: var(--fs-xs); color: var(--text-3); }
 
 /* proximos pagamentos: cartoezinhos que deslizam */
-.home-pay { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin-right: calc(-1 * var(--s-5)); padding-right: var(--s-5); }
+.home-pay { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin-right: calc(-1 * var(--s-4)); padding-right: var(--s-4); }
 .home-pay::-webkit-scrollbar { display: none; }
 .home-pay-item { flex: 0 0 auto; min-width: 140px; max-width: 220px; scroll-snap-align: start; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px;
   display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; }

@@ -1,6 +1,6 @@
 "use client";
 import { doc, setDoc } from "firebase/firestore";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { db } from "@/lib/firebaseClient";
 import { P, isReadOnly } from "@/lib/paths";
 import { negativeStarts } from "@/lib/alerts";
@@ -14,6 +14,8 @@ import {
   type Bill, type Card, type CustomCat, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Check, ChevronLeft, ChevronRight, Ellipsis, Pencil, Plus, Split, Trash2, Undo2, X } from "lucide-react";
+import { Badge, Button, Card as UiCard, Fold, List, ListRow, Money, Progress, Sheet, Stat } from "./ui";
 import { guardWrite, saveMonth, saveSetup, monthSnapshot, upcoming, reviewCount, genericCount } from "./gastosShared";
 export { guardWrite, saveMonth, saveSetup, monthSnapshot, upcoming, reviewCount, genericCount };
 
@@ -53,12 +55,12 @@ export function DebtsBlock({ months, setup, onEdit }: { months: Record<string, M
   );
 }
 
-export default function GastosCard({ months, setup, invest = [], onBens, onCard, entry }: {
-  months: Record<string, MonthDoc>; setup: GastosSetup; invest?: FinItem[]; onBens?: () => void; onCard?: (id: string | null) => void; entry?: React.ReactNode;
+export default function GastosCard({ months, setup, invest = [], onBens, onCard, onFixo }: {
+  months: Record<string, MonthDoc>; setup: GastosSetup; invest?: FinItem[]; onBens?: () => void; onCard?: (id: string | null) => void;
+  onFixo?: (id: string | null, kind: "fixo" | "entrada" | "pagar") => void; // abre a folha de cadastro/alteracao
 }) {
   const [m, setM] = useState(monthOf(todayBR()));
   const [filter, setFilter] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
   const [where, setWhere] = useState(""); // "" = tudo; "acc:id" ou "card:id"
   const items = months[m]?.items ?? [];
   const s = summarize(items, { m, months });
@@ -132,9 +134,9 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
     if (!await ask(`Apagar "${g.desc}" (${brl(g.v)})?`)) return;
     await saveMonth(m, items.filter((x) => x.id !== g.id));
   };
-  // Pagou o fixo/parcela por fora do extrato: escolhe com qual conta (ou cartao) foi pago; o saldo dela baixa
-  const launch = async (p: (typeof pending)[number], src: string) => {
-    // ja veio no extrato: liga o lancamento ao fixo (e aprende a descricao para os proximos meses)
+  // Pagou a conta do mes: liga ao lancamento do extrato (e aprende a descricao), "by:" outra pessoa pagou (abate o que ela deve),
+  // ou lanca o pagamento com a conta/cartao escolhido. Valor e data vem da folha Pagar
+  const launch = async (p: Bill, src: string, opt?: { v: number; d: string }) => {
     if (src.startsWith("item:")) {
       const g = items.find((x) => x.id === src.slice(5));
       if (!g) return;
@@ -144,41 +146,17 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
       if (f && key && !(f.keys ?? []).includes(key)) await saveSetup({ fixos: setup.fixos.map((x) => (x.id === f.id ? { ...x, keys: [...(x.keys ?? []), key] } : x)) });
       return;
     }
-    // pago por outra pessoa (conta com ela em A receber): seu gasto, sem sair da sua conta, abate o que ela te deve
+    if (!opt || !(opt.v > 0) || !opt.d) return;
+    const gm = monthOf(opt.d);
+    const base = gm === m ? items : months[gm]?.items ?? [];
     if (src.startsWith("by:")) {
       const r = (setup.recvs ?? []).find((x) => x.id === src.slice(3));
       if (!r) return;
-      const ans = await askText(`Quanto ${r.name} pagou de ${p.desc} com o dinheiro dela? (R$ - abate do que ela te deve)`, fmt(p.v));
-      if (ans === null) return;
-      const val = num(ans);
-      if (!(val > 0)) return;
-      const t0 = todayBR();
-      const dd = monthOf(t0) === m ? t0 : p.d;
-      const aD = await askText(`Quando ${r.name} pagou? (dia/mês)`, `${dd.slice(8, 10)}/${dd.slice(5, 7)}`);
-      if (aD === null) return;
-      const mm = /^(\d{1,2})(?:\/(\d{1,2}))?/.exec(aD.trim());
-      const byD = mm ? `${m.slice(0, 4)}-${String(Number(mm[2] ?? m.slice(5, 7))).padStart(2, "0")}-${String(Number(mm[1])).padStart(2, "0")}` : dd;
-      await saveMonth(m, [...items, { id: newId(), d: byD, desc: `${p.desc} (pago por ${r.name})`, v: val, tipo: "gasto", cat: p.cat, src: "manual", ref: p.ref, by: r.id }]);
+      await saveMonth(gm, [...base, { id: newId(), d: opt.d, desc: `${p.desc} (pago por ${r.name})`, v: opt.v, tipo: "gasto", cat: p.cat, src: "manual", ref: p.ref, by: r.id }]);
       return;
     }
-    let v = p.v;
-    if (p.varia) {
-      const ans = await askText(`Quanto veio ${p.desc} este mês? (R$)`, fmt(p.v));
-      if (ans === null) return;
-      v = num(ans);
-      if (!(v > 0)) return;
-    }
     const where = src.startsWith("card:") ? { card: src.slice(5) } : src.startsWith("acc:") ? { acc: src.slice(4) } : p.card ? { card: p.card } : {};
-    // quando pagou (muita conta e paga antes do vencimento): hoje, se o mes aberto e o atual; senao o vencimento
-    const today = todayBR();
-    const def = monthOf(today) === m ? today : p.d;
-    const ansD = await askText(`Quando pagou ${p.desc}? (dia/mês)`, `${def.slice(8, 10)}/${def.slice(5, 7)}`);
-    if (ansD === null) return;
-    const md = /^(\d{1,2})(?:\/(\d{1,2}))?/.exec(ansD.trim());
-    const payD = md ? `${m.slice(0, 4)}-${String(Number(md[2] ?? m.slice(5, 7))).padStart(2, "0")}-${String(Number(md[1])).padStart(2, "0")}` : def;
-    const gm = monthOf(payD);
-    const base = gm === m ? items : months[gm]?.items ?? [];
-    await saveMonth(gm, [...base, { id: newId(), d: payD, desc: p.desc, v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...where, ...(p.parc ? { parc: p.parc } : {}) }]);
+    await saveMonth(gm, [...base, { id: newId(), d: opt.d, desc: p.desc, v: opt.v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...where, ...(p.parc ? { parc: p.parc } : {}) }]);
   };
 
   // sugestao recusada: esse lancamento nao e desta conta (nao sugere de novo)
@@ -201,7 +179,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
     await saveSetup({ fixos: setup.fixos.filter((x) => x.id !== b.ref) });
   };
   // Entrada fixa recebida: liga a entrada que veio no extrato (e aprende a descricao) ou lanca a entrada na conta escolhida
-  const onIncome = async (b: Bill, src: string) => {
+  const onIncome = async (b: Bill, src: string, opt?: { v: number; d: string }) => {
     const f = setup.fixos.find((x) => x.id === b.ref);
     if (!f) return;
     if (src.startsWith("item:")) {
@@ -212,18 +190,10 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
       if (key && !(f.keys ?? []).includes(key)) await saveSetup({ fixos: setup.fixos.map((x) => (x.id === f.id ? { ...x, keys: [...(x.keys ?? []), key] } : x)) });
       return;
     }
-    const ans = await askText(`Quanto entrou de ${b.desc}? (R$)`, fmt(b.v));
-    if (ans === null) return;
-    const v = num(ans);
-    if (!(v > 0)) return;
-    const def = monthOf(todayBR()) === m ? todayBR() : b.d;
-    const ansD = await askText(`Quando entrou ${b.desc}? (dia/mês)`, `${def.slice(8, 10)}/${def.slice(5, 7)}`);
-    if (ansD === null) return;
-    const md = /^(\d{1,2})(?:\/(\d{1,2}))?/.exec(ansD.trim());
-    const d = md ? `${m.slice(0, 4)}-${String(Number(md[2] ?? m.slice(5, 7))).padStart(2, "0")}-${String(Number(md[1])).padStart(2, "0")}` : def;
-    const gm = monthOf(d);
+    if (!opt || !(opt.v > 0) || !opt.d) return;
+    const gm = monthOf(opt.d);
     const base = gm === m ? items : months[gm]?.items ?? [];
-    await saveMonth(gm, [...base, { id: newId(), d, desc: b.desc, v, tipo: tipoOfCat(b.cat) ?? "receita", io: "in", cat: b.cat, src: "fixo", ref: f.id,
+    await saveMonth(gm, [...base, { id: newId(), d: opt.d, desc: b.desc, v: opt.v, tipo: tipoOfCat(b.cat) ?? "receita", io: "in", cat: b.cat, src: "fixo", ref: f.id,
       ...(src.startsWith("acc:") ? { acc: src.slice(4) } : {}) }]);
   };
   const HOW: Record<string, string> = { ligado: "ligado", nome: "pelo nome no extrato", "valor-cat": "pelo valor, mesma categoria", valor: "só pelo valor (outra categoria)" };
@@ -238,329 +208,406 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
   const cats = Object.entries(s.byCat).sort((a, b) => b[1] - a[1]);
   const maxCat = Math.max(...cats.map(([c, v]) => Math.max(v, prevAvg.acc[c] ?? 0)), 0);
   const isNow = m === monthOf(todayBR());
+  const rc = reviewCount(months, setup);
+  // folhas: pagar/receber uma conta do mes e o lancamento aberto
+  const [pay, setPay] = useState<{ kind: "bill" | "income"; ref: string } | { kind: "recv"; id: string; k: number } | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [showPaid, setShowPaid] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [selMode, setSelMode] = useState(false);
+  const [limit, setLimit] = useState(40);
+  useEffect(() => { setLimit(40); setShowPaid(false); }, [m]);
+  const sorted = [...bills].sort((x, y) => Number(!!x.paid) - Number(!!y.paid) || x.d.localeCompare(y.d));
+  const paidBills = sorted.filter((b) => b.paid);
+  const openBills = sorted.filter((b) => !b.paid);
+  const incSorted = [...incomes].sort((x, y) => Number(!!x.paid) - Number(!!y.paid) || x.d.localeCompare(y.d));
+  const lateN = openBills.filter((b) => b.d < today).length + incLeft.filter((b) => b.d < today).length + recs.filter((x) => x.row.status === "atrasada").length;
+  const toPayN = pending.length + incLeft.length + recLeft.length;
+  const payBill = pay && pay.kind !== "recv" ? (pay.kind === "bill" ? bills : incomes).find((b) => b.ref === pay.ref) ?? null : null;
+  const payRec = pay && pay.kind === "recv" ? recs.find((x) => x.r.id === pay.id && x.row.k === pay.k) ?? null : null;
+  const openItem = open ? items.find((g) => g.id === open) ?? null : null;
+  // lancamentos agrupados por dia
+  const days: { d: string; list: Gasto[] }[] = [];
+  for (const g of shown.slice(0, limit)) { const last = days[days.length - 1]; if (last?.d === g.d) last.list.push(g); else days.push({ d: g.d, list: [g] }); }
+  const dayLabel = (d: string) => { const t = new Date(`${d}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const plusOf = (g: Gasto) => g.tipo === "receita" || (g.tipo === "neutro" && dirOf(g) > 0);
+  const subOf = (g: Gasto) => {
+    const accName = accs.length > 1 ? accs.find((a) => a.id === accIdOf(g, accs))?.name : null;
+    return [catLabel(g.cat), accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, g.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === g.by)?.name ?? "outra pessoa"}` : null,
+      g.splitId ? "dividido" : null].filter(Boolean).join(" · ");
+  };
+  const billBadge = (p: Bill, income?: boolean) => {
+    if (p.paid) return null;
+    const dd = Math.round((Date.parse(`${p.d}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000);
+    if (dd < 0) return <Badge tone="neg">{income ? "atrasado" : "venceu"} há {-dd} {dd === -1 ? "dia" : "dias"}</Badge>;
+    if (dd === 0) return <Badge tone="warn">{income ? "cai hoje" : "vence hoje"}</Badge>;
+    if (dd === 1) return <Badge tone="warn">{income ? "cai amanhã" : "vence amanhã"}</Badge>;
+    return null;
+  };
+  const billRow = (p: Bill, income?: boolean) => (
+    <div key={p.ref} className={p.paid ? "mes-bill paid" : "mes-bill"}>
+      <div className="mes-bill-main">
+        <span className="mes-date"><b>{p.d.slice(8, 10)}</b><span>{MES_OPTS[Number(p.d.slice(5, 7)) - 1]}</span></span>
+        <button type="button" className="mes-bill-txt" onClick={() => p.fixo && onFixo?.(p.ref, income ? "entrada" : p.once ? "pagar" : "fixo")} disabled={!p.fixo || !onFixo}
+          title={p.fixo && onFixo ? "Alterar esta conta" : undefined}>
+          <span className="mes-bill-name">{p.desc}</span>
+          <span className="mes-bill-tags">
+            {billBadge(p, income)}
+            {p.once && <Badge>uma vez</Badge>}
+            {p.varia && !p.paid && <Badge>varia</Badge>}
+            {p.reaj && <Badge tone="warn">reajuste: confira</Badge>}
+            {p.paid && <span className="mes-bill-sub">{p.paid.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === p.paid!.by)?.name ?? "outra pessoa"}` : `${income ? "recebido" : "pago"} em ${dm(p.paid.d)}`}{HOW[p.how ?? ""] && p.how !== "ligado" ? ` · ${HOW[p.how ?? ""]}` : ""}</span>}
+          </span>
+        </button>
+        <span className={income ? "mes-bill-v pos" : "mes-bill-v"}>{income ? "+" : ""}{p.varia && !p.paid ? "~" : ""}{brl(p.paid ? p.paid.v : p.v, p.paid ? 2 : 0)}</span>
+        {p.paid
+          ? <span className="mes-ok" title={income ? "recebido" : "pago"}><Check size={14} aria-hidden="true" /><span className="sr-only">{income ? "recebido" : "pago"}</span></span>
+          : <Button variant="primary" size="sm" onClick={() => setPay({ kind: income ? "income" : "bill", ref: p.ref })}>{income ? "Recebi" : "Pagar"}</Button>}
+      </div>
+      {!p.paid && p.sug && (
+        <div className="mes-sug">
+          <span>Parece ser <b>{p.sug.desc.slice(0, 30)} {brl(p.sug.v)}</b> ({dm(p.sug.d)}){p.sugHow === "valor" ? `, em ${catLabel(p.sug.cat)}` : ""}</span>
+          <Button variant="link" size="sm" onClick={() => (income ? onIncome(p, `item:${p.sug!.id}`) : launch(p, `item:${p.sug!.id}`))}>confirmar</Button>
+          <Button variant="ghost" size="sm" onClick={() => notSug(p)}>não é</Button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
-    <>
-      {entry && <section className="card entry-card">{entry}</section>}
-      <section className="card">
-        <div className="card-head">
-          <div className="month-nav">
-            <button className="ghost icon" aria-label="Mês anterior" onClick={() => setM(addMonths(m, -1))}>&lsaquo;</button>
-            <h2>{monthLabel(m, true)}</h2>
-            <button className="ghost icon" aria-label="Próximo mês" onClick={() => setM(addMonths(m, 1))}>&rsaquo;</button>
-            {!isNow && <button className="ghost small-btn" onClick={() => setM(monthOf(todayBR()))}>hoje</button>}
+    <div className="mes">
+      <div className="mes-nav">
+          <Button variant="icon" aria-label="Mês anterior" icon={<ChevronLeft size={20} aria-hidden="true" />} onClick={() => setM(addMonths(m, -1))} />
+          <div className="mes-title">
+            <b>{monthLabel(m, true).replace(/ de \d{4}$/, "")}</b>
+            <span>{m.slice(0, 4)}{!isNow && <> · <button type="button" className="mes-today" onClick={() => setM(monthOf(todayBR()))}>voltar a hoje</button></>}</span>
           </div>
-          <span className="muted small">{items.filter((g) => !g.card).length} lançamentos na conta
-            <button className={sim ? "ghost small-btn on" : "ghost small-btn"} onClick={() => setSim(!sim)} title="Testar valores sem salvar nada">{sim ? "fechar simulação" : "simular"}</button></span>
+          <Button variant="icon" aria-label="Próximo mês" icon={<ChevronRight size={20} aria-hidden="true" />} onClick={() => setM(addMonths(m, 1))} />
+          <span className="mes-more">
+            <Button variant="icon" aria-label="Mais opções do mês" aria-haspopup="menu" aria-expanded={menu} icon={<Ellipsis size={20} aria-hidden="true" />} onClick={() => setMenu(!menu)} />
+            {menu && <span className="sh-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => { setMenu(false); setSim(!sim); }}>{sim ? "Fechar a simulação" : "Simular valores (não salva)"}</button>
+              <button type="button" role="menuitem" onClick={() => { setMenu(false); setSelMode(true); }}>Marcar lançamentos para somar</button>
+              {onBens && <button type="button" role="menuitem" onClick={() => { setMenu(false); onBens(); }}>Ver as contas e saldos</button>}
+            </span>}
+          </span>
+      </div>
+      <div className="mes-head">
+        <div className="mes-stats">
+          <Stat compact label="Entrou" value={<Money value={s.receitas} cents={false} prefix="" />} />
+          <Stat compact label="Saiu" value={<Money value={s.gastos} cents={false} prefix="" tone={avg && s.gastos > avg.value * 1.1 ? "warn" : undefined} />} />
+          <Stat compact label="Sobrou" value={<Money value={s.receitas - s.gastos} cents={false} prefix="" tone="auto" />} />
+          <Stat compact label="A pagar" value={<Money value={pendingTotal} cents={false} prefix="" tone={pendingTotal > 0 ? "warn" : undefined} />} />
         </div>
-        {acSt.rows.some((r) => r.used || r.informed) && (
-          <div className="saldo-bar">
-            <div className="saldo-main">
-              <span>{isNow ? "Saldo nas contas hoje" : "Saldo nas contas no fim do mês"}</span>
-              <b className={acSt.end < 0 ? "neg" : ""}>{brl(acSt.end)}</b>
-              <small className="muted">início do mês {brl(acSt.start)} <span className={acSt.end - acSt.start >= 0 ? "pos" : "neg"}>({acSt.end - acSt.start >= 0 ? "+" : "-"}{brl(Math.abs(acSt.end - acSt.start))})</span>
-                {!acSt.allInformed && <span className="warn"> - falta conferir o saldo de alguma conta</span>}</small>
-            </div>
-            <div className="saldo-accts">
-              {acSt.rows.filter((r) => r.used || r.informed).map((r) => (
-                <span key={r.acc.id} className="saldo-chip"><span className="muted">{r.acc.name}</span> <b className={(isNow ? r.now : r.end) < 0 ? "neg" : ""}>{brl(isNow ? r.now : r.end)}</b></span>
-              ))}
-              {onBens && <button className="link" onClick={onBens}>ver contas &rsaquo;</button>}
-            </div>
+        <p className="mes-line">
+          {avg ? <>média de gastos {brl(avg.value, 0)}</> : "a média aparece no 2º mês"}
+          {s.receitas > 0 && <> · sobrou {fmt(((s.receitas - s.gastos) / s.receitas) * 100, 0)}% das entradas</>}
+          {acSt.rows.some((r) => r.used || r.informed) && <> · {isNow ? "nas contas hoje" : "nas contas no fim do mês"} <b className={acSt.end < 0 ? "neg" : ""}>{brl(acSt.end, 0)}</b>
+            {!acSt.allInformed && <span className="warn"> (confira o saldo)</span>}</>}
+        </p>
+      </div>
+
+      {sim && <Simulator saldo={acSt.rows.some((r) => r.used || r.informed) ? acSt.end : null} isNow={isNow} pending={pendingTotal} sobrou={s.receitas - s.gastos} />}
+
+      {rc > 0 && <Review months={months} setup={setup} invest={invest} count={rc} />}
+
+      <Fold title="Contas do mês" count={lateN || undefined} countTone="neg" defaultOpen={toPayN > 0 || !bills.length}
+        meta={bills.length ? `${bills.length - pending.length} de ${bills.length} pagas` : undefined}
+        action={onFixo && <Button variant="link" size="sm" icon={<Plus size={14} aria-hidden="true" />} onClick={() => onFixo(null, "fixo")}>conta</Button>}>
+        {bills.length > 0 ? (
+          <div className="ui-list">
+            {openBills.map((p) => billRow(p))}
+            {(showPaid ? paidBills : []).map((p) => billRow(p))}
+            {paidBills.length > 0 && <button type="button" className="mes-list-more" onClick={() => setShowPaid(!showPaid)}>
+              {showPaid ? "esconder as pagas" : `ver ${paidBills.length > 1 ? `as ${paidBills.length} contas pagas` : "a conta paga"}`}</button>}
           </div>
+        ) : <UiCard><p className="mes-empty">Nenhuma conta a pagar neste mês. Cadastre aluguel, internet, luz… e o site avisa quando vencer e liga ao extrato sozinho.</p></UiCard>}
+        {pendingTotal > 0 && <p className="mes-line">Falta pagar {brl(pendingTotal)} · previsto no mês {brl(s.gastos + pendingTotal, 0)}</p>}
+        {(incomes.length > 0 || onFixo) && (
+          <div className="mes-subhead"><b>Entradas fixas</b>
+            <span>{incomes.length ? `${incomes.length - incLeft.length} de ${incomes.length} recebidas` : ""}</span>
+            {onFixo && <Button variant="link" size="sm" icon={<Plus size={14} aria-hidden="true" />} onClick={() => onFixo(null, "entrada")}>entrada</Button>}</div>
         )}
-        {sim && <Simulator saldo={acSt.rows.some((r) => r.used || r.informed) ? acSt.end : null} isNow={isNow} pending={pendingTotal} sobrou={s.receitas - s.gastos} />}
-        <div className="kpis">
-          <div><span>Saídas (gastos)</span><b>{brl(s.gastos)}</b>
-            <small className={avg && s.gastos > avg.value * 1.1 ? "warn" : "muted"}>{avg ? `média ${brl(avg.value, 0)} (${avg.months} ${avg.months > 1 ? "meses" : "mês"})` : "a média aparece no 2o mês"}</small></div>
-          <div><span>Entradas</span><b>{brl(s.receitas)}</b><small className="muted">salário, Pix recebidos...</small></div>
-          <div><span>Sobrou</span><b className={s.receitas - s.gastos >= 0 ? "pos" : "neg"}>{brl(s.receitas - s.gastos)}</b>
-            <small className="muted">{s.receitas > 0 ? `${fmt(((s.receitas - s.gastos) / s.receitas) * 100, 0)}% das entradas` : "entradas - gastos"}</small></div>
-          <div><span>Ainda a pagar</span><b className={pendingTotal > 0 ? "warn" : ""}>{brl(pendingTotal)}</b>
-            <small className="muted">{pending.length ? `${pending.length} ${pending.length > 1 ? "contas" : "conta"} - previsto ${brl(s.gastos + pendingTotal, 0)}` : "contas do mês em dia"}</small></div>
-        </div>
-        {(() => {
-          // So o que passou pela conta (sem cartao e sem o que outra pessoa pagou por voce), separado em renda/gasto
-          // e dinheiro seu so mudando de lugar (cofrinho, cripto, entre contas, emprestimos)
-          const acc = items.filter((g) => !g.card && !g.by);
-          if (!acc.length) return null;
-          const renda = acc.filter((g) => g.tipo === "receita").reduce((t, g) => t + g.v, 0);
-          const gasto = acc.filter((g) => g.tipo === "gasto" || isFaturaOut(g)).reduce((t, g) => t + g.v, 0);
-          const byCat: Record<string, { in: number; out: number }> = {};
-          // transferencia ligada a outra conta sua: sai de uma e entra na outra (o total das contas nao muda)
-          const accIds = new Set(accountsOf(setup).map((a) => a.id));
-          const internal = acc.filter((x) => x.cat === TRANSFER_CAT && x.toAcc && accIds.has(x.toAcc)).reduce((t, x) => t + x.v, 0);
-          for (const g of acc.filter((x) => x.tipo === "neutro" && !isFaturaOut(x) && !(x.cat === TRANSFER_CAT && x.toAcc && accIds.has(x.toAcc)))) { const c = (byCat[g.cat] ??= { in: 0, out: 0 }); if (dirOf(g) > 0) c.in += g.v; else c.out += g.v; }
-          const ins = Object.entries(byCat).filter(([, v]) => v.in > 0.004);
-          const outs = Object.entries(byCat).filter(([, v]) => v.out > 0.004);
-          const tin = renda + ins.reduce((t, [, v]) => t + v.in, 0);
-          const tout = gasto + outs.reduce((t, [, v]) => t + v.out, 0);
-          const LBL_IN: Record<string, string> = { Investimento: "Resgate de investimento", "Transferencia entre contas": "De outra conta sua", "Venda de cripto": "Venda de cripto" };
-          const LBL_OUT: Record<string, string> = { Investimento: "Guardado em investimento", "Transferencia entre contas": "Para outra conta sua", "Compra de cripto": "Compra de cripto" };
-          // recolhido: so o resumo; clicando abre a conta (entrou x saiu, por tipo)
-          return (
-            <details className="eq-more flow-more">
-            <summary>resultado na conta no mês: <b className={tin - tout >= 0 ? "pos" : "v-out"}>{tin - tout >= 0 ? "+" : "-"}{brl(Math.abs(tin - tout))}</b>
-              <span className="muted"> (entrou {brl(tin)} - saiu {brl(tout)})</span></summary>
-            <div className="flow small">
-              <div className="flow-col">
-                <div className="flow-h"><span>Entrou na conta</span><b className="pos">{brl(tin)}</b></div>
-                <div className="flow-r"><span>Renda</span><span>{brl(renda)}</span></div>
-                {ins.map(([c, v]) => <div key={c} className="flow-r move"><span>{LBL_IN[c] ?? catLabel(c)}</span><span>{brl(v.in)}</span></div>)}
-              </div>
-              <div className="flow-col">
-                <div className="flow-h"><span>Saiu da conta</span><b className="v-out">{brl(tout)}</b></div>
-                <div className="flow-r"><span>Gastos</span><span>{brl(gasto)}</span></div>
-                {outs.map(([c, v]) => <div key={c} className="flow-r move"><span>{LBL_OUT[c] ?? catLabel(c)}</span><span>{brl(v.out)}</span></div>)}
-              </div>
-              <div className="flow-net"><span>Resultado na conta no mês</span><b className={tin - tout >= 0 ? "pos" : "v-out"}>{tin - tout >= 0 ? "+" : "-"}{brl(Math.abs(tin - tout))}</b>
-                {(ins.length > 0 || outs.length > 0) && <small className="muted">azul = dinheiro seu mudando de lugar (não é renda nem gasto)</small>}
-                {internal > 0 && <small className="muted">Entre suas contas: {brl(internal)} (saiu de uma e entrou na outra, não muda o total)</small>}</div>
-            </div>
-            </details>
-          );
-        })()}
-        <Review months={months} setup={setup} invest={invest} />
-        {cats.length > 0 && (
-          <figure className="viz">
-            <figcaption className="small muted">Gastos por categoria {prevAvg.n ? <>- <i className="tick-key" /> média dos {prevAvg.n} meses anteriores</> : ""} (clique para filtrar)</figcaption>
-            <div className="hbars">
-              {cats.map(([c, v]) => {
-                const a = prevAvg.acc[c];
-                return (
-                  <div key={c} className={`hbar click${filter && filter !== c ? " dim" : ""}`} onClick={() => setFilter(filter === c ? null : c)}
-                    title={`${catLabel(c)}: ${brl(v)}${a ? ` (média ${brl(a)})` : ""}`}>
-                    <span className="hbar-label small">{catLabel(c)}</span>
-                    <span className="hbar-track">
-                      <span className="hbar-fill" style={{ width: `${(v / maxCat) * 100}%` }} />
-                      {a ? <span className="hbar-tick" style={{ left: `${(a / maxCat) * 100}%` }} /> : null}
-                    </span>
-                    <span className="hbar-value small">{fmt(v, 0)} <span className={a && v > a * 1.2 ? "warn" : "muted"}>{s.gastos > 0 ? `${fmt((v / s.gastos) * 100, 0)}%` : ""}</span></span>
+        {incomes.length > 0 && <div className="ui-list">{incSorted.map((p) => billRow(p, true))}</div>}
+        {recs.length > 0 && <>
+          <div className="mes-subhead"><b>A receber</b><span>{recs.length - recLeft.length} de {recs.length} recebidas</span></div>
+          <div className="ui-list">
+            {recs.map((x) => {
+              const got = x.row.status === "recebida";
+              return (
+                <div key={x.r.id + x.row.k} className={got ? "mes-bill paid" : "mes-bill"}>
+                  <div className="mes-bill-main">
+                    <span className="mes-date"><b>{x.row.due.slice(8, 10)}</b><span>{MES_OPTS[Number(x.row.due.slice(5, 7)) - 1]}</span></span>
+                    <span className="mes-bill-txt"><span className="mes-bill-name">{x.r.name} ({x.row.k + 1}/{x.r.n})</span>
+                      <span className="mes-bill-tags">{x.row.status === "atrasada" && <Badge tone="neg">atrasada</Badge>}
+                        {got && <span className="mes-bill-sub">{x.row.via === "extrato" && x.row.g ? `recebido em ${dm(x.row.g.d)}` : x.row.via === "antes" ? "recebido antes do cadastro" : `marcado como recebido${x.row.d ? ` em ${dm(x.row.d)}` : ""}`}</span>}</span></span>
+                    <span className="mes-bill-v pos">+{brl(x.row.v ?? x.r.parcela, 0)}</span>
+                    {got ? <span className="mes-ok"><Check size={14} aria-hidden="true" /></span>
+                      : <Button variant="primary" size="sm" onClick={() => setPay({ kind: "recv", id: x.r.id, k: x.row.k })}>Recebi</Button>}
                   </div>
-                );
-              })}
-            </div>
-          </figure>
-        )}
-        <MonthsChart months={months} current={m} onPick={setM} />
-      </section>
+                </div>
+              );
+            })}
+          </div>
+        </>}
+      </Fold>
 
       <BudgetCard months={months} setup={setup} m={m} onCard={onCard} />
 
-      {(bills.length > 0 || recs.length > 0 || incomes.length > 0) && (
-        <section className="card bills-card">
-          <div className="bills">
-            {bills.length > 0 && <>
-            <div className="bills-head">
-              <b>Contas do mês</b>
-              <span className="small muted">{bills.length - pending.length} de {bills.length} pagas{pendingTotal > 0 ? ` - falta ${brl(pendingTotal)}` : " - tudo pago"}</span>
-            </div>
-            <ul>
-              {[...bills].sort((x, y) => Number(!!x.paid) - Number(!!y.paid) || x.d.localeCompare(y.d)).map((p) => {
-                const late = !p.paid && p.d < today;
-                return (
-                  <li key={p.ref} className={p.paid ? "paid" : late ? "late" : ""}>
-                    <span className="b-day">{dm(p.d)}</span>
-                    <span className="b-desc"><b>{p.desc}</b>
-                      {p.once && <span className="tag">avulsa</span>}
-                      {p.varia && <span className="tag">varia</span>}
-                      {p.reaj && <span className="tag warn">reajuste: confira o valor</span>}
-                      {!p.paid && p.sug && <small className="bill-sug">parece ser: {p.sug.desc.slice(0, 36)} {brl(p.sug.v)} ({dm(p.sug.d)}){p.sugHow === "valor" ? `, em ${catLabel(p.sug.cat)}` : ""}
-                        <button className="link" onClick={() => launch(p, `item:${p.sug!.id}`)}>confirmar</button>
-                        <button className="link muted" onClick={() => notSug(p)}>não é</button></small>}
-                      {p.paid && <small className="muted">{p.paid.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === p.paid!.by)?.name ?? "outra pessoa"} (abatido do que te deve) ${brl(p.paid.v)} (${dm(p.paid.d)})`
-                        : `pago por: ${p.paid.desc.slice(0, 40)} ${brl(p.paid.v)} (${dm(p.paid.d)}) - ${HOW[p.how ?? ""] ?? ""}`}
-                        {p.fixo && <button className="link" title="Desfaz este pagamento: a conta volta para a pagar e você escolhe de novo" onClick={() => notThis(p)}>alterar</button>}</small>}
-                    </span>
-                    <span className="b-v">{p.varia && !p.paid ? "~" : ""}{brl(p.paid ? p.paid.v : p.v)}</span>
-                    {p.paid ? <span className="sit sit-paga">pago</span> : (
-                      <>
-                        <span className={late ? "sit sit-atrasada" : "sit sit-aberta"}>{late ? "atrasado" : "a pagar"}</span>
-                        <select className="pay-sel" value="" onChange={(e) => e.target.value && launch(p, e.target.value)}
-                          title="Ligue ao lançamento do extrato, ou diga com o que pagou se não vai aparecer em nenhum extrato">
-                          <option value="">pagar / ligar...</option>
-                          {!p.parc && <optgroup label="já veio no extrato">
-                            {items.filter((g) => g.tipo === "gasto" && !g.ref && !g.card)
-                              .sort((a, b) => Number(b.cat === p.cat) - Number(a.cat === p.cat) || Math.abs(a.v - p.v) - Math.abs(b.v - p.v)).slice(0, 8)
-                              .map((g) => <option key={g.id} value={`item:${g.id}`}>{dm(g.d)} {g.desc.slice(0, 28)} {brl(g.v)}</option>)}
-                          </optgroup>}
-                          {!p.parc && (setup.recvs ?? []).some((r) => r.kind === "conta") && <optgroup label="outra pessoa pagou com o dinheiro dela (abate o que ela te deve)">
-                            {(setup.recvs ?? []).filter((r) => r.kind === "conta").map((r) => <option key={r.id} value={`by:${r.id}`}>{r.name} pagou com o dinheiro dela</option>)}
-                          </optgroup>}
-                          <optgroup label="pago com uma conta sua (sai do saldo dela)">
-                            {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>conta {a.name}{a.noStatement ? " (sem extrato)" : ""}</option>)}
-                            {setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>cartão {c.name}</option>)}
-                          </optgroup>
-                        </select>
-                        {p.once && <button className="link" onClick={() => removeOnce(p)} title="Apagar esta conta a pagar">apagar</button>}
-                      </>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-            </>}
-            {incomes.length > 0 && (
-              <>
-                <div className={bills.length ? "bills-head bills-sub" : "bills-head"}>
-                  <b>Entradas fixas</b>
-                  <span className="small muted">{incomes.length - incLeft.length} de {incomes.length} recebidas{incLeft.length ? ` - falta ${brl(incLeft.reduce((t, b) => t + b.v, 0))}` : ""}</span>
-                </div>
-                <ul>
-                  {[...incomes].sort((x, y) => Number(!!x.paid) - Number(!!y.paid) || x.d.localeCompare(y.d)).map((p) => {
-                    const late = !p.paid && p.d < today;
-                    return (
-                      <li key={p.ref} className={p.paid ? "paid" : late ? "late" : ""}>
-                        <span className="b-day">{dm(p.d)}</span>
-                        <span className="b-desc"><b>{p.desc}</b>
-                          {p.varia && <span className="tag">varia</span>}
-                          {p.reaj && <span className="tag warn">reajuste: confira o valor</span>}
-                          {p.paid && <small className="muted">recebido: {p.paid.desc.slice(0, 40)} {brl(p.paid.v)} ({dm(p.paid.d)}) - {HOW[p.how ?? ""] ?? ""}
-                            <button className="link" title="Desfaz: a entrada volta para a receber e você escolhe de novo" onClick={() => notThis(p)}>alterar</button></small>}
-                        </span>
-                        <span className="b-v pos">+{p.varia && !p.paid ? "~" : ""}{brl(p.paid ? p.paid.v : p.v)}</span>
-                        {p.paid ? <span className="sit sit-paga">recebido</span> : (
-                          <>
-                            <span className={late ? "sit sit-atrasada" : "sit sit-aberta"}>{late ? "atrasado" : "a receber"}</span>
-                            <select className="pay-sel" value="" onChange={(e) => e.target.value && onIncome(p, e.target.value)}
-                              title="Ligue à entrada que veio no extrato, ou diga em que conta caiu se não vai aparecer em extrato">
-                              <option value="">recebi / ligar...</option>
-                              <optgroup label="já veio no extrato">
-                                {items.filter((g) => !g.card && !g.ref && g.tipo !== "gasto" && dirOf(g) > 0 && !incomes.some((x) => x.paid?.id === g.id))
-                                  .sort((a, b) => Number(b.cat === p.cat) - Number(a.cat === p.cat) || Math.abs(a.v - p.v) - Math.abs(b.v - p.v)).slice(0, 8)
-                                  .map((g) => <option key={g.id} value={`item:${g.id}`}>{dm(g.d)} {g.desc.slice(0, 28)} {brl(g.v)}</option>)}
-                              </optgroup>
-                              <optgroup label="recebi (não vem em extrato)">
-                                {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>caiu na {a.name}</option>)}
-                              </optgroup>
-                            </select>
-                          </>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            )}
-            {recs.length > 0 && (
-              <>
-                <div className={bills.length || incomes.length ? "bills-head bills-sub" : "bills-head"}>
-                  <b>A receber</b>
-                  <span className="small muted">{recs.length - recLeft.length} de {recs.length} recebidas{recLeft.length ? ` - falta ${brl(recLeft.reduce((t, x) => t + x.r.parcela, 0))}` : ""}</span>
-                </div>
-                <ul>
-                  {recs.map((x) => {
-                    const got = x.row.status === "recebida";
-                    return (
-                      <li key={x.r.id + x.row.k} className={got ? "paid" : x.row.status === "atrasada" ? "late" : ""}>
-                        <span className="b-day">{dm(x.row.due)}</span>
-                        <span className="b-desc"><b>{x.r.name} (parcela {x.row.k + 1}/{x.r.n})</b>
-                          {got && <small className="muted">{x.row.via === "extrato" && x.row.g ? `recebido: ${x.row.g.desc.slice(0, 40)} (${dm(x.row.g.d)})` : x.row.via === "antes" ? "recebido antes do cadastro" : `marcado como recebido${x.row.d ? ` em ${dm(x.row.d)}` : ""}`}</small>}
-                        </span>
-                        <span className="b-v pos">+{brl(x.row.v ?? x.r.parcela)}</span>
-                        {got ? <span className="sit sit-paga">recebido</span> : (
-                          <>
-                            <span className={x.row.status === "atrasada" ? "sit sit-atrasada" : "sit sit-aberta"}>{x.row.status === "atrasada" ? "atrasado" : "a receber"}</span>
-                            <select className="pay-sel" value="" onChange={(e) => e.target.value && onRecv(x, e.target.value)}>
-                              <option value="">recebi / ligar...</option>
-                              <optgroup label="já veio no extrato">
-                                {items.filter((g) => !g.card && !g.ref && dirOf(g) > 0)
-                                  .sort((a, b) => Math.abs(a.v - x.r.parcela) - Math.abs(b.v - x.r.parcela)).slice(0, 8)
-                                  .map((g) => <option key={g.id} value={`item:${g.id}`}>{dm(g.d)} {g.desc.slice(0, 28)} {brl(g.v)}</option>)}
-                              </optgroup>
-                              <optgroup label="recebi (não vem em extrato)">
-                                {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>caiu na {a.name}</option>)}
-                                <option value="mark">só marcar (em dinheiro)</option>
-                              </optgroup>
-                            </select>
-                          </>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            )}
-          </div>
-        </section>
+      {cats.length > 0 && (
+        <Fold title="Por categoria" meta={`${brl(s.gastos, 0)} em gastos`}>
+          <UiCard>
+            <figure className="viz">
+              <figcaption className="small muted">{prevAvg.n ? <><i className="tick-key" /> média dos {prevAvg.n} meses anteriores · </> : ""}toque para filtrar os lançamentos</figcaption>
+              <div className="hbars">
+                {cats.map(([c, v]) => {
+                  const a = prevAvg.acc[c];
+                  return (
+                    <button type="button" key={c} className={`hbar click${filter && filter !== c ? " dim" : ""}`} onClick={() => { setFilter(filter === c ? null : c); document.getElementById("mes-lanc")?.scrollIntoView({ behavior: "smooth" }); }}
+                      title={`${catLabel(c)}: ${brl(v)}${a ? ` (média ${brl(a)})` : ""}`}>
+                      <span className="hbar-label small">{catLabel(c)}</span>
+                      <span className="hbar-track">
+                        <span className="hbar-fill" style={{ width: `${(v / maxCat) * 100}%` }} />
+                        {a ? <span className="hbar-tick" style={{ left: `${(a / maxCat) * 100}%` }} /> : null}
+                      </span>
+                      <span className="hbar-value small">{fmt(v, 0)} <span className={a && v > a * 1.2 ? "warn" : "muted"}>{s.gastos > 0 ? `${fmt((v / s.gastos) * 100, 0)}%` : ""}</span></span>
+                    </button>
+                  );
+                })}
+              </div>
+            </figure>
+            <MonthsChart months={months} current={m} onPick={setM} />
+            <FlowBox items={items} setup={setup} />
+          </UiCard>
+        </Fold>
       )}
 
-      <section className="card">
-        <div className="card-head">
-          <h2>Lançamentos {filter && <span className="tag">{catLabel(filter)} <button className="link" onClick={() => setFilter(null)}>x</button></span>}</h2>
-          <div className="row">
-            {accs.length > 1 && (
-              <select value={where} onChange={(e) => setWhere(e.target.value)} aria-label="Filtrar por conta" className="where-sel">
-                <option value="">Todas as contas</option>
-                {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>Conta {a.name}</option>)}
-              </select>
-            )}
-            {!entry && <button className="ghost" onClick={() => setImporting(!importing)}>{importing ? "Fechar importação" : "Importar extrato"}</button>}
-          </div>
+      <section className="ui-section" id="mes-lanc">
+        <div className="ui-section-head">
+          <h2>Lançamentos</h2>
+          <span className="ui-section-act">{items.filter((g) => !g.card).length} no mês
+            <Button variant={selMode ? "secondary" : "ghost"} size="sm" onClick={() => { setSelMode(!selMode); if (selMode) setSel(new Set()); }}>{selMode ? "pronto" : "somar"}</Button></span>
         </div>
-        {!entry && (importing ? <ImportPanel months={months} setup={setup} invest={invest} onDone={() => setImporting(false)} />
-          : <QuickAdd months={months} setup={setup} invest={invest} defaultDate={isNow ? todayBR() : `${m}-01`} />)}
-        {shown.length ? (
-          <div className="table-scroll">
-            <table className="stack gastos">
-              <thead><tr><th><input type="checkbox" className="sel-box" aria-label="Marcar todos" checked={shown.length > 0 && shown.every((g) => sel.has(g.id))}
-                onChange={(e) => setSel(e.target.checked ? new Set(shown.map((g) => g.id)) : new Set())} /> Descrição</th><th>Categoria</th><th>Valor</th><th /></tr></thead>
-              <tbody>
-                {shown.map((g) => {
-                  const card = setup.cards.find((c) => c.id === g.card);
-                  const accs = accountsOf(setup);
-                  const accName = !card && accs.length > 1 ? accs.find((a) => a.id === accIdOf(g, accs))?.name : null;
-                  return (<Fragment key={g.id}>
-                    <tr className={`${g.tipo === "neutro" && !isFaturaOut(g) ? "neutral" : ""}${sel.has(g.id) ? " selected" : ""}`}>
-                      <td><span className="sel-cell"><input type="checkbox" className="sel-box" aria-label={`Marcar ${g.desc}`} checked={sel.has(g.id)} onChange={() => toggleSel(g.id)} />
-                        <span className="cell">{g.desc}<small className="muted">
-                        {[dm(g.d), card ? `cartão ${card.name}` : accName, g.parc ? `parcela ${g.parc[0]}/${g.parc[1]}` : null, g.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === g.by)?.name ?? "outra pessoa"} - não saiu da sua conta` : null, isFaturaOut(g) ? "conta nos gastos do mês (fatura paga)" : g.tipo === "neutro" ? (dirOf(g) > 0 ? "entrou na conta - não é renda (dinheiro seu voltando)" : "saiu da conta - não é gasto") : null].filter(Boolean).join(" - ")}
-                      </small></span></span></td>
-                      <td data-label="Categoria"><span className="cell">
-                        <CatSelect value={g.cat} onChange={(c) => learnAndSet(g, c)} dir={dirOf(g) > 0 ? "in" : "out"} />
-                        {(g.cat === RECV_OUT_CAT || g.cat === RECV_BACK_CAT) && <RecvSelect g={g} m={m} months={months} setup={setup} />}
-                        {g.cat === INVEST_CAT && <InvSelect value={g.inv} desc={g.desc} invest={invest} out={dirOf(g) < 0} onChange={(id) => linkInv(g, id)} />}
-                        {g.cat === TRANSFER_CAT && !g.card && (
-                          <ToAccSelect value={g.toAcc} from={accIdOf(g, accountsOf(setup))} out={dirOf(g) < 0} setup={setup} onChange={(id) => linkAcc(g, id)} />
-                        )}
-                        {g.cat === CARD_PAY_CAT && !g.card && setup.cards.length > 0 && (
-                          <CardPaySelect value={g.payCard} cards={setup.cards} onChange={(id) => saveMonth(m, items.map((x) => (x.id === g.id ? clean({ ...x, payCard: id || undefined }) : x)))} />
-                        )}
-                      </span></td>
-                      <td data-label="Valor" className={g.tipo === "receita" ? "pos" : g.tipo === "neutro" && !isFaturaOut(g) ? "v-move" : "v-out"}>{g.tipo === "receita" || (g.tipo === "neutro" && dirOf(g) > 0) ? "+" : "-"}{brl(g.v)}</td>
-                      <td className="actions"><button className="link" onClick={() => { setSplitting(null); setEditing(editing === g.id ? null : g.id); }}>alterar</button>
-                        {g.splitId
-                          ? <button className="link" onClick={() => unsplit(g)}>desfazer divisão</button>
-                          : <button className="link" onClick={() => { setEditing(null); setSplitting(splitting === g.id ? null : g.id); }}>dividir</button>}
-                        <button className="ghost small-btn" onClick={() => removeItem(g)} aria-label="Apagar">apagar</button></td>
-                    </tr>
-                    {splitting === g.id && <tr className="edit-row"><td colSpan={4}><SplitForm g={g} m={m} items={items} onDone={() => setSplitting(null)} /></td></tr>}
-                    {editing === g.id && <tr className="edit-row"><td colSpan={4}><EditItem g={g} m={m} months={months} setup={setup} onDone={() => setEditing(null)} /></td></tr>}
-                  </Fragment>);
-                })}
-              </tbody>
-            </table>
+        {(accs.length > 1 || filter) && (
+          <div className="mes-chips" role="group" aria-label="Filtrar lançamentos">
+            {accs.length > 1 && <>
+              <button type="button" className={!where ? "mes-chip on" : "mes-chip"} onClick={() => setWhere("")}>Todas as contas</button>
+              {accs.map((a) => <button key={a.id} type="button" className={where === `acc:${a.id}` ? "mes-chip on" : "mes-chip"} onClick={() => setWhere(where === `acc:${a.id}` ? "" : `acc:${a.id}`)}>{a.name}</button>)}
+            </>}
+            {filter && <button type="button" className="mes-chip on" onClick={() => setFilter(null)} aria-label={`Tirar o filtro ${catLabel(filter)}`}>{catLabel(filter)} <X size={12} aria-hidden="true" /></button>}
           </div>
-        ) : <p className="muted">Nenhum lançamento {filter ? "nesta categoria" : "neste mês"}.</p>}
+        )}
+        {selMode && <p className="mes-line">Toque nos lançamentos para somar (nada é salvo).</p>}
+        {days.length ? days.map(({ d, list }) => (
+          <div key={d} className="mes-day">
+            <div className="mes-day-h">{dayLabel(d)}</div>
+            <List>
+              {list.map((g) => {
+                const plus = plusOf(g);
+                const move = g.tipo === "neutro" && !isFaturaOut(g);
+                const on = sel.has(g.id);
+                return (
+                  <ListRow key={g.id} onClick={() => (selMode ? toggleSel(g.id) : setOpen(g.id))} chevron={false}
+                    icon={selMode ? (on ? <Check size={18} /> : <span className="mes-box" />) : g.tipo === "receita" ? <ArrowDownLeft size={18} /> : move ? <ArrowLeftRight size={18} /> : <ArrowUpRight size={18} />}
+                    iconTone={selMode ? (on ? "brand" : "neutral") : g.tipo === "receita" ? "pos" : move ? "info" : "neg"}
+                    title={<>{g.desc}{GENERIC_CATS.includes(g.cat) && <span className="mes-dot" title="sem categoria" />}</>} sub={subOf(g)}
+                    value={<span className={plus ? "pos" : move ? "v-move" : "neg"}>{plus ? "+" : "−"}{brl(g.v)}</span>} />
+                );
+              })}
+            </List>
+          </div>
+        )) : <UiCard><p className="mes-empty">Nenhum lançamento {filter ? "nesta categoria" : "neste mês"}. Toque em ＋ para lançar ou importar o extrato do banco.</p></UiCard>}
+        {shown.length > limit && <Button variant="secondary" block onClick={() => setLimit(limit + 60)}>ver mais {Math.min(60, shown.length - limit)} de {shown.length - limit}</Button>}
         {sel.size > 0 && (() => {
           const list = items.filter((g) => sel.has(g.id));
-          const plus = list.filter((g) => g.tipo === "receita" || (g.tipo === "neutro" && dirOf(g) > 0)).reduce((t, g) => t + g.v, 0);
+          const plus = list.filter(plusOf).reduce((t, g) => t + g.v, 0);
           const minus = list.reduce((t, g) => t + g.v, 0) - plus;
           return (
-            <div className="sel-bar">
+            <div className="mes-selbar" role="status">
               <b>{list.length} {list.length > 1 ? "marcados" : "marcado"}</b>
-              {plus > 0 && <span className="pos">entradas +{brl(plus)}</span>}
-              {minus > 0 && <span className="v-out">saídas -{brl(minus)}</span>}
-              <span>total <b className={plus - minus >= 0 ? "pos" : "v-out"}>{plus - minus >= 0 ? "+" : "-"}{brl(Math.abs(plus - minus))}</b></span>
-              <button className="link" onClick={() => setSel(new Set())}>limpar</button>
+              {plus > 0 && <span className="pos">+{brl(plus)}</span>}
+              {minus > 0 && <span className="neg">−{brl(minus)}</span>}
+              <span>total <b className={plus - minus >= 0 ? "pos" : "neg"}>{plus - minus >= 0 ? "+" : "−"}{brl(Math.abs(plus - minus))}</b></span>
+              <Button variant="link" size="sm" onClick={() => setSel(new Set())}>limpar</Button>
             </div>
           );
         })()}
-        <Note>Marque lançamentos para ver a soma deles (nada é salvo). Mudou a categoria de um lançamento? O site aplica aos iguais do mês e lembra para as próximas importações.</Note>
+      </section>
+
+      <Fold title="Categorias e como funciona">
         <CustomCatsManager months={months} setup={setup} />
         <HowItWorks />
-      </section>
-    </>
+      </Fold>
+
+      <Sheet open={!!(payBill || payRec)} onClose={() => setPay(null)} title={payBill ? `${pay?.kind === "income" ? "Recebi" : "Pagar"}: ${payBill.desc}` : payRec ? `Recebi: ${payRec.r.name}` : ""}>
+        {payBill && <PaySheet key={payBill.ref} p={payBill} income={pay?.kind === "income"} m={m} items={items} incomes={incomes} setup={setup}
+          onPick={async (src, opt) => { await (pay?.kind === "income" ? onIncome(payBill, src, opt) : launch(payBill, src, opt)); setPay(null); }}
+          onRemove={payBill.once ? async () => { await removeOnce(payBill); setPay(null); } : undefined} />}
+        {payRec && <RecvSheet x={payRec} items={items} accs={accs} onPick={async (v) => { await onRecv(payRec, v); setPay(null); }} />}
+      </Sheet>
+
+      <Sheet open={!!openItem} onClose={() => setOpen(null)} title="Lançamento">
+        {openItem && <ItemSheet key={openItem.id} g={openItem} m={m} months={months} setup={setup} invest={invest}
+          onCat={(c) => learnAndSet(openItem, c)} onAcc={(id) => linkAcc(openItem, id)} onInv={(id) => linkInv(openItem, id)}
+          onPayCard={(id) => saveMonth(m, items.map((x) => (x.id === openItem.id ? clean({ ...x, payCard: id || undefined }) : x)))}
+          onUnsplit={() => unsplit(openItem)} onRemove={async () => { await removeItem(openItem); }} onClose={() => setOpen(null)} />}
+      </Sheet>
+    </div>
+  );
+}
+
+// Resultado na conta no mes: so o que passou pela conta (sem cartao e sem o que outra pessoa pagou por voce), separado em
+// renda/gasto e dinheiro seu so mudando de lugar (cofrinho, cripto, entre contas, emprestimos)
+function FlowBox({ items, setup }: { items: Gasto[]; setup: GastosSetup }) {
+  const acc = items.filter((g) => !g.card && !g.by);
+  if (!acc.length) return null;
+  const renda = acc.filter((g) => g.tipo === "receita").reduce((t, g) => t + g.v, 0);
+  const gasto = acc.filter((g) => g.tipo === "gasto" || isFaturaOut(g)).reduce((t, g) => t + g.v, 0);
+  const byCat: Record<string, { in: number; out: number }> = {};
+  // transferencia ligada a outra conta sua: sai de uma e entra na outra (o total das contas nao muda)
+  const accIds = new Set(accountsOf(setup).map((a) => a.id));
+  const internal = acc.filter((x) => x.cat === TRANSFER_CAT && x.toAcc && accIds.has(x.toAcc)).reduce((t, x) => t + x.v, 0);
+  for (const g of acc.filter((x) => x.tipo === "neutro" && !isFaturaOut(x) && !(x.cat === TRANSFER_CAT && x.toAcc && accIds.has(x.toAcc)))) { const c = (byCat[g.cat] ??= { in: 0, out: 0 }); if (dirOf(g) > 0) c.in += g.v; else c.out += g.v; }
+  const ins = Object.entries(byCat).filter(([, v]) => v.in > 0.004);
+  const outs = Object.entries(byCat).filter(([, v]) => v.out > 0.004);
+  const tin = renda + ins.reduce((t, [, v]) => t + v.in, 0);
+  const tout = gasto + outs.reduce((t, [, v]) => t + v.out, 0);
+  const LBL_IN: Record<string, string> = { Investimento: "Resgate de investimento", "Transferencia entre contas": "De outra conta sua", "Venda de cripto": "Venda de cripto" };
+  const LBL_OUT: Record<string, string> = { Investimento: "Guardado em investimento", "Transferencia entre contas": "Para outra conta sua", "Compra de cripto": "Compra de cripto" };
+  return (
+    <details className="eq-more flow-more">
+      <summary>resultado na conta no mês: <b className={tin - tout >= 0 ? "pos" : "v-out"}>{tin - tout >= 0 ? "+" : "-"}{brl(Math.abs(tin - tout))}</b>
+        <span className="muted"> (entrou {brl(tin)} - saiu {brl(tout)})</span></summary>
+      <div className="flow small">
+        <div className="flow-col">
+          <div className="flow-h"><span>Entrou na conta</span><b className="pos">{brl(tin)}</b></div>
+          <div className="flow-r"><span>Renda</span><span>{brl(renda)}</span></div>
+          {ins.map(([c, v]) => <div key={c} className="flow-r move"><span>{LBL_IN[c] ?? catLabel(c)}</span><span>{brl(v.in)}</span></div>)}
+        </div>
+        <div className="flow-col">
+          <div className="flow-h"><span>Saiu da conta</span><b className="v-out">{brl(tout)}</b></div>
+          <div className="flow-r"><span>Gastos</span><span>{brl(gasto)}</span></div>
+          {outs.map(([c, v]) => <div key={c} className="flow-r move"><span>{LBL_OUT[c] ?? catLabel(c)}</span><span>{brl(v.out)}</span></div>)}
+        </div>
+        <div className="flow-net"><span>Resultado na conta no mês</span><b className={tin - tout >= 0 ? "pos" : "v-out"}>{tin - tout >= 0 ? "+" : "-"}{brl(Math.abs(tin - tout))}</b>
+          {(ins.length > 0 || outs.length > 0) && <small className="muted">azul = dinheiro seu mudando de lugar (não é renda nem gasto)</small>}
+          {internal > 0 && <small className="muted">Entre suas contas: {brl(internal)} (saiu de uma e entrou na outra, não muda o total)</small>}</div>
+      </div>
+    </details>
+  );
+}
+
+// Folha Pagar (ou Recebi, na entrada fixa): ligar ao extrato com a sugestao no topo, ou lancar com valor e data de verdade
+function PaySheet({ p, income, m, items, incomes, setup, onPick, onRemove }: {
+  p: Bill; income?: boolean; m: string; items: Gasto[]; incomes: Bill[]; setup: GastosSetup;
+  onPick: (src: string, opt?: { v: number; d: string }) => Promise<void>; onRemove?: () => Promise<void>;
+}) {
+  const accs = accountsOf(setup);
+  const t0 = todayBR();
+  const [v, setV] = useState(fmt(p.v));
+  const [d, setD] = useState(monthOf(t0) === m ? t0 : p.d);
+  const people = income || p.parc ? [] : (setup.recvs ?? []).filter((r) => r.kind === "conta");
+  const [src, setSrc] = useState(p.card ? `card:${p.card}` : accs[0] ? `acc:${accs[0].id}` : "");
+  const [busy, setBusy] = useState(false);
+  const cands = p.parc ? [] : (income
+    ? items.filter((g) => !g.card && !g.ref && g.tipo !== "gasto" && dirOf(g) > 0 && !incomes.some((x) => x.paid?.id === g.id))
+    : items.filter((g) => g.tipo === "gasto" && !g.ref && !g.card))
+    .sort((a, b) => Number(b.id === p.sug?.id) - Number(a.id === p.sug?.id) || Number(b.cat === p.cat) - Number(a.cat === p.cat) || Math.abs(a.v - p.v) - Math.abs(b.v - p.v)).slice(0, 6);
+  const go = async (s: string, opt?: { v: number; d: string }) => { setBusy(true); try { await onPick(s, opt); } finally { setBusy(false); } };
+  const val = Math.round(num(v) * 100) / 100;
+  return (
+    <div className="pay-sheet">
+      <p className="pay-sum"><span>{income ? "Esperado" : "Valor"} <b>{p.varia ? "~" : ""}{brl(p.v)}</b></span><span>{income ? "cai" : "vence"} em {dm(p.d)}</span></p>
+      {cands.length > 0 && <>
+        <p className="ls-label">Já veio no extrato? Toque para ligar</p>
+        <List>
+          {cands.map((g) => (
+            <ListRow key={g.id} onClick={busy ? undefined : () => go(`item:${g.id}`)} title={<>{g.id === p.sug?.id && <Badge tone="brand">parece ser</Badge>} {g.desc}</>}
+              sub={`${dm(g.d)} · ${catLabel(g.cat)}`} value={brl(g.v)} />
+          ))}
+        </List>
+      </>}
+      <p className="ls-label">{cands.length ? "Ou lance aqui (não vem em extrato)" : income ? "Onde caiu" : "Com o que pagou"}</p>
+      <form className="pay-form" onSubmit={(e) => { e.preventDefault(); if (val > 0 && d && src) void go(src, { v: val, d }); }}>
+        <label>{income ? "Caiu na conta" : "Pagou com"}
+          <select value={src} onChange={(e) => setSrc(e.target.value)}>
+            {accs.map((a) => <option key={a.id} value={`acc:${a.id}`}>conta {a.name}{a.noStatement ? " (sem extrato)" : ""}</option>)}
+            {!income && setup.cards.map((c) => <option key={c.id} value={`card:${c.id}`}>cartão {c.name}</option>)}
+            {people.map((r) => <option key={r.id} value={`by:${r.id}`}>{r.name} pagou com o dinheiro dela (abate o que te deve)</option>)}
+          </select>
+        </label>
+        <div className="pay-row">
+          <label>Valor (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} /></label>
+          <label>Data<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
+        </div>
+        <Button type="submit" variant="primary" block disabled={busy || !(val > 0) || !d || !src}>{busy ? "Salvando..." : income ? "Lançar a entrada" : "Lançar o pagamento"}</Button>
+      </form>
+      {onRemove && <Button variant="danger" size="sm" className="pay-remove" onClick={() => void onRemove()}>Apagar esta conta a pagar</Button>}
+    </div>
+  );
+}
+
+// Folha Recebi (parcela de quem te deve)
+function RecvSheet({ x, items, accs, onPick }: { x: ReturnType<typeof monthReceipts>[number]; items: Gasto[]; accs: Account[]; onPick: (v: string) => Promise<void> }) {
+  const cands = items.filter((g) => !g.card && !g.ref && dirOf(g) > 0).sort((a, b) => Math.abs(a.v - x.r.parcela) - Math.abs(b.v - x.r.parcela)).slice(0, 6);
+  return (
+    <div className="pay-sheet">
+      <p className="pay-sum"><span>Parcela {x.row.k + 1}/{x.r.n} <b>{brl(x.r.parcela)}</b></span><span>vence em {dm(x.row.due)}</span></p>
+      {cands.length > 0 && <>
+        <p className="ls-label">Já veio no extrato? Toque para ligar</p>
+        <List>{cands.map((g) => <ListRow key={g.id} onClick={() => void onPick(`item:${g.id}`)} title={g.desc} sub={`${dm(g.d)} · ${catLabel(g.cat)}`} value={brl(g.v)} />)}</List>
+      </>}
+      <p className="ls-label">Ou: recebi e não vem em extrato</p>
+      <List>
+        {accs.map((a) => <ListRow key={a.id} onClick={() => void onPick(`acc:${a.id}`)} title={`Caiu na conta ${a.name}`} />)}
+        <ListRow onClick={() => void onPick("mark")} title="Só marcar como recebido (em dinheiro)" />
+      </List>
+    </div>
+  );
+}
+
+// Folha do lancamento: categoria e ligacoes no topo; alterar dados, dividir e apagar embaixo
+function ItemSheet({ g, m, months, setup, invest, onCat, onAcc, onInv, onPayCard, onUnsplit, onRemove, onClose }: {
+  g: Gasto; m: string; months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[];
+  onCat: (c: string) => void; onAcc: (id: string) => void; onInv: (id: string) => void; onPayCard: (id: string) => void;
+  onUnsplit: () => void; onRemove: () => Promise<void>; onClose: () => void;
+}) {
+  const [mode, setMode] = useState<"" | "edit" | "split">("");
+  const accs = accountsOf(setup);
+  const plus = g.tipo === "receita" || (g.tipo === "neutro" && dirOf(g) > 0);
+  const move = g.tipo === "neutro" && !isFaturaOut(g);
+  const accName = accs.find((a) => a.id === accIdOf(g, accs))?.name;
+  const items = months[m]?.items ?? [];
+  return (
+    <div className="item-sheet">
+      <div className="item-top">
+        <b className="item-desc">{g.desc}</b>
+        <span className={`ui-money size-lg ${plus ? "pos" : move ? "v-move" : "neg"}`}>{plus ? "+" : "−"}{brl(g.v)}</span>
+        <span className="item-sub">{new Date(`${g.d}T12:00:00`).toLocaleDateString("pt-BR")}{accName ? ` · conta ${accName}` : ""}{g.parc ? ` · parcela ${g.parc[0]}/${g.parc[1]}` : ""}</span>
+        {g.by && <span className="item-sub">pago por {(setup.recvs ?? []).find((r) => r.id === g.by)?.name ?? "outra pessoa"}: não saiu da sua conta</span>}
+        {isFaturaOut(g) ? <span className="item-sub">conta nos gastos do mês (fatura paga)</span>
+          : g.tipo === "neutro" && <span className="item-sub">{dirOf(g) > 0 ? "entrou na conta, mas não é renda (dinheiro seu voltando)" : "saiu da conta, mas não é gasto (dinheiro seu mudando de lugar)"}</span>}
+      </div>
+      {mode === "" && <>
+        <div className="item-cat">
+          <p className="ls-label">Categoria</p>
+          <CatSelect value={g.cat} onChange={onCat} dir={dirOf(g) > 0 ? "in" : "out"} />
+          {(g.cat === RECV_OUT_CAT || g.cat === RECV_BACK_CAT) && <RecvSelect g={g} m={m} months={months} setup={setup} />}
+          {g.cat === INVEST_CAT && <InvSelect value={g.inv} desc={g.desc} invest={invest} out={dirOf(g) < 0} onChange={onInv} />}
+          {g.cat === TRANSFER_CAT && !g.card && <ToAccSelect value={g.toAcc} from={accIdOf(g, accs)} out={dirOf(g) < 0} setup={setup} onChange={onAcc} />}
+          {g.cat === CARD_PAY_CAT && !g.card && setup.cards.length > 0 && <CardPaySelect value={g.payCard} cards={setup.cards} onChange={onPayCard} />}
+          <p className="item-hint">Trocou a categoria? Vale para os iguais do mês e para as próximas importações.</p>
+        </div>
+        <div className="item-acts">
+          <Button icon={<Pencil size={16} aria-hidden="true" />} onClick={() => setMode("edit")}>Alterar dados</Button>
+          {g.splitId ? <Button icon={<Undo2 size={16} aria-hidden="true" />} onClick={onUnsplit}>Desfazer divisão</Button>
+            : <Button icon={<Split size={16} aria-hidden="true" />} onClick={() => setMode("split")}>Dividir</Button>}
+          <Button variant="danger" icon={<Trash2 size={16} aria-hidden="true" />} onClick={() => void onRemove()}>Apagar</Button>
+        </div>
+      </>}
+      {mode === "edit" && <EditItem g={g} m={m} months={months} setup={setup} onDone={() => setMode("")} />}
+      {mode === "split" && <SplitForm g={g} m={m} items={items} onDone={() => setMode("")} />}
+    </div>
   );
 }
 
@@ -748,7 +795,7 @@ function InvSelect({ value, desc, invest, out, onChange }: { value?: string; des
 }
 
 // Quantos pontos ha para revisar (para o "O que fazer hoje" da Visao geral)
-export function Review({ months, setup, invest }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[] }) {
+export function Review({ months, setup, invest, count }: { months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; count?: number }) {
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState<string | null>(null); // fatura vencida com o formulario de pagamento aberto
   const accounts = accountsOf(setup);
@@ -832,8 +879,8 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
     setBusy(false);
   };
   return (
-    <div className="review small">
-      <b>Para revisar</b>
+    <Fold title="Para revisar" count={count} countTone="warn" defaultOpen>
+      <UiCard className="review small">
       <ul>
         {invMissing > 0 && <li>{invMissing} {invMissing > 1 ? "movimentos" : "movimento"} de investimento sem destino: o dinheiro sai da conta e não entra em nenhum investimento.</li>}
         {payMissing > 0 && <li>{payMissing} {payMissing > 1 ? "pagamentos" : "pagamento"} de fatura sem cartão: a fatura continua aparecendo como dívida.</li>}
@@ -872,7 +919,8 @@ export function Review({ months, setup, invest }: { months: Record<string, Month
           </ul></li>}
         {noBalance.map((r) => <li key={r.acc.id}>Conta {r.acc.name} sem saldo conferido: informe o saldo do app do banco em &quot;Contas&quot; para o patrimônio ficar certo.</li>)}
       </ul>
-    </div>
+    </UiCard>
+    </Fold>
   );
 }
 
@@ -1838,10 +1886,6 @@ function SplitForm({ g, m, items, onDone }: { g: Gasto; m: string; items: Gasto[
 // 1) por categoria: limite por mes do que saiu da conta + compras no cartao feitas no mes (pela data da compra)
 // 2) faturas dos cartoes: o "planejado por fatura" de cada cartao (cadastrado no cartao), contra a fatura que recebe compras agora
 // O pagamento da fatura nao e gasto (as compras ja contaram nas categorias), por isso nao tem limite de categoria.
-const BudgetBar = ({ used, lim }: { used: number; lim: number }) => {
-  const pct = lim > 0 ? used / lim : 0;
-  return <span className="limit"><span className={pct > 1 ? "limit-fill over" : pct >= 0.8 ? "limit-fill high" : "limit-fill"} style={{ width: `${Math.min(100, pct * 100)}%` }} /></span>;
-};
 function BudgetCard({ months, setup, m, onCard }: { months: Record<string, MonthDoc>; setup: GastosSetup; m: string; onCard?: (id: string | null) => void }) {
   const budgets = setup.budgets ?? {};
   const spent = budgetSpent(months, setup, m);
@@ -1878,74 +1922,52 @@ function BudgetCard({ months, setup, m, onCard }: { months: Record<string, Month
   });
   const planned = cards.filter((x) => x.c.budget);
   const unplanned = cards.filter((x) => !x.c.budget);
-  if (!list.length && !planned.length && !adding)
-    return (
-      <p className="small budget-empty"><button className="link" onClick={() => setAdding(true)}>+ definir orçamento por categoria</button> <span className="muted">(limite de gasto por mês, ex.: Alimentação R$ 600)</span>
-        {onCard && cards.length > 0 && <> · <button className="link" onClick={() => onCard(cards[0].c.id)}>planejar a fatura de um cartão</button></>}</p>
-    );
+  const hot = list.some(([c, lim]) => isGasto(c) && (spent[c] ?? 0) / lim >= 0.8) || planned.some((x) => x.used / x.c.budget! >= 0.8);
+  const row = (key: string, name: ReactNode, used: number, lim: number, act: ReactNode, note?: string) => (
+    <div key={key} className="mes-budget">
+      <div className="mes-budget-top"><span className="mes-budget-name">{name}</span><span className="mes-budget-num">{fmt(used, 0)} / {fmt(lim, 0)}</span></div>
+      <Progress value={used / lim} label={typeof name === "string" ? name : undefined} />
+      <div className="mes-budget-foot"><span className={used > lim || note ? "warn" : ""}>{note ?? (used > lim ? `passou ${brl(used - lim, 0)}` : `sobram ${brl(lim - used, 0)}`)}</span>{act}</div>
+    </div>
+  );
   return (
-    <section className="card">
-      <div className="card-head"><h2>Orçamento do mês</h2></div>
-
-      <div className="budget-part">
-        <h3 className="budget-h">Por categoria <span className="muted small">limite por mês</span>
-          <span className="budget-tot muted small">{list.length ? `${brl(totalSpent, 0)} de ${brl(totalLim, 0)}` : ""}<button className="link" onClick={() => setAdding(!adding)}>{adding ? "fechar" : "+ categoria"}</button></span></h3>
-        {adding && (
-          <form className="row wrapline fin-form" onSubmit={add}>
+    <Fold title="Orçamento" defaultOpen={hot} count={list.filter(([c, lim]) => isGasto(c) && (spent[c] ?? 0) > lim).length || undefined} countTone="neg"
+      meta={list.length ? `${brl(totalSpent, 0)} de ${brl(totalLim, 0)}` : undefined}
+      action={<Button variant="link" size="sm" icon={adding ? undefined : <Plus size={14} aria-hidden="true" />} onClick={() => setAdding(!adding)}>{adding ? "fechar" : "categoria"}</Button>}>
+      {adding && (
+        <UiCard>
+          <form className="pay-form" onSubmit={add}>
             <label>Categoria de gasto<CatSelect value={cat} onChange={setCat} gastoOnly /></label>
             <label>Limite por mês (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="600,00" /></label>
-            <button className="primary" type="submit" disabled={!(num(v) > 0)}>Salvar</button>
+            <Button type="submit" variant="primary" disabled={!(num(v) > 0)}>Salvar</Button>
           </form>
-        )}
-        {list.length > 0 ? (
-          <div className="budgets">
-            {list.map(([c, lim]) => {
-              const s = spent[c] ?? 0, pct = s / lim;
-              const notGasto = !isGasto(c);
-              return (
-                <div key={c} className="budget-row">
-                  <span className="b-name">{catLabel(c)}</span>
-                  <BudgetBar used={s} lim={lim} />
-                  <span className="b-num small">{brl(s, 0)} de {brl(lim, 0)}</span>
-                  <span className={`small ${pct > 1 || notGasto ? "warn" : "muted"}`}>{notGasto ? "não é gasto: nunca conta" : pct > 1 ? `passou ${brl(s - lim, 0)}` : `sobram ${brl(lim - s, 0)}`}</span>
-                  <button className="link" onClick={() => (notGasto ? save(c, 0) : change(c, lim))}>{notGasto ? "remover" : "alterar"}</button>
-                </div>
-              );
-            })}
-          </div>
-        ) : !adding && <p className="muted small">Nenhum limite por categoria ainda.</p>}
-        <p className="muted small budget-note">Conta o que saiu da conta e as compras no cartão feitas no mês, cada uma na sua categoria (pela data da compra).
-          O pagamento da fatura não entra aqui: as compras dela já foram contadas.</p>
-      </div>
-
-      {cards.length > 0 && (
-        <div className="budget-part">
-          <h3 className="budget-h">Faturas dos cartões <span className="muted small">planejado por fatura</span></h3>
-          {planned.length > 0 && (
-            <div className="budgets">
-              {planned.map(({ c, fm, used }) => {
-                const lim = c.budget!, pct = used / lim;
-                return (
-                  <div key={c.id} className="budget-row">
-                    <span className="b-name">{c.name} <span className="muted small">fatura de {monthLabel(fm)}</span></span>
-                    <BudgetBar used={used} lim={lim} />
-                    <span className="b-num small">{brl(used, 0)} de {brl(lim, 0)}</span>
-                    <span className={`small ${pct > 1 ? "warn" : "muted"}`}>{pct > 1 ? `passou ${brl(used - lim, 0)}` : `sobram ${brl(lim - used, 0)}`}</span>
-                    {onCard && <button className="link" onClick={() => onCard(c.id)}>alterar</button>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {unplanned.length > 0 && (
-            <p className="small budget-unplanned">{planned.length ? "Sem valor planejado:" : "Nenhum cartão com valor planejado ainda:"}{" "}
-              {unplanned.map(({ c }, i) => <Fragment key={c.id}>{i > 0 && ", "}{onCard ? <button className="link" onClick={() => onCard(c.id)}>{c.name}</button> : c.name}</Fragment>)}
-              <span className="muted"> (clique para definir quanto quer gastar por fatura)</span></p>
-          )}
-          <p className="muted small budget-note">É quanto você quer gastar em cada fatura, somando todas as categorias. Fica no cadastro do cartão
-            (Cartões e empréstimos) e avisa na Visão geral aos 80%. Não se soma ao orçamento por categoria: é outro jeito de olhar as mesmas compras.</p>
-        </div>
+        </UiCard>
       )}
-    </section>
+      {list.length > 0 ? (
+        <UiCard className="mes-budgets">
+          {list.map(([c, lim]) => {
+            const notGasto = !isGasto(c);
+            return row(c, catLabel(c), spent[c] ?? 0, lim,
+              <Button variant="link" size="sm" onClick={() => (notGasto ? save(c, 0) : change(c, lim))}>{notGasto ? "remover" : "alterar"}</Button>,
+              notGasto ? "não é gasto: nunca conta" : undefined);
+          })}
+        </UiCard>
+      ) : !adding && <p className="mes-line">Nenhum limite por categoria ainda. Ex.: Alimentação R$ 600 por mês.</p>}
+      {cards.length > 0 && <>
+        <div className="mes-subhead"><b>Faturas dos cartões</b><span>planejado por fatura</span></div>
+        {planned.length > 0 && (
+          <UiCard className="mes-budgets">
+            {planned.map(({ c, fm, used }) => row(c.id, <>{c.name} <span className="muted">· fatura de {monthLabel(fm)}</span></>, used, c.budget!,
+              onCard && <Button variant="link" size="sm" onClick={() => onCard(c.id)}>alterar</Button>))}
+          </UiCard>
+        )}
+        {unplanned.length > 0 && (
+          <p className="mes-line">{planned.length ? "Sem valor planejado:" : "Nenhum cartão com valor planejado:"}{" "}
+            {unplanned.map(({ c }, i) => <Fragment key={c.id}>{i > 0 && ", "}{onCard ? <button type="button" className="link" onClick={() => onCard(c.id)}>{c.name}</button> : c.name}</Fragment>)}</p>
+        )}
+      </>}
+      <p className="mes-line">Conta o que saiu da conta e as compras no cartão do mês, pela data da compra. A fatura paga não entra (as compras dela já contaram).
+        O planejado por fatura é outro jeito de olhar as mesmas compras: não se soma.</p>
+    </Fold>
   );
 }

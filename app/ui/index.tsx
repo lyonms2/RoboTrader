@@ -201,3 +201,25 @@ export function EmptyState({ title, text, action }: { title: ReactNode; text?: R
 export function Skeleton({ w, h = 14 }: { w?: number | string; h?: number }) {
   return <span className="ui-skel" aria-hidden="true" style={{ "--w": typeof w === "number" ? `${w}px` : w, "--h": `${h}px` } as CSSProperties} />;
 }
+
+// ---------- secao recolhivel (Mes: abre sozinha quando tem pendencia) ----------
+export function Fold({ title, count, countTone = "brand", meta, action, defaultOpen = false, children, id }: {
+  title: ReactNode; count?: number; countTone?: Tone; meta?: ReactNode; action?: ReactNode; defaultOpen?: boolean; children: ReactNode; id?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const bodyId = useId();
+  return (
+    <section className={cx("ui-fold", open && "open")} id={id}>
+      <div className="ui-fold-head">
+        <button type="button" className="ui-fold-btn" aria-expanded={open} aria-controls={bodyId} onClick={() => setOpen(!open)}>
+          <ChevronRight className="ui-fold-chev" size={18} aria-hidden="true" />
+          <h2>{title}</h2>
+          {count !== undefined && count > 0 && <Badge tone={countTone}>{count}</Badge>}
+          {meta && <span className="ui-fold-meta">{meta}</span>}
+        </button>
+        {action && open && <span className="ui-fold-act">{action}</span>}
+      </div>
+      {open && <div className="ui-fold-body" id={bodyId}>{children}</div>}
+    </section>
+  );
+}

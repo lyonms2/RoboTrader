@@ -148,3 +148,11 @@ button.ui-row:hover, a.ui-row:hover { background: var(--surface-2); }
 .ui-fold-btn { min-height: 44px; }
 .ui-loading { display: flex; flex-direction: column; gap: var(--s-3); padding-top: var(--s-2); }
 .ui-loading .ui-skel { border-radius: var(--r-lg); }
+
+/* campo de busca (Ajuda e Lancamentos): lupa, campo e X; sem o estilo antigo de rotulo/campo do globals.css */
+label.ui-search { display: flex; flex-direction: row; align-items: center; gap: var(--s-2); height: 48px; padding: 0 14px; margin: 0; border-radius: var(--r-md);
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--text-3); font-size: var(--fs-md); box-sizing: border-box; }
+label.ui-search:focus-within { border-color: var(--accent); }
+.ui-search input { flex: 1; min-width: 0; max-width: none; width: auto; height: 100%; border: 0; background: transparent; box-shadow: none; color: var(--text); font: inherit; font-size: 16px; outline: none; padding: 0; }
+.ui-search input::-webkit-search-cancel-button { display: none; }
+.ui-search button { background: none; border: 0; color: var(--text-3); padding: 6px; cursor: pointer; display: flex; }

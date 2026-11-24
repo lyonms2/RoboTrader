@@ -1,0 +1,58 @@
+/* Tokens do visual novo (redesign aprovado em 24/11/2026: escuro moderno, celular primeiro).
+   Os nomes antigos de globals.css (--bg, --card, --line, --text, --muted, --accent...) continuam valendo
+   para as telas que ainda nao migraram; as pecas novas (app/ui) usam so os tokens daqui. */
+:root {
+  /* fundo e superficies, do mais escuro ao mais claro */
+  --bg: #0f1216;
+  --surface: #171b21;
+  --surface-2: #1f242c;
+  --surface-3: #232a34;
+  --line: #262c35;
+  --line-soft: #222831;
+  --line-strong: #2c333d;
+
+  /* texto */
+  --text: #e6e9ee;
+  --text-2: #c4cad4;
+  --text-3: #9aa2ae; /* rotulos: 6,6:1 sobre --surface */
+  --text-4: #6b7380; /* so icone e detalhe que nao e texto */
+
+  /* marca SeuBitico */
+  --accent: #f7931a;
+  --accent-hover: #ffa53d;
+  --accent-ink: #1b1104;
+  --brand-yellow: #fdd303;
+  --accent-soft: rgba(247, 147, 26, 0.14);
+
+  /* significado */
+  --pos: #4fd08a;
+  --neg: #ef6b63;
+  --warn: #e8c547;
+  --info: #6ea8ff;
+  --pos-soft: rgba(47, 191, 113, 0.14);
+  --neg-soft: rgba(229, 83, 75, 0.14);
+  --warn-soft: rgba(232, 197, 71, 0.14);
+  --info-soft: rgba(110, 168, 255, 0.14);
+
+  /* espacos (escala de 4 px) */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px;
+
+  /* cantos */
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px; --r-pill: 999px;
+
+  /* sombras */
+  --shadow-sheet: 0 -12px 40px rgba(0, 0, 0, 0.45);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-fab: 0 8px 20px rgba(247, 147, 26, 0.35);
+
+  /* tipografia (Inter, carregada em layout.tsx) */
+  --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-lg: 16px; --fs-xl: 19px; --fs-2xl: 24px; --fs-3xl: 34px;
+
+  /* tempo das transicoes */
+  --t-fast: 150ms; --t-med: 200ms;
+
+  /* larguras de tela: 600 (celular grande), 900 (menu lateral), 1200 (computador largo) */
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-fast: 0ms; --t-med: 0ms; }
+}

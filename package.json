@@ -9,9 +9,9 @@
   },
   "dependencies": {
     "firebase": "12.19.0",
-    "firebase-admin": "14.5.0",
+    "firebase-admin": "14.5.1",
     "jose": "6.2.12",
-    "next": "16.4.2",
+    "next": "16.4.6",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
@@ -20,6 +20,11 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "@firebase/firestore": {
+      "@grpc/grpc-js": "1.14.7"
+    }
   },
   "engines": {
     "node": "24.x"

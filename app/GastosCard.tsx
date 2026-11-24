@@ -14,7 +14,7 @@ import {
   type Bill, type Card, type CustomCat, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Check, ChevronLeft, ChevronRight, Ellipsis, Pencil, Plus, Split, Trash2, Undo2, X } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Check, Search, ChevronLeft, ChevronRight, Ellipsis, Pencil, Plus, Split, Trash2, Undo2, X } from "lucide-react";
 import { Badge, Button, Card as UiCard, Fold, List, ListRow, Money, Progress, Sheet, Stat } from "./ui";
 import { guardWrite, saveMonth, saveSetup, monthSnapshot, upcoming, reviewCount, genericCount } from "./gastosShared";
 export { guardWrite, saveMonth, saveSetup, monthSnapshot, upcoming, reviewCount, genericCount };
@@ -24,6 +24,7 @@ import Note from "./Note";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$\u00a0${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+const normTxt = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); // busca sem acento
 const clean = <T,>(o: T): T => JSON.parse(JSON.stringify(o));
 function num(s: string) {
   let t = s.replace(/[\sR$]/g, "");
@@ -45,9 +46,10 @@ const isFaturaOut = (g: Gasto) =>
   g.cat === CARD_PAY_CAT && !g.card && dirOf(g) < 0;
 
 
-export default function GastosCard({ months, setup, invest = [], onBens, onCard, onFixo }: {
+export default function GastosCard({ months, setup, invest = [], onBens, onCard, onFixo, onCardBuy }: {
   months: Record<string, MonthDoc>; setup: GastosSetup; invest?: FinItem[]; onBens?: () => void; onCard?: (id: string | null) => void;
   onFixo?: (id: string | null, kind: "fixo" | "entrada" | "pagar") => void; // abre a folha de cadastro/alteracao
+  onCardBuy?: (card: string, d: string) => void; // busca: compra no cartao abre a fatura dela em Patrimonio > Cartoes
 }) {
   const [m, setM] = useState(monthOf(todayBR()));
   const [filter, setFilter] = useState<string | null>(null);
@@ -214,10 +216,30 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
   const payBill = pay && pay.kind !== "recv" ? (pay.kind === "bill" ? bills : incomes).find((b) => b.ref === pay.ref) ?? null : null;
   const payRec = pay && pay.kind === "recv" ? recs.find((x) => x.r.id === pay.id && x.row.k === pay.k) ?? null : null;
   const openItem = open ? items.find((g) => g.id === open) ?? null : null;
+  // busca em todos os meses (conta e cartao): sem acento e sem maiuscula, todas as palavras, inclusive o valor
+  const [q, setQ] = useState("");
+  const words = normTxt(q).split(/\s+/).filter(Boolean);
+  const searching = q.trim().length >= 2;
+  const all = useMemo(() => {
+    const ac = accountsOf(setup);
+    return Object.values(months).flatMap((md) => md.items).map((g) => {
+      const cardName = g.card ? setup.cards.find((c) => c.id === g.card)?.name : undefined;
+      const where = cardName ?? ac.find((a) => a.id === accIdOf(g, ac))?.name ?? "";
+      return { g, txt: normTxt(`${g.desc} ${catLabel(g.cat)} ${where} ${fmt(g.v)} ${g.v.toFixed(2)} ${String(g.v)}`) };
+    });
+  }, [months, setup]);
+  const found = searching ? all.filter((x) => words.every((w) => x.txt.includes(w))).map((x) => x.g)
+    .filter((g) => !filter || g.cat === filter).filter((g) => !where || (!g.card && accIdOf(g, accs) === where.slice(4)))
+    .sort((a, b) => b.d.localeCompare(a.d)) : [];
+  useEffect(() => { setLimit(40); setSel(new Set()); }, [searching]);
+  const list0 = searching ? found : shown;
   // lancamentos agrupados por dia
   const days: { d: string; list: Gasto[] }[] = [];
-  for (const g of shown.slice(0, limit)) { const last = days[days.length - 1]; if (last?.d === g.d) last.list.push(g); else days.push({ d: g.d, list: [g] }); }
-  const dayLabel = (d: string) => { const t = new Date(`${d}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }); return t.charAt(0).toUpperCase() + t.slice(1); };
+  for (const g of list0.slice(0, limit)) { const last = days[days.length - 1]; if (last?.d === g.d) last.list.push(g); else days.push({ d: g.d, list: [g] }); }
+  const dayLabel = (d: string) => {
+    const t = new Date(`${d}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", ...(d.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}) });
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  };
   const plusOf = (g: Gasto) => g.tipo === "receita" || (g.tipo === "neutro" && dirOf(g) > 0);
   const subOf = (g: Gasto) => {
     const accName = accs.length > 1 ? accs.find((a) => a.id === accIdOf(g, accs))?.name : null;
@@ -380,6 +402,12 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
           <span className="ui-section-act">{items.filter((g) => !g.card).length} no mês
             <Button variant={selMode ? "secondary" : "ghost"} size="sm" onClick={() => { setSelMode(!selMode); if (selMode) setSel(new Set()); }}>{selMode ? "pronto" : "somar"}</Button></span>
         </div>
+        <label className="ui-search">
+          <Search size={18} aria-hidden="true" />
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar em todos os meses: mercado, 356, aluguel..." aria-label="Buscar lançamento" />
+          {q && <button type="button" aria-label="Limpar a busca" onClick={() => setQ("")}><X size={16} aria-hidden="true" /></button>}
+        </label>
+        {searching && <p className="mes-line">{found.length ? `${found.length} ${found.length > 1 ? "lançamentos encontrados" : "lançamento encontrado"} em todos os meses` : "Nada encontrado com esse texto."}</p>}
         {(accs.length > 1 || filter) && (
           <div className="mes-chips" role="group" aria-label="Filtrar lançamentos">
             {accs.length > 1 && <>
@@ -398,20 +426,28 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
                 const plus = plusOf(g);
                 const move = g.tipo === "neutro" && !isFaturaOut(g);
                 const on = sel.has(g.id);
+                const card = g.card ? setup.cards.find((c) => c.id === g.card) : undefined;
+                const tap = () => {
+                  if (selMode) return toggleSel(g.id);
+                  if (g.card) return onCardBuy?.(g.card, g.d);
+                  if (monthOf(g.d) !== m) setM(monthOf(g.d));
+                  setOpen(g.id);
+                };
                 return (
-                  <ListRow key={g.id} onClick={() => (selMode ? toggleSel(g.id) : setOpen(g.id))} chevron={false}
+                  <ListRow key={g.id} onClick={tap} chevron={false}
                     icon={selMode ? (on ? <Check size={18} /> : <span className="mes-box" />) : g.tipo === "receita" ? <ArrowDownLeft size={18} /> : move ? <ArrowLeftRight size={18} /> : <ArrowUpRight size={18} />}
                     iconTone={selMode ? (on ? "brand" : "neutral") : g.tipo === "receita" ? "pos" : move ? "info" : "neg"}
-                    title={<>{g.desc}{GENERIC_CATS.includes(g.cat) && <span className="mes-dot" title="sem categoria" />}</>} sub={subOf(g)}
+                    title={<>{g.desc}{GENERIC_CATS.includes(g.cat) && <span className="mes-dot" title="sem categoria" />}</>}
+                    sub={card ? <><Badge tone="brand">{card.name}{g.parc ? ` · ${g.parc[0]} de ${g.parc[1]}` : ""}</Badge> {catLabel(g.cat)}</> : subOf(g)}
                     value={<span className={plus ? "pos" : move ? "v-move" : "neg"}>{plus ? "+" : "−"}{brl(g.v)}</span>} />
                 );
               })}
             </List>
           </div>
-        )) : <UiCard><p className="mes-empty">Nenhum lançamento {filter ? "nesta categoria" : "neste mês"}. Toque em ＋ para lançar ou importar o extrato do banco.</p></UiCard>}
-        {shown.length > limit && <Button variant="secondary" block onClick={() => setLimit(limit + 60)}>ver mais {Math.min(60, shown.length - limit)} de {shown.length - limit}</Button>}
+        )) : searching ? null : <UiCard><p className="mes-empty">Nenhum lançamento {filter ? "nesta categoria" : "neste mês"}. Toque em ＋ para lançar ou importar o extrato do banco.</p></UiCard>}
+        {list0.length > limit && <Button variant="secondary" block onClick={() => setLimit(limit + 60)}>ver mais {Math.min(60, list0.length - limit)} de {list0.length - limit}</Button>}
         {sel.size > 0 && (() => {
-          const list = items.filter((g) => sel.has(g.id));
+          const list = (searching ? found : items).filter((g) => sel.has(g.id));
           const plus = list.filter(plusOf).reduce((t, g) => t + g.v, 0);
           const minus = list.reduce((t, g) => t + g.v, 0) - plus;
           return (

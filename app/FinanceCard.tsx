@@ -151,7 +151,8 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
     <>{nav}<InvestPart items={items} rows={rows} fin={fin} months={months} reserve={s.reserve} reserveMonths={s.reserveMonths}
       setup={setup} onQuotes={onQuotes} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} />{entrySheet}</>
   );
-  if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} onCard={(id) => goEdit("card", id)} onFixo={(id, kind) => setEntry({ type: kind, id })} />{entrySheet}</>;
+  if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} onCard={(id) => goEdit("card", id)} onFixo={(id, kind) => setEntry({ type: kind, id })}
+    onCardBuy={(id, d) => { setCardsEntry({ type: "compra", id, d }); setSub("cards"); }} />{entrySheet}</>;
 
   return (
     <>

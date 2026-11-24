@@ -3,12 +3,7 @@
 /* Ajuda */
 .help { display: flex; flex-direction: column; gap: var(--s-4); }
 .help-title { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.3px; }
-.help-search { display: flex; align-items: center; gap: var(--s-2); height: 48px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line-strong);
-  background: var(--surface); color: var(--text-3); position: sticky; top: calc(var(--topbar-h, 61px) + 6px); z-index: 14; box-shadow: 0 0 0 6px var(--bg); }
-.help-search:focus-within { border-color: var(--accent); }
-.help-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 16px; outline: none; padding: 0; height: 100%; }
-.help-search input::-webkit-search-cancel-button { display: none; }
-.help-search button { background: none; border: 0; color: var(--text-3); padding: 6px; cursor: pointer; display: flex; }
+.help-search { position: sticky; top: calc(var(--topbar-h, 61px) + 6px); z-index: 14; box-shadow: 0 0 0 6px var(--bg); }
 .help-list { display: flex; flex-direction: column; }
 .help-topic { padding: 0 14px; }
 .help-topic + .help-topic { border-top: 1px solid var(--line-soft); }
@@ -65,7 +60,4 @@
 .cr-head { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); }
 .cr-acts { margin-left: auto; display: flex; gap: var(--s-2); align-items: center; }
 
-/* busca da Ajuda: sem o estilo antigo de rotulo/campo (globals.css) */
-.help label.help-search { flex-direction: row; margin: 0; font-size: var(--fs-md); }
-.help .help-search input { border: 0; background: transparent; box-shadow: none; padding: 0; width: auto; }
 .shop-v2 label.shop-store { flex-direction: row; }

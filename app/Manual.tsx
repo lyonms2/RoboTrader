@@ -40,7 +40,7 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Confira a categoria e a conta e toque em Lançar.",
     ] },
     { title: "Trocar a categoria, alterar ou dividir um lançamento", steps: [
-      "No Mês, toque no lançamento: abre uma folha com a categoria, as ligações e os botões.",
+      "No Mês, toque no lançamento: abre uma folha com a categoria, as ligações e os botões. Para achar um lançamento antigo, use a busca no topo de Lançamentos (procura em todos os meses, inclusive compras no cartão).",
       "Categoria: os iguais do mês mudam juntos e o site lembra para as próximas importações.",
       "\"Alterar dados\": muda data, descrição, valor, sentido (entrou/saiu) e conta.",
       "\"Dividir\": separa um valor cheio em partes (ex.: aluguel, água, luz e internet), cada uma com a sua categoria. \"Desfazer divisão\" volta ao original.",
@@ -227,7 +227,7 @@ export default function Manual({ member, robo = true }: { member: boolean; robo?
   return (
     <div className="help">
       <h1 className="help-title">Ajuda</h1>
-      <label className="help-search">
+      <label className="ui-search help-search">
         <Search size={18} aria-hidden="true" />
         <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="O que você quer fazer? Ex.: pagar fatura" aria-label="Buscar na ajuda" />
         {q && <button type="button" aria-label="Limpar a busca" onClick={() => setQ("")}><X size={16} aria-hidden="true" /></button>}

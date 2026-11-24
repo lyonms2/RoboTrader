@@ -19,7 +19,7 @@ const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDig
 const brl = (v: number, d = 2) => `R$\u00a0${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
-export type CardsEntry = { type: "compra" | "card" | "loan" | "prepay" | "recv"; id: string | null };
+export type CardsEntry = { type: "compra" | "card" | "loan" | "prepay" | "recv"; id: string | null; d?: string }; // compra + id/d: abre o cartao e a fatura da compra
 const STATUS: Record<string, string> = { aberta: "aberta", fechada: "fechada, a pagar", paga: "paga", vencida: "atrasada" };
 const FSIT: Record<string, { cls: string; label: string }> = {
   paga: { cls: "paga", label: "paga" }, vencida: { cls: "atrasada", label: "atrasada" }, fechada: { cls: "fechada", label: "fechada" }, aberta: { cls: "aberta", label: "aberta" },
@@ -44,10 +44,10 @@ function CardsPart({ months, setup, invest, entry, setEntry, owed, com }: {
   months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; entry: CardsEntry; setEntry: (e: CardsEntry) => void; owed: number; com: Com;
 }) {
   const cards = setup.cards;
-  const [sel, setSel] = useState(entry.type === "card" && entry.id ? entry.id : cards[0]?.id ?? "");
+  const [sel, setSel] = useState((entry.type === "card" || entry.type === "compra") && entry.id ? entry.id : cards[0]?.id ?? "");
   const card = cards.find((c) => c.id === sel) ?? cards[0];
   const st = card ? cardStatus(card, months) : null;
-  const [fmSel, setFm] = useState<string | null>(null);
+  const [fmSel, setFm] = useState<string | null>(() => (entry.type === "compra" && entry.d && card ? faturaMonth(card, entry.d) : null));
   const fm = fmSel ?? (card ? faturaMonth(card, todayBR()) : monthOf(todayBR()));
   // folhas: cadastrar/alterar cartao (vem tambem do "alterar" de outra tela) e nova compra
   const editing = entry.type === "card" ? (entry.id ?? "new") : null;

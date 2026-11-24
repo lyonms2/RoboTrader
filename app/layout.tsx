@@ -4,6 +4,7 @@ import "./globals.css";
 import "./styles/tokens.css";
 import "./ui/ui.css";
 import "./styles/shell.css";
+import "./styles/home.css";
 import { DialogHost } from "./Dialog";
 
 // Fonte do site (baixada no build e servida pelo proprio site)

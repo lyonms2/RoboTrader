@@ -11,6 +11,8 @@ import { accountBalance, investFlows, monthLabel, type GastosSetup, type MonthDo
 import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
 import { guardWrite, monthSnapshot, upcoming } from "./gastosShared";
 import NetWorthChart from "./NetWorthChart";
+import { ChevronRight } from "lucide-react";
+import { Badge, Button, Card, InfoTip, Money, Section, Stat, Stats } from "./ui";
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$\u00a0${fmt(v, d)}`;
@@ -78,112 +80,119 @@ export function BalanceEq({ contas, investido, crypto, bens, recv, cards, loans 
   );
 }
 
-// ---------- blocos da Visao geral ----------
-type Ctx = {
+// ---------- blocos do Inicio (redesign etapa 3, amostra aprovada em 24/11/2026) ----------
+export type Ctx = {
   cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; spend: { value: number; months: number } | null;
   debt: { total: number; loans: number; cards: number; recv: number }; months: Record<string, MonthDoc>; setup: GastosSetup;
 };
 
-// Patrimonio: liquido, reserva, rendimento, lucro e onde esta o dinheiro
-export function PatrimonioCard({ cfg, fin, wallet, spend, debt, months, setup, onBens, nwHist = [], start = null, children }: Ctx & {
-  onBens: () => void; nwHist?: NetWorthDoc[]; start?: string | null; children?: React.ReactNode;
+// Topo do Inicio: patrimonio liquido em destaque (a conta fica no "i") e os numeros do mes em carrossel
+export function HomeHero({ cfg, fin, wallet, spend, debt, months, setup, nwHist = [], start = null, onPat, onMes }: Ctx & {
+  nwHist?: NetWorthDoc[]; start?: string | null; onPat: () => void; onMes: () => void;
 }) {
   const items = cfg.finance ?? [];
   const acct = accountBalance(months, setup);
   const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost, acct?.value, investFlows(months));
-  const notices = s.rows.flatMap((r) => [r.stale, r.problem].filter(Boolean).map((t) => `${r.item.name}: ${t}`));
+  const mon = monthSnapshot(months, setup);
   const cdi = cdiYear(fin);
   // Bruto = tudo o que voce tem (contas, investimentos, cripto, bens e o que te devem), antes das dividas
   const bruto = s.total + debt.recv;
   const liquido = bruto - debt.total;
-  // quanto o bruto mudou em ~30 dias (pelas fotos do dia; respeita o comeco escolhido no grafico)
+  // quanto o liquido mudou em ~30 dias (pelas fotos do dia; respeita o comeco escolhido no grafico)
   const hist = nwHist.filter((h) => !start || h.day >= start);
   const ref = [...hist].reverse().find((h) => h.t <= Date.now() - 30 * 86_400_000) ?? hist[0];
-  const chg = ref && ref.day !== hist[hist.length - 1]?.day ? bruto - ref.bens : null;
+  const chg = ref && ref.day !== hist[hist.length - 1]?.day ? liquido - ref.net : null;
+  const sobrou = mon.receitas - mon.gastos;
+  const hasMonth = mon.count > 0;
+  const indic = [
+    cdi !== null && `CDI ${pctS(cdi, 2)} ao ano`,
+    fin?.ipca12m != null && `IPCA 12 m ${pctS(fin.ipca12m, 2)} (${fin.ipcaRef})`,
+    fin?.usdbrl && `dólar R$ ${fmt(fin.usdbrl, 4)} (PTAX)`,
+  ].filter(Boolean) as string[];
   return (
-      <section className="card">
-        <div className="card-head">
-          <h2>Patrimônio</h2>
-          <button className="link" onClick={onBens}>ver contas e bens &rsaquo;</button>
+    <>
+      <Card tone="brand" as="section" className="home-hero">
+        <div className="home-hero-head">
+          <span>Patrimônio líquido</span>
+          <InfoTip label="Como é calculado">
+            <b>O que você tem − o que deve</b>
+            <BalanceEq contas={s.byGroup.conta} investido={s.total - s.byGroup.cripto - s.byGroup.dolar - s.byGroup.conta - s.bens}
+              crypto={s.byGroup.cripto + s.byGroup.dolar} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} />
+            {s.bens > 0 && <span className="home-tip-line">Sem os bens: {brl(liquido - s.bens)}</span>}
+            {s.usd && wallet ? <span className="home-tip-line">~US$ {fmt(bruto / s.usd, 0)} no total</span> : null}
+            {indic.length > 0 && <span className="home-tip-line">{indic.join(" · ")}</span>}
+          </InfoTip>
+          <Button variant="link" size="sm" className="home-hero-more" onClick={onPat}>ver patrimônio <ChevronRight size={14} aria-hidden="true" /></Button>
         </div>
-        <div className="hero">
-          <div className="hero-main">
-            <span>Patrimônio bruto</span>
-            <b>{brl(bruto)}</b>
-            <small>tudo o que você tem{s.usd && wallet ? `, ~US$ ${fmt(bruto / s.usd, 0)}` : ""}</small>
-            {chg !== null && Math.abs(chg) >= 1 && <em className={chg >= 0 ? "hero-chip up" : "hero-chip down"}>{chg >= 0 ? "+" : "-"}{brl(Math.abs(chg), 0)} desde {new Date(ref!.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</em>}
-          </div>
-          <div className="hero-side">
-            <div><span>{debt.total > 0 ? "Líquido (depois das dívidas)" : "Líquido"}</span><b className={liquido < 0 ? "neg" : ""}>{brl(liquido)}</b>
-              <small className="muted">{debt.total > 0 ? `${brl(debt.total, 0)} de dívidas` : "sem dívidas"}{debt.recv > 0 ? ` (o bruto já conta ${brl(debt.recv, 0)} a receber)` : ""}</small></div>
-            {s.bens > 0 && <div><span>Sem bens</span><b>{brl(liquido - s.bens)}</b><small className="muted">{brl(s.bens, 0)} em imóveis, veículos...</small></div>}
-            {wallet && !s.usd && <small className="warn">falta o dólar: Atualizar cotações em Investimentos</small>}
-          </div>
+        <div className="home-hero-value"><Money value={liquido} size="xl" tone={liquido < 0 ? "neg" : undefined} /></div>
+        <div className="home-hero-foot">
+          {chg !== null && Math.abs(chg) >= 1 && (
+            <Badge tone={chg >= 0 ? "pos" : "neg"}>{chg >= 0 ? "▲" : "▼"} {brl(Math.abs(chg), 0)} desde {new Date(ref!.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</Badge>
+          )}
+          <span>tem {brl(bruto, 0)} · {debt.total > 0 ? `deve ${brl(debt.total, 0)}` : "sem dívidas"}</span>
         </div>
-        <details className="eq-more">
-          <summary>ver a conta: o que você tem - o que deve</summary>
-          <BalanceEq contas={s.byGroup.conta} investido={s.total - s.byGroup.cripto - s.byGroup.dolar - s.byGroup.conta - s.bens}
-            crypto={s.byGroup.cripto + s.byGroup.dolar} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} />
-        </details>
-        <div className="kpis">
-          <div><span>Reserva de emergência</span><b>{brl(s.reserve)}</b>
-            <small className="muted">{s.reserveMonths !== null ? `cobre ${fmt(s.reserveMonths, 1)} meses de gastos` : "a média de gastos aparece depois do 1o mês completo de lançamentos"}{spend ? ` (média de ${spend.months} ${spend.months > 1 ? "meses" : "mês"})` : ""}</small></div>
-          <div><span>Rende por mês (estimado)</span><b>{brl(s.monthly)}</b>
-            <small className="muted">{s.dividends > 0 ? `${brl(s.dividends)} de proventos` : "juros + proventos, antes de IR"}</small></div>
-          <div><span>Lucro / prejuízo</span><b className={pnlClass(s.gain)}>{s.cost > 0 ? signed(s.gain) : "-"}</b>
-            <small className="muted">{s.cost > 0 ? `${pctS(s.gain / s.cost)} sobre ${brl(s.cost)} (fora cripto)` : "informe preços médios"}</small></div>
+        {wallet && !s.usd && <p className="home-hero-warn">Falta o dólar: Atualizar cotações em Patrimônio &gt; Investimentos.</p>}
+      </Card>
+
+      <Stats scroll cols={s.cost > 0 ? 5 : 4}>
+        <Stat label="Reserva" value={<Money value={s.reserve} size="md" cents={false} />}
+          hint={s.reserveMonths !== null ? `${fmt(s.reserveMonths, 1)} meses` : "média após o 1º mês"} />
+        <button type="button" className="home-stat-btn" onClick={onMes} aria-label={`${monthLabel(mon.m, true)}: ver o mês`}>
+          <Stat label="Sobrou no mês" value={hasMonth ? <Money value={sobrou} size="md" cents={false} tone="auto" /> : "-"}
+            hint={hasMonth ? `de ${brl(mon.receitas, 0)}` : "nada lançado"} />
+        </button>
+        <Stat label="Em conta" value={acct ? <Money value={acct.value} size="md" cents={false} tone={acct.value < 0 ? "neg" : undefined} /> : "-"}
+          hint={acct ? (acct.informed ? "saldo das contas" : <span className="warn">confira o saldo</span>) : "cadastre as contas"} />
+        <Stat label="Rende por mês" value={<Money value={s.monthly} size="md" cents={false} />}
+          hint={s.dividends > 0 ? `${brl(s.dividends, 0)} de proventos` : "estimado"} />
+        {s.cost > 0 && <Stat label="Lucro / prejuízo" value={<Money value={s.gain} size="md" cents={false} tone="auto" signed />}
+          hint={`${pctS(s.gain / s.cost)} fora cripto`} />}
+      </Stats>
+    </>
+  );
+}
+
+// Proximos pagamentos em 30 dias: cartoezinhos que deslizam no celular
+export function NextPayments({ months, setup, onMes }: { months: Record<string, MonthDoc>; setup: GastosSetup; onMes: () => void }) {
+  const next = upcoming(months, setup);
+  const late = next.filter((p) => p.late).length;
+  return (
+    <Section title="Próximos pagamentos" count={late || undefined}
+      action={<Button variant="link" size="sm" onClick={onMes}>30 dias <ChevronRight size={14} aria-hidden="true" /></Button>}>
+      {next.length ? (
+        <div className="home-pay">
+          {next.slice(0, 6).map((p, i) => (
+            <div key={i} className={p.late ? "home-pay-item late" : "home-pay-item"}>
+              <span className="home-pay-when">{p.late ? `venceu ${dm(p.d)}` : dm(p.d)} · {p.desc}</span>
+              <Money value={p.v} size="md" tone={p.late ? "warn" : undefined} />
+            </div>
+          ))}
+          {next.length > 6 && <button type="button" className="home-pay-item more" onClick={onMes}>+ {next.length - 6} no mês</button>}
         </div>
-        <p className="muted small indic">
-          {cdi !== null && <span>CDI {pctS(cdi, 2)} ao ano</span>}
-          {fin?.ipca12m != null && <span>IPCA 12 m {pctS(fin.ipca12m, 2)} ({fin.ipcaRef})</span>}
-          {fin?.usdbrl && <span>Dólar R${" "}{fmt(fin.usdbrl, 4)} (PTAX)</span>}
-          {spend && <span>Gasto médio {brl(spend.value, 0)}/mês</span>}
-          {fin && <span>dados de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>}
-        </p>
+      ) : <p className="home-empty">Nada a pagar nos próximos 30 dias.</p>}
+    </Section>
+  );
+}
+
+// Onde esta o dinheiro: barra por grupo, avisos das fontes e data dos dados
+export function MoneyMix({ cfg, fin, wallet, spend, months, setup }: Ctx) {
+  const s = financeSummary(cfg.finance ?? [], fin, wallet, spend?.value ?? cfg.monthlyCost, accountBalance(months, setup)?.value, investFlows(months));
+  const notices = s.rows.flatMap((r) => [r.stale, r.problem].filter(Boolean).map((t) => `${r.item.name}: ${t}`));
+  if (!(s.total > 0) && !notices.length && !fin?.errors.length) return null;
+  return (
+    <Section title="Onde está o dinheiro">
+      <Card>
         <FinBar byGroup={s.byGroup} />
-        {s.bens > 0 && <p className="small muted">Fora da barra: bens {brl(s.bens, 0)} ({s.rows.filter((r) => r.item.kind === "bem" && !r.item.ignore).map((r) => r.item.name).join(", ")}).</p>}
+        {s.bens > 0 && <p className="home-note">Fora da barra: bens {brl(s.bens, 0)}.</p>}
         {(notices.length > 0 || (fin?.errors.length ?? 0) > 0) && (
           <ul className="alerts small">
             {notices.map((n) => <li key={n} className="warn">{n}</li>)}
             {fin?.errors.map((e) => <li key={e} className="error">Fonte de dados: {e}</li>)}
           </ul>
         )}
-        {children}
-      </section>
-  );
-}
-
-// O mes (entrou/saiu/sobrou/em conta) + proximos pagamentos em 30 dias
-export function MonthAndUpcoming({ months, setup, onLanc, onBens }: { months: Record<string, MonthDoc>; setup: GastosSetup; onLanc: () => void; onBens: () => void }) {
-  const mon = monthSnapshot(months, setup);
-  const acct = accountBalance(months, setup);
-  const next = upcoming(months, setup);
-  return (
-      <div className="two-col">
-        <section className="card link-card" role="button" tabIndex={0} onClick={onLanc}>
-          <div className="card-head"><h2>{monthLabel(mon.m, true)}</h2><span className="muted small">ver lançamentos &rsaquo;</span></div>
-          {mon.count || mon.pendingN ? (
-            <div className="kpis compact">
-              <div><span>Entrou</span><b>{brl(mon.receitas, 0)}</b></div>
-              <div><span>Saiu (gastos)</span><b>{brl(mon.gastos, 0)}</b><small className="muted">{mon.avg ? `média ${brl(mon.avg.value, 0)}` : ""}</small></div>
-              <div><span>Sobrou</span><b className={mon.receitas - mon.gastos >= 0 ? "pos" : "neg"}>{brl(mon.receitas - mon.gastos, 0)}</b></div>
-              <div><span>Em conta</span><b className={acct && acct.value < 0 ? "neg" : ""}>{acct ? brl(acct.value, 0) : "-"}</b>
-                <small className={acct && !acct.informed ? "warn" : "muted"}>{acct ? (acct.informed ? "saldo das contas" : "confira o saldo") : ""}</small></div>
-            </div>
-          ) : <p className="muted small">Nada lançado neste mês. Em Lançamentos, importe o extrato do banco ou lance à mão.</p>}
-        </section>
-        <section className="card">
-          <div className="card-head"><h2>Próximos pagamentos</h2><button className="link" onClick={onBens}>30 dias &rsaquo;</button></div>
-          {next.length ? (
-            <ul className="pend small">
-              {next.slice(0, 7).map((p, i) => (
-                <li key={i}><span className={p.late ? "warn" : "muted"}>{dm(p.d)}</span> <b>{p.desc}</b> <span className={p.late ? "warn" : ""}>{brl(p.v)}</span></li>
-              ))}
-              {next.length > 7 && <li className="muted">+ {next.length - 7}</li>}
-            </ul>
-          ) : <p className="muted small">Nada a pagar nos próximos 30 dias (cartões e empréstimos se cadastram em Cartões e empréstimos; fixos em Lançamentos).</p>}
-        </section>
-      </div>
+        {fin && <p className="home-note">Cotações de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}{spend ? ` · gasto médio ${brl(spend.value, 0)}/mês` : ""}</p>}
+      </Card>
+    </Section>
   );
 }
 

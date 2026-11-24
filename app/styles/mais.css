@@ -61,3 +61,56 @@
 .cr-acts { margin-left: auto; display: flex; gap: var(--s-2); align-items: center; }
 
 .shop-v2 label.shop-store { flex-direction: row; }
+
+/* Produtos salvos (lista, ficha e nota fiscal) */
+.prod-tools { display: flex; flex-direction: column; gap: var(--s-2); margin-bottom: var(--s-3); }
+.prod-row { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.prod-grp { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--s-3); }
+.prod-v { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.prod-v small { font-size: 11px; font-weight: 600; }
+.shop-v2 .prod-grp .ui-row-title .ui-badge { margin-left: 6px; vertical-align: 1px; }
+.prod-sheet { display: flex; flex-direction: column; gap: var(--s-3); }
+.prod-info { display: flex; flex-direction: column; gap: var(--s-2); }
+.prod-sheet label { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-xs); color: var(--text-3); font-weight: 600; }
+.prod-sheet input, .prod-sheet select, .nota-list input, .nota-list select { min-height: 40px; box-sizing: border-box; font-size: var(--fs-md); max-width: 100%; }
+.prod-sheet .prod-info input { width: 100%; }
+.prod-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 6px; }
+.prod-sum > div { background: var(--surface-2); border-radius: var(--r-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.prod-sum span { font-size: 11px; color: var(--text-3); }
+.prod-sum b { font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+.prod-sum small { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prod-sum .prod-spark { align-items: center; justify-content: center; }
+.prod-hist-head { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-md); }
+.prod-rec { display: flex; align-items: center; gap: var(--s-2); padding: 8px 6px 8px 14px; min-height: 48px; box-sizing: border-box; }
+.prod-hist > .prod-rec + .prod-rec { border-top: 1px solid var(--line-soft); }
+.prod-rec-d { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; width: 64px; flex: none; }
+.prod-rec-s { flex: 1; min-width: 0; font-size: var(--fs-sm); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prod-rec-v { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.prod-rec-acts { display: flex; gap: 2px; flex: none; }
+.prod-rec-acts .ui-btn.icon.sm { background: transparent; border-color: transparent; color: var(--text-3); }
+.prod-rec-acts .ui-btn.icon.sm:hover { color: var(--text); background: var(--surface-2); }
+.prod-rec-edit { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; }
+.prod-rec-edit input { width: 96px; flex: 1 1 96px; }
+.prod-rec-edit input[type="date"] { flex: 1 1 140px; }
+.prod-rec-edit select { flex: 1 1 180px; }
+.prod-alias { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.prod-alias .mes-chip { cursor: default; }
+.prod-alias .mes-chip button { background: none; border: 0; color: var(--text-3); padding: 2px; display: flex; cursor: pointer; }
+.prod-acts { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; padding-top: var(--s-3); border-top: 1px solid var(--line-soft); }
+.prod-merge { display: flex; gap: 6px; align-items: center; flex: 1 1 220px; }
+.prod-merge select { flex: 1; min-width: 0; }
+.nota-list { margin: var(--s-2) 0; }
+.nota-row { padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+.nota-list > .nota-row + .nota-row { border-top: 1px solid var(--line-soft); }
+.nota-row.off { opacity: .55; }
+.nota-row label.nota-check { flex-direction: row; align-items: center; gap: 10px; margin: 0; color: var(--text); font-size: var(--fs-sm); }
+.nota-check input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.nota-desc { flex: 1; min-width: 0; font-weight: 600; word-break: break-word; }
+.nota-v { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.nota-v small { color: var(--text-3); }
+.nota-to { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding-left: 28px; }
+.nota-to select { flex: 1 1 200px; min-width: 0; }
+.nota-to input { flex: 1 1 160px; min-width: 0; }
+.nota-sug { font-size: var(--fs-xs); color: var(--text-3); display: flex; align-items: center; gap: 4px; flex-basis: 100%; }
+.nota-head { margin-top: var(--s-2); }
+.nota-head label { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-xs); color: var(--text-3); }

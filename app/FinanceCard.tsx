@@ -143,7 +143,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
     <>{nav}<InvestPart items={items} rows={rows} fin={fin} months={months} reserve={s.reserve} reserveMonths={s.reserveMonths}
       setup={setup} onQuotes={onQuotes} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} /></>
   );
-  if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} entry={entryPanel} /></>;
+  if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} onCard={(id) => goEdit("card", id)} entry={entryPanel} /></>;
 
   return (
     <>

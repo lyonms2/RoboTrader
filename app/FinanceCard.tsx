@@ -16,7 +16,7 @@ import { BalanceEq, FinBar } from "./OverviewBlocks";
 export { NetWorthBlock } from "./OverviewBlocks";
 import ExportData from "./ExportData";
 import ShoppingList from "./ShoppingList";
-import { Segmented } from "./ui";
+import { Segmented, Sheet } from "./ui";
 // membro: dados em users/{uid}/ (o dono exporta tambem as operacoes manuais)
 const isMemberBase = () => P("").startsWith("users/");
 // Resumo = ver como esta; Lancamentos = unico lugar onde o dinheiro se move; Contas e bens = unico lugar com saldos e cadastros
@@ -79,7 +79,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
     }
     window.scrollTo({ top: 0 });
   };
-  const [entry, setEntry] = useState<{ type: EntryType; id: string | null }>({ type: "mov", id: null });
+  const [entry, setEntry] = useState<{ type: EntryType; id: string | null } | null>(null); // folha de cadastro/alteracao aberta
   // "loans" (aviso de parcela atrasada na Visao geral) abre direto em Emprestimos
   const [cardsEntry, setCardsEntry] = useState<CardsEntry>(() => {
     try {
@@ -97,7 +97,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
     if (type === "card" || type === "loan") { setCardsEntry({ type, id }); setSub("cards"); return; }
     if (type === "inv") { setInvEdit(id); setSub("invest"); return; }
     if (type === "bem") { setBemEdit(id); setSub("invest"); return; }
-    setEntry({ type, id }); setSub("lanc");
+    setEntry({ type, id });
   };
   const items = cfg.finance ?? [];
   const acct = accountBalance(months, setup);
@@ -139,17 +139,14 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   const nav = view !== "patrimonio" ? null : (
     <div className="pat-nav"><Segmented label="Patrimônio" value={patSub} onChange={setSub} options={PAT_SUBS} /></div>
   );
-  const entryPanel = (
-    <EntryPanel entry={entry} setEntry={setEntry} months={months} setup={setup} invest={items} fin={fin}
-      onSaveInv={upsert} onRemoveInv={remove} />
-  );
-  if (sub === "compras") return <>{nav}<ShoppingList months={months} setup={setup} ipca12m={fin?.ipca12m ?? null} /></>;
-  if (sub === "cards") return <>{nav}<CardsLoans months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} /></>;
+  const entrySheet = <EntrySheet entry={entry} onClose={() => setEntry(null)} months={months} setup={setup} />;
+  if (sub === "compras") return <>{nav}<ShoppingList months={months} setup={setup} ipca12m={fin?.ipca12m ?? null} />{entrySheet}</>;
+  if (sub === "cards") return <>{nav}<CardsLoans months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} />{entrySheet}</>;
   if (sub === "invest") return (
     <>{nav}<InvestPart items={items} rows={rows} fin={fin} months={months} reserve={s.reserve} reserveMonths={s.reserveMonths}
-      setup={setup} onQuotes={onQuotes} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} /></>
+      setup={setup} onQuotes={onQuotes} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} />{entrySheet}</>
   );
-  if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} onCard={(id) => goEdit("card", id)} entry={entryPanel} /></>;
+  if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} onCard={(id) => goEdit("card", id)} onFixo={(id, kind) => setEntry({ type: kind, id })} />{entrySheet}</>;
 
   return (
     <>
@@ -268,6 +265,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
         <ExportData owner={!isMemberBase()} />
       </section>
       </>}
+      {entrySheet}
     </>
   );
 }
@@ -791,92 +789,51 @@ function Dividends({ rows, fin }: { rows: FinRow[]; fin: FinanceDoc | null }) {
 
 // ---------- "O que voce quer lancar?" (unico lugar de entrada) ----------
 export type EntryType = "mov" | "cartao" | "import" | "inv" | "bem" | "fixo" | "pagar" | "entrada" | "conta";
-const ENTRY_TYPES: { id: EntryType; label: string }[] = [
-  { id: "mov", label: "Gasto ou entrada" }, { id: "cartao", label: "Compra no cartão" }, { id: "import", label: "Importar extrato" },
-  { id: "fixo", label: "Contas a pagar" }, { id: "entrada", label: "Entrada fixa" }, { id: "conta", label: "Conta / saldo" },
-];
 
-function EntryPanel({ entry, setEntry, months, setup, invest, fin, onSaveInv, onRemoveInv }: {
-  entry: { type: EntryType; id: string | null }; setEntry: (e: { type: EntryType; id: string | null }) => void;
-  months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; fin: FinanceDoc | null;
-  onSaveInv: (it: FinItem) => void; onRemoveInv: (it: FinItem) => void;
+// Folha de cadastro/alteracao de conta a pagar, entrada fixa e conta/saldo: abre por cima da tela de onde veio o "alterar" ou "+"
+// (lancar gasto, cartao e importar ficam na folha Lancar, do botao +)
+const ENTRY_TITLE: Partial<Record<EntryType, [string, string]>> = {
+  fixo: ["Nova conta a pagar", "Alterar conta a pagar"], pagar: ["Nova conta a pagar", "Alterar conta a pagar"],
+  entrada: ["Nova entrada fixa", "Alterar entrada fixa"], conta: ["Nova conta", "Alterar conta"],
+};
+function EntrySheet({ entry, onClose, months, setup }: {
+  entry: { type: EntryType; id: string | null } | null; onClose: () => void; months: Record<string, MonthDoc>; setup: GastosSetup;
 }) {
-  const { type, id } = entry;
-  // recolhido: so a linha com os tipos; abre ao escolher um tipo (ou ao vir de um "alterar"/"+ novo" de outra tela)
-  const [open, setOpen] = useState(!!entry.id || entry.type !== "mov");
-  const first = useRef(true);
-  useEffect(() => { if (first.current) { first.current = false; return; } setOpen(true); }, [entry]);
-  // depois de salvar: mostra o que aconteceu e limpa o formulario (n muda a key)
-  const [msg, setMsg] = useState("");
-  const [n, setN] = useState(0);
-  const reset = () => setEntry({ type, id: null });
-  const done = (m?: string) => { if (m) setMsg(m); setN((x) => x + 1); reset(); };
+  const type = entry?.type;
+  const id = entry?.id ?? null;
   const accounts = accountsOf(setup);
-  // Itens existentes de cada tipo (para alterar ou remover)
-  const existing: Record<string, { id: string; label: string }[]> = {
-    // contas a pagar: as que repetem todo mes (fixos) e as de uma vez so
-    entrada: setup.fixos.filter((f) => f.entrada).map((f) => ({ id: f.id, label: `${f.desc} (todo dia ${f.dia})` })),
-    fixo: [...setup.fixos.filter((f) => !f.once && !f.entrada).map((f) => ({ id: f.id, label: `${f.desc} (todo mês)` })),
-      ...setup.fixos.filter((f) => f.once).map((f) => ({ id: f.id, label: `${f.desc} (uma vez, vence ${f.due ? `${f.due.slice(8, 10)}/${f.due.slice(5, 7)}` : "-"})` }))],
-    conta: accounts.map((a) => ({ id: a.id, label: a.name })),
-  };
-  const opts = existing[type === "pagar" ? "fixo" : type];
-  // Contas a pagar: repete todo mes (fixo) ou uma vez so; ao alterar, vale o tipo da conta escolhida
-  const [onceMode, setOnceMode] = useState(type === "pagar");
   const cur = setup.fixos.find((f) => f.id === id) ?? null;
+  const [onceMode, setOnceMode] = useState(false);
+  useEffect(() => { setOnceMode(type === "pagar"); }, [type, id]);
   const isOnce = cur ? !!cur.once : onceMode;
+  const done = (m?: string) => { onClose(); if (m) void tell(m); };
   const saveAccounts = async (list: Account[], m: string) => {
     try { await saveSetup({ accounts: JSON.parse(JSON.stringify(list)), account: null } as Partial<GastosSetup>); done(m); }
-    catch { setMsg(""); await tell("Não salvou (sem conexão?). Tente de novo."); }
+    catch { await tell("Não salvou (sem conexão?). Tente de novo."); }
   };
-  const usedAcc = new Set(Object.values(months).flatMap((md) => md.items.map((g) => g.acc ?? (g.card ? "" : accounts[0].id))));
+  const usedAcc = new Set(Object.values(months).flatMap((md) => md.items.map((g) => g.acc ?? (g.card ? "" : accounts[0]?.id))));
+  const t = type ? ENTRY_TITLE[type] : undefined;
   return (
-    <div className="entry">
-      <div className="entry-bar">
-        <p className="small entry-q">O que você quer lançar?</p>
-        <div className="kind-pick entry-types">
-          {ENTRY_TYPES.map((t) => (
-            <button key={t.id} type="button" className={open && (type === t.id || (t.id === "fixo" && type === "pagar")) ? "pill on" : "pill"} onClick={() => { setMsg(""); setEntry({ type: t.id, id: null }); setOpen(true); }}>{t.label}</button>
-          ))}
-        </div>
-        {open && <button type="button" className="link entry-close" onClick={() => setOpen(false)}>fechar</button>}
+    <Sheet open={!!t} onClose={onClose} title={t ? t[id ? 1 : 0] : ""}>
+      <div className="ls-form">
+        {(type === "fixo" || type === "pagar") && !cur && <>
+          <Segmented label="Repete?" value={onceMode ? "uma" : "mes"} onChange={(v) => setOnceMode(v === "uma")}
+            options={[{ id: "mes", label: "Todo mês" }, { id: "uma", label: "Uma vez só" }]} />
+          <p className="muted small">{onceMode ? "Boleto, conserto, IPVA..." : "Aluguel, internet, luz..."}</p>
+        </>}
+        {type === "entrada" && <FixoForm key={`${id ?? "novo"}-in`} setup={setup} fixo={cur && cur.entrada ? cur : null} entrada onDone={done} />}
+        {(type === "fixo" || type === "pagar") && !isOnce && <FixoForm key={`${id ?? "novo"}-fixo`} setup={setup} fixo={cur} onDone={done} />}
+        {(type === "fixo" || type === "pagar") && isOnce && <PayableForm key={`${id ?? "novo"}-once`} setup={setup} fixo={cur} onDone={done} />}
+        {type === "conta" && (
+          <AccountForm key={id ?? "novo"} acc={accounts.find((a) => a.id === id) ?? null}
+            canRemove={!!id && accounts.length > 1 && !usedAcc.has(id)}
+            onCancel={onClose}
+            onRemove={() => saveAccounts(accounts.filter((a) => a.id !== id), "Conta removida.")}
+            onSave={(a) => saveAccounts(accounts.some((x) => x.id === a.id) ? accounts.map((x) => (x.id === a.id ? a : x)) : [...accounts, a],
+              `${accounts.some((x) => x.id === a.id) ? "Salva" : "Adicionada"}: conta ${a.name}${a.balance !== undefined ? `, saldo ${a.balance.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}.`)} />
+        )}
       </div>
-      {open && <>
-      <p className="muted small entry-hint">Investimentos e bens: em Investimentos. Cadastrar cartão, empréstimo e a receber: em Cartões e empréstimos.</p>
-      {opts && (
-        <label className="entry-pick small">Novo ou alterar:
-          <select value={id ?? ""} onChange={(e) => { setMsg(""); setEntry({ type, id: e.target.value || null }); }}>
-            <option value="">+ novo</option>
-            {opts.map((o) => <option key={o.id} value={o.id}>alterar: {o.label}</option>)}
-          </select>
-        </label>
-      )}
-      {type === "mov" && <QuickAdd months={months} setup={setup} invest={invest} defaultDate={todayBR()} />}
-      {type === "cartao" && (setup.cards.length
-        ? <QuickAdd key="cartao" mode="cartao" months={months} setup={setup} invest={invest} defaultDate={todayBR()} />
-        : <p className="muted small">Cadastre um cartão primeiro, em Cartões e empréstimos (&quot;Cadastrar cartão&quot;).</p>)}
-      {type === "import" && <ImportPanel months={months} setup={setup} invest={invest} onDone={() => setEntry({ type: "mov", id: null })} />}
-      {msg && <p className="small pos entry-msg">&#10003; {msg}</p>}
-      {(type === "fixo" || type === "pagar") && !cur && (
-        <div className="kind-pick" role="radiogroup" aria-label="Repete?">
-          <button type="button" role="radio" aria-checked={!onceMode} className={!onceMode ? "pill on" : "pill"} onClick={() => setOnceMode(false)}>Todo mês (aluguel, internet, luz)</button>
-          <button type="button" role="radio" aria-checked={onceMode} className={onceMode ? "pill on" : "pill"} onClick={() => setOnceMode(true)}>Uma vez só (boleto, conserto, IPVA)</button>
-        </div>
-      )}
-      {type === "entrada" && <FixoForm key={`${id ?? "novo"}-${n}-in`} setup={setup} fixo={cur && cur.entrada ? cur : null} entrada onDone={done} />}
-      {(type === "fixo" || type === "pagar") && !isOnce && <FixoForm key={`${id ?? "novo"}-${n}`} setup={setup} fixo={cur} onDone={done} />}
-      {(type === "fixo" || type === "pagar") && isOnce && <PayableForm key={`${id ?? "novo"}-${n}-once`} setup={setup} fixo={cur} onDone={done} />}
-      {type === "conta" && (
-        <AccountForm key={`${id ?? "novo"}-${n}`} acc={accounts.find((a) => a.id === id) ?? null}
-          canRemove={!!id && accounts.length > 1 && !usedAcc.has(id)}
-          onCancel={reset}
-          onRemove={() => saveAccounts(accounts.filter((a) => a.id !== id), "Conta removida.")}
-          onSave={(a) => saveAccounts(accounts.some((x) => x.id === a.id) ? accounts.map((x) => (x.id === a.id ? a : x)) : [...accounts, a],
-            `${accounts.some((x) => x.id === a.id) ? "Salva" : "Adicionada"}: conta ${a.name}${a.balance !== undefined ? `, saldo ${a.balance.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}.`)} />
-      )}
-      </>}
-      {!open && msg && <p className="small pos entry-msg">&#10003; {msg}</p>}
-    </div>
+    </Sheet>
   );
 }
 

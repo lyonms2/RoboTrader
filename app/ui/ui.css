@@ -23,7 +23,7 @@
 .ui-stat-value { margin-top: 2px; }
 .ui-stat-hint { font-size: var(--fs-xs); color: var(--text-3); margin-top: 2px; }
 .ui-stats { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: var(--s-2); }
-.ui-stats.scroll { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin-right: calc(-1 * var(--s-5)); padding-right: var(--s-5); }
+.ui-stats.scroll { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin-right: calc(-1 * var(--s-4)); padding-right: var(--s-4); }
 .ui-stats.scroll::-webkit-scrollbar { display: none; }
 .ui-stats.scroll > * { flex: 0 0 132px; scroll-snap-align: start; }
 @media (min-width: 600px) { .ui-stats.scroll { display: grid; margin-right: 0; padding-right: 0; } }
@@ -129,3 +129,16 @@ button.ui-row:hover, a.ui-row:hover { background: var(--surface-2); }
   animation: ui-shine 1.2s linear infinite; height: var(--h, 14px); width: var(--w, 100%); }
 @keyframes ui-shine { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .ui-skel, .ui-sheet, .ui-sheet-backdrop { animation: none; } }
+
+/* secao recolhivel */
+.ui-fold { display: flex; flex-direction: column; gap: var(--s-2); }
+.ui-fold-head { display: flex; align-items: center; gap: var(--s-2); min-height: 36px; }
+.ui-fold-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-2); background: transparent; border: 0; padding: 4px 0; color: var(--text); font: inherit; cursor: pointer; text-align: left; min-height: 36px; }
+.ui-fold-btn h2 { margin: 0; font-size: var(--fs-lg); font-weight: 700; letter-spacing: -0.1px; }
+.ui-fold-btn h2::before { content: none; }
+.ui-fold-chev { color: var(--text-3); flex: none; transition: transform var(--t-fast); }
+.ui-fold.open .ui-fold-chev { transform: rotate(90deg); }
+.ui-fold-meta { margin-left: auto; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ui-fold-act { display: flex; gap: var(--s-1); flex: none; }
+.ui-fold-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+.ui-fold-body { display: flex; flex-direction: column; gap: var(--s-2); }

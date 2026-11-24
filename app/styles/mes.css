@@ -1,0 +1,107 @@
+/* Mes (redesign etapa 4): medidas da amostra aprovada em 24/11/2026 */
+.mes { display: flex; flex-direction: column; gap: var(--s-4); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* cabecalho: < Novembro > e o resumo em 4 numeros. A linha do mes fica presa no topo ao rolar */
+.mes-head { display: flex; flex-direction: column; gap: var(--s-3); margin-top: calc(-1 * var(--s-2)); }
+.mes-nav { position: sticky; top: var(--topbar-h, 61px); z-index: 15; display: flex; align-items: center; gap: var(--s-2); background: var(--bg);
+  margin: 0 calc(-1 * var(--s-4)); padding: 6px var(--s-4); }
+.mes-nav > .ui-btn.icon { border: 1px solid var(--line); background: var(--surface); width: 40px; height: 40px; border-radius: 12px; }
+.mes-title { flex: 1; text-align: center; display: flex; flex-direction: column; line-height: 1.2; }
+.mes-title b { font-size: 18px; font-weight: 700; text-transform: capitalize; }
+.mes-title > span { font-size: var(--fs-xs); color: var(--text-3); }
+.mes-today { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; }
+.mes-more { position: relative; }
+.mes-more .sh-menu { min-width: 240px; }
+.mes-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.mes-stats .ui-stat.compact { background: var(--surface); padding: 8px; }
+.mes-stats .ui-stat-label { font-size: 11px; }
+.mes-stats .ui-money { font-size: var(--fs-md); }
+.mes-line { margin: 0; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.5; }
+.mes-line b { color: var(--text-2); }
+.mes-empty { margin: 0; font-size: var(--fs-sm); color: var(--text-3); }
+.mes-subhead { display: flex; align-items: baseline; gap: var(--s-2); margin-top: var(--s-2); font-size: var(--fs-sm); }
+.mes-subhead > span { color: var(--text-3); font-size: var(--fs-xs); }
+.mes-subhead > .ui-btn { margin-left: auto; }
+
+/* contas do mes */
+.mes-bill { padding: 12px 14px; }
+.ui-list > .mes-bill + .mes-bill, .ui-list > .mes-bill + .mes-list-more { border-top: 1px solid var(--line-soft); }
+.mes-bill-main { display: flex; align-items: center; gap: 12px; }
+.mes-date { width: 40px; flex: none; text-align: center; line-height: 1.15; }
+.mes-date b { display: block; font-size: 15px; font-weight: 700; }
+.mes-date span { display: block; font-size: 11px; color: var(--text-3); }
+.mes-bill-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; background: none; border: 0; padding: 0; color: var(--text); font: inherit; text-align: left; }
+button.mes-bill-txt:not(:disabled) { cursor: pointer; }
+button.mes-bill-txt:not(:disabled):hover .mes-bill-name { text-decoration: underline; text-decoration-color: var(--text-4); }
+.mes-bill-name { font-size: var(--fs-md); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.mes-bill-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.mes-bill-sub { font-size: var(--fs-xs); color: var(--text-4); }
+.mes-bill-v { font-size: var(--fs-md); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mes-bill-v.pos { color: var(--pos); }
+.mes-bill .ui-btn.sm { flex: none; }
+.mes-bill.paid .mes-date, .mes-bill.paid .mes-bill-name, .mes-bill.paid .mes-bill-v { color: var(--text-3); }
+.mes-ok { width: 24px; height: 24px; border-radius: 50%; background: var(--pos-soft); color: var(--pos); display: flex; align-items: center; justify-content: center; flex: none; }
+.mes-sug { margin: 10px 0 0 52px; padding: 6px 6px 6px 10px; border-radius: 10px; background: var(--surface-2); font-size: var(--fs-xs); color: var(--text-2);
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.mes-sug > span { flex: 1; min-width: 140px; }
+.mes-list-more { display: block; width: 100%; text-align: left; padding: 12px 14px; background: none; border: 0; color: var(--accent); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.mes-list-more:hover { background: var(--surface-2); }
+
+/* orcamento */
+.mes-budgets { display: flex; flex-direction: column; gap: 14px; }
+.mes-budget-top { display: flex; justify-content: space-between; gap: var(--s-2); font-size: var(--fs-sm); }
+.mes-budget-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mes-budget-num { color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mes-budget .ui-progress { margin-top: 6px; }
+.mes-budget-foot { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-xs); color: var(--text-3); min-height: 28px; }
+
+/* por categoria: barras clicaveis (botao) */
+.mes .hbars button.hbar { width: 100%; background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.mes .ui-card .viz { margin: 0 0 var(--s-3); }
+
+/* lancamentos */
+.mes-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-right: calc(-1 * var(--s-4)); padding-right: var(--s-4); }
+.mes-chips::-webkit-scrollbar { display: none; }
+.mes-chip { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--line);
+  background: var(--surface); color: var(--text-2); font: inherit; font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; }
+.mes-chip.on { background: var(--accent-soft); border-color: rgba(247, 147, 26, 0.45); color: var(--text); }
+.mes-day { display: flex; flex-direction: column; gap: 6px; }
+.mes-day-h { font-size: var(--fs-xs); color: var(--text-3); font-weight: 600; margin-left: 2px; }
+.mes-day .ui-row-title { white-space: nowrap; }
+.mes-day .ui-row-value .neg { color: var(--neg); } .mes-day .ui-row-value .pos { color: var(--pos); }
+.mes-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); margin-left: 6px; vertical-align: 2px; }
+.mes-box { width: 16px; height: 16px; border-radius: 4px; border: 2px solid var(--text-4); }
+.mes-selbar { position: sticky; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 12; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+  padding: 10px 14px; border-radius: var(--r-lg); background: var(--surface-3); border: 1px solid var(--line-strong); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
+.mes-selbar .pos { color: var(--pos); } .mes-selbar .neg { color: var(--neg); }
+.mes-selbar .ui-btn { margin-left: auto; }
+
+/* folhas Pagar e lancamento */
+.pay-sheet, .item-sheet { display: flex; flex-direction: column; gap: var(--s-3); }
+.pay-sheet .ls-label { margin: var(--s-2) 0 0; }
+.pay-sum { display: flex; justify-content: space-between; gap: var(--s-2); margin: 0; font-size: var(--fs-sm); color: var(--text-3); }
+.pay-sum b { color: var(--text); font-size: var(--fs-lg); margin-left: 4px; }
+.pay-form { display: flex; flex-direction: column; gap: var(--s-3); }
+.pay-form label, .item-cat label { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-xs); color: var(--text-3); font-weight: 600; }
+.pay-form select, .pay-form input, .item-cat select { width: 100%; min-height: 44px; box-sizing: border-box; font-size: var(--fs-md); }
+.pay-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s-3); }
+.pay-remove { align-self: flex-start; }
+.item-top { display: flex; flex-direction: column; gap: 4px; padding-bottom: var(--s-3); border-bottom: 1px solid var(--line-soft); }
+.item-desc { font-size: var(--fs-md); font-weight: 600; word-break: break-word; }
+.item-sub { font-size: var(--fs-xs); color: var(--text-3); }
+.item-cat { display: flex; flex-direction: column; gap: var(--s-2); }
+.item-cat .ls-label { margin: 0; }
+.item-cat select { margin: 0; }
+.item-hint { margin: 0; font-size: var(--fs-xs); color: var(--text-3); }
+.item-acts { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.item-sheet .fin-form { margin: 0; }
+
+@media (min-width: 900px) {
+  .mes-nav { margin: 0; padding: 6px 0; }
+  .mes-stats { gap: var(--s-2); }
+  .mes-stats .ui-stat.compact { padding: 10px 12px; }
+  .mes-stats .ui-money { font-size: 18px; }
+  .mes-chips { margin-right: 0; padding-right: 0; flex-wrap: wrap; }
+  .mes-selbar { bottom: var(--s-4); }
+}

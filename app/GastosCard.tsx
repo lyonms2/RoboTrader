@@ -181,6 +181,11 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
     await saveMonth(gm, [...base, { id: newId(), d: payD, desc: p.desc, v, tipo: "gasto", io: "out", cat: p.cat, src: p.parc ? "emprestimo" : "fixo", ref: p.ref, ...where, ...(p.parc ? { parc: p.parc } : {}) }]);
   };
 
+  // sugestao recusada: esse lancamento nao e desta conta (nao sugere de novo)
+  const notSug = async (b: Bill) => {
+    if (!b.sug) return;
+    await saveSetup({ fixos: setup.fixos.map((x) => (x.id === b.ref ? { ...x, notIds: [...(x.notIds ?? []), b.sug!.id] } : x)) });
+  };
   const notThis = async (b: Bill) => {
     const g = b.paid;
     const f = setup.fixos.find((x) => x.id === b.ref);
@@ -360,6 +365,9 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
                       {p.once && <span className="tag">avulsa</span>}
                       {p.varia && <span className="tag">varia</span>}
                       {p.reaj && <span className="tag warn">reajuste: confira o valor</span>}
+                      {!p.paid && p.sug && <small className="bill-sug">parece ser: {p.sug.desc.slice(0, 36)} {brl(p.sug.v)} ({dm(p.sug.d)}){p.sugHow === "valor" ? `, em ${catLabel(p.sug.cat)}` : ""}
+                        <button className="link" onClick={() => launch(p, `item:${p.sug!.id}`)}>confirmar</button>
+                        <button className="link muted" onClick={() => notSug(p)}>não é</button></small>}
                       {p.paid && <small className="muted">{p.paid.by ? `pago por ${(setup.recvs ?? []).find((r) => r.id === p.paid!.by)?.name ?? "outra pessoa"} (abatido do que te deve) ${brl(p.paid.v)} (${dm(p.paid.d)})`
                         : `pago por: ${p.paid.desc.slice(0, 40)} ${brl(p.paid.v)} (${dm(p.paid.d)}) - ${HOW[p.how ?? ""] ?? ""}`}
                         {p.fixo && <button className="link" title="Desfaz este pagamento: a conta volta para a pagar e você escolhe de novo" onClick={() => notThis(p)}>alterar</button>}</small>}

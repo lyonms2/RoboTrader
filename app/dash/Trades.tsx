@@ -37,7 +37,7 @@ export function TradeForm({ cfg, latest, prices }: { cfg: AppConfig; latest: Lat
     <section className="card">
       <h2>Registrar operação manual</h2>
       <div className="info-box small">
-        <b>Comprou ou vendeu numa carteira cadastrada (Rabby, Phantom...)? Não precisa lançar nada.</b> O site lê o saldo das carteiras
+        <b>Comprou ou vendeu numa carteira cadastrada? Não precisa lançar nada.</b> O site lê o saldo das carteiras
         sozinho quando você clica em &quot;Atualizar&quot; (e o agendador atualiza ao longo do dia); as operações da Lighter também entram sozinhas quando a importação dela está ligada na engrenagem.
         Use este formulário só para o que foi feito fora das carteiras cadastradas, por exemplo numa carteira que não está na engrenagem.
       </div>

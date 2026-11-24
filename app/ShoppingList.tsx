@@ -1,6 +1,8 @@
 "use client";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus } from "lucide-react";
+import { Button, Card as UiCard, EmptyState, Fold, InfoTip, Money, Sheet, Stat, Stats } from "./ui";
 import { db } from "@/lib/firebaseClient";
 import { P } from "@/lib/paths";
 import { accountsOf, budgetSpent, monthOf, newId, todayBR, type GastosSetup, type MonthDoc } from "@/lib/gastos";
@@ -308,41 +310,54 @@ export default function ShoppingList({ months, setup, ipca12m }: { months: Recor
   const infl = [3, 6, 12].map((n) => ({ n, r: personalInflation(data.prices, n, today) })).filter((x) => x.r);
 
   return (
-    <>
-      <section className="card shop">
-        <div className="card-head"><h2>Lista de compras</h2>
-          <span className="muted small">{open.length} a comprar{done.length ? ` - ${done.length} no carrinho` : ""}{est(data.items) > 0 ? ` - estimado ${brl(est(data.items))}` : ""}</span></div>
-        <div className="shop-store small">
-          <span className="muted">Mercado de hoje:</span>
+    <div className="shop shop-v2">
+      <div className="shop-top">
+        <h1 className="help-title">Lista de compras</h1>
+        <InfoTip>Escreva vários itens de uma vez separados por vírgula; a quantidade pode vir antes ou depois (&quot;2 leite&quot;, &quot;sabão 3&quot;).
+          Kg/Qtd: unidades ou peso (1,37 kg; 500 g conta como 0,5 kg). Preço un.: o preço da unidade ou do quilo. O preço fica salvo no produto, com o mercado de hoje,
+          e o site compara com os anteriores. Depois de 2 compras terminadas ele sabe de quanto em quanto tempo você compra cada coisa.</InfoTip>
+      </div>
+      <Stats cols={3}>
+        <Stat compact label="A comprar" value={<span className="ui-money size-md">{open.length}</span>} />
+        <Stat compact label="No carrinho" value={<span className="ui-money size-md">{done.length}</span>} />
+        <Stat compact label="Estimado" value={<Money value={est(data.items)} size="md" cents={false} />} />
+      </Stats>
+
+      <UiCard className="shop-addcard">
+        <form className="shop-add" onSubmit={(e) => { e.preventDefault(); void add(text); }}>
+          <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ex.: arroz, 2 leite, café, sabão 3" aria-label="Adicionar itens" />
+          <Button type="submit" variant="primary" disabled={!text.trim()} icon={<Plus size={18} aria-hidden="true" />}>Adicionar</Button>
+        </form>
+        <label className="shop-store small">
+          <span className="muted">Mercado de hoje</span>
           <select value={data.store ?? ""} onChange={(e) => void setStore(e.target.value)} aria-label="Mercado de hoje">
             <option value="">não informado</option>
             {(data.stores ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
             <option value="__new">+ novo mercado</option>
           </select>
-        </div>
-        <form className="shop-add" onSubmit={(e) => { e.preventDefault(); void add(text); }}>
-          <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ex.: arroz, 2 leite, café, sabão 3" aria-label="Adicionar itens" />
-          <button className="primary" type="submit" disabled={!text.trim()}>Adicionar</button>
-        </form>
+        </label>
         {dueSoon.length > 0 && (
           <div className="shop-due small">
-            <span><b>Está na hora de comprar:</b></span>
+            <b>Está na hora de comprar</b>
             {dueSoon.slice(0, 10).map(({ k, p, c }) => (
-              <button key={k} type="button" className="chip" title={`Você compra a cada ~${c!.every} dias; última vez ${dm(c!.last)}`} onClick={() => add(p.name)}>
+              <button key={k} type="button" className="mes-chip" title={`Você compra a cada ~${c!.every} dias; última vez ${dm(c!.last)}`} onClick={() => add(p.name)}>
                 + {p.name} <span className="muted">~{c!.every}d</span></button>
             ))}
-            {dueSoon.length > 1 && <button type="button" className="link" onClick={() => add(dueSoon.map((x) => x.p.name).join(", "))}>adicionar todos</button>}
+            {dueSoon.length > 1 && <Button variant="link" size="sm" onClick={() => add(dueSoon.map((x) => x.p.name).join(", "))}>adicionar todos</Button>}
           </div>
         )}
         {freqChips.length > 0 && (
           <div className="shop-freq small">
-            <span className="muted">Frequentes:</span>
-            {freqChips.map((n) => <button key={n} type="button" className="chip" onClick={() => add(n)}>+ {n}</button>)}
+            <span className="muted">Frequentes</span>
+            {freqChips.map((n) => <button key={n} type="button" className="mes-chip" onClick={() => add(n)}>+ {n}</button>)}
           </div>
         )}
-        {!loaded ? <p className="muted small">Carregando...</p> : !data.items.length ? (
-          <p className="muted small">Lista vazia. Escreva os itens acima (vários de uma vez, separados por vírgula).</p>
-        ) : (
+      </UiCard>
+
+      {!loaded ? <UiCard><p className="mes-empty">Carregando...</p></UiCard> : !data.items.length ? (
+        <UiCard><EmptyState title="Lista vazia" text="Escreva os itens acima, vários de uma vez, separados por vírgula." /></UiCard>
+      ) : (
+        <UiCard flush>
           <ul className="shop-list">
             <li className="shop-head" aria-hidden="true"><span>Item</span><span>Kg/Qtd</span><span>Preço un.</span><span>Total</span><span /></li>
             {[...open, ...done].map((x) => {
@@ -381,56 +396,65 @@ export default function ShoppingList({ months, setup, ipca12m }: { months: Recor
               );
             })}
           </ul>
-        )}
-        {est(data.items) > 0 && (
-          <div className="shop-sum">
-            {done.length > 0 && <div><span>No carrinho ({done.length})</span><b>{brl(est(done))}</b></div>}
-            {open.length > 0 && est(open) > 0 && <div><span>Falta pegar ({open.length})</span><b>{brl(est(open))}</b></div>}
-            <div className="total"><span>Total da lista</span><b>{brl(est(data.items))}</b></div>
-            {byStore.length > 1 && (
-              <div className="shop-stores"><span>Esta lista em cada mercado</span>
-                <span>{byStore.sort((a, b) => a.tot - b.tot).map((x, i) => <span key={x.s} className={i === 0 ? "pos" : ""}>{x.s} {brl(x.tot)} <small className="muted">({x.n}/{data.items.length})</small></span>)}</span></div>
-            )}
-            <div className="shop-month">
-              <span>Mercado no mês</span>
-              <span>já saiu {brl(spentMercado)} + esta lista {brl(est(data.items))} = <b className={budget && spentMercado + est(data.items) > budget ? "neg" : ""}>{brl(spentMercado + est(data.items))}</b>
-                {budget > 0 ? <small className={spentMercado + est(data.items) > budget ? "neg" : "muted"}> de {brl(budget)} do orçamento ({fmt(((spentMercado + est(data.items)) / budget) * 100, 0)}%)</small>
-                  : <small className="muted"> (sem orçamento de Mercado)</small>}</span>
+        </UiCard>
+      )}
+
+      {data.items.length > 0 && (
+        <div className="shop-actions-v2">
+          {done.length > 0 && <Button variant="primary" block onClick={() => setBuy(true)}>Terminei: lançar o gasto</Button>}
+          <div className="shop-actions-row">
+            {done.length > 0 && <Button size="sm" onClick={() => finish(done)}>Tirar os marcados</Button>}
+            <Button variant="ghost" size="sm" onClick={async () => { if (await ask("Apagar a lista inteira? (os itens frequentes e os preços salvos continuam)")) await save({ ...data, items: [] }); }}>Apagar a lista</Button>
+          </div>
+        </div>
+      )}
+      {msg && <p className="ls-msg">&#10003; {msg}</p>}
+      {warn && <p className="small warn">{warn}</p>}
+
+      {est(data.items) > 0 && (
+        <Fold title="Quanto vai dar" meta={brl(est(data.items))} defaultOpen={!!budget && spentMercado + est(data.items) > budget}>
+          <UiCard>
+            <div className="shop-sum">
+              {done.length > 0 && <div><span>No carrinho ({done.length})</span><b>{brl(est(done))}</b></div>}
+              {open.length > 0 && est(open) > 0 && <div><span>Falta pegar ({open.length})</span><b>{brl(est(open))}</b></div>}
+              <div className="total"><span>Total da lista</span><b>{brl(est(data.items))}</b></div>
+              {byStore.length > 1 && (
+                <div className="shop-stores"><span>Esta lista em cada mercado</span>
+                  <span>{byStore.sort((a, b) => a.tot - b.tot).map((x, i) => <span key={x.s} className={i === 0 ? "pos" : ""}>{x.s} {brl(x.tot)} <small className="muted">({x.n}/{data.items.length})</small></span>)}</span></div>
+              )}
+              <div className="shop-month">
+                <span>Mercado no mês</span>
+                <span>já saiu {brl(spentMercado)} + esta lista {brl(est(data.items))} = <b className={budget && spentMercado + est(data.items) > budget ? "neg" : ""}>{brl(spentMercado + est(data.items))}</b>
+                  {budget > 0 ? <small className={spentMercado + est(data.items) > budget ? "neg" : "muted"}> de {brl(budget)} do orçamento ({fmt(((spentMercado + est(data.items)) / budget) * 100, 0)}%)</small>
+                    : <small className="muted"> (sem orçamento de Mercado)</small>}</span>
+              </div>
             </div>
-          </div>
-        )}
-        {data.items.length > 0 && (
-          <div className="row wrapline shop-actions">
-            {done.length > 0 && <button className="primary" onClick={() => setBuy(!buy)}>{buy ? "fechar" : "Terminei: lançar o gasto"}</button>}
-            {done.length > 0 && <button className="ghost" onClick={() => finish(done)}>Tirar os marcados</button>}
-            <button className="ghost" onClick={async () => { if (await ask("Apagar a lista inteira? (os itens frequentes e os preços salvos continuam)")) await save({ ...data, items: [] }); }}>Apagar a lista</button>
-          </div>
-        )}
-        {buy && <LaunchForm setup={setup} months={months} estimate={est(done)} store={data.store} onDone={async (mm) => { setBuy(false); setMsg(mm); await finish(done); }} />}
-        {msg && <p className="small pos">&#10003; {msg}</p>}
-        {warn && <p className="small warn">{warn}</p>}
-        {infl.length > 0 && (
-          <p className="shop-infl small"><b>Sua inflação no mercado:</b>
-            {infl.map(({ n, r }) => <span key={n} className={r!.pct > 0 ? "neg" : "pos"}>{n} meses {r!.pct >= 0 ? "+" : ""}{fmt(r!.pct * 100, 1)}% <small className="muted">({r!.n} produtos)</small></span>)}
-            {ipca12m != null && <span className="muted">IPCA 12 meses {fmt(ipca12m * 100, 1)}%</span>}
-          </p>
-        )}
-        <NotaImport prices={data.prices} stores={data.stores ?? []} setup={setup} months={months}
-          onSave={(rows, date, store) => saveNota(rows, date, store, true)} />
-        <Products products={products} groups={productGroups(data.prices)} today={today} freq={data.freq}
-          onSave={(name, v) => save({ ...data, prices: withPrice(data.prices, name, v) })}
-          onSize={(k, s) => save({ ...data, prices: { ...data.prices, [k]: { ...data.prices[k], ...(s ? s : { size: undefined, unit: undefined }) } } })}
-          onRemove={(k) => save({ ...data, prices: Object.fromEntries(Object.entries(data.prices).filter(([x]) => x !== k)) })}
-          onAdd={(name) => add(name)} />
-        <Note>Escreva vários itens de uma vez separados por vírgula; a quantidade pode vir antes ou depois (&quot;2 leite&quot;, &quot;sabão 3&quot;).
-          Kg/Qtd: quantas unidades ou o peso (1,37 kg; 500 g conta como 0,5 kg). Preço un.: o preço da unidade ou do quilo. Total = Kg/Qtd x Preço un.
-          O preço que você digita fica salvo no produto, com o mercado de hoje (escolha no topo da lista): na próxima lista ele já vem preenchido e o site compara com
-          os anteriores (menor preço, barato, na média, caro; &quot;bom para estocar&quot; quando um item que você compra sempre está no menor preço).
-          Com o tamanho da embalagem (em Produtos salvos) aparece o preço por kg/litro, para comparar pacotes diferentes.
-          Ao terminar a compra (&quot;lançar o gasto&quot; ou &quot;tirar os marcados&quot;), o site guarda o dia: depois de 2 compras ele sabe de quanto em
-          quanto tempo você compra cada coisa e mostra &quot;Está na hora de comprar&quot;. A inflação compara o preço de hoje com o de 3, 6 e 12 meses atrás.</Note>
-      </section>
-    </>
+          </UiCard>
+        </Fold>
+      )}
+
+      {infl.length > 0 && (
+        <Fold title="Sua inflação no mercado" meta={`${infl[infl.length - 1].n} meses ${infl[infl.length - 1].r!.pct >= 0 ? "+" : ""}${fmt(infl[infl.length - 1].r!.pct * 100, 1)}%`}>
+          <UiCard>
+            <p className="shop-infl small">
+              {infl.map(({ n, r }) => <span key={n} className={r!.pct > 0 ? "neg" : "pos"}>{n} meses {r!.pct >= 0 ? "+" : ""}{fmt(r!.pct * 100, 1)}% <small className="muted">({r!.n} produtos)</small></span>)}
+              {ipca12m != null && <span className="muted">IPCA 12 meses {fmt(ipca12m * 100, 1)}%</span>}
+            </p>
+          </UiCard>
+        </Fold>
+      )}
+      <NotaImport prices={data.prices} stores={data.stores ?? []} setup={setup} months={months}
+        onSave={(rows, date, store) => saveNota(rows, date, store, true)} />
+      <Products products={products} groups={productGroups(data.prices)} today={today} freq={data.freq}
+        onSave={(name, v) => save({ ...data, prices: withPrice(data.prices, name, v) })}
+        onSize={(k, s) => save({ ...data, prices: { ...data.prices, [k]: { ...data.prices[k], ...(s ? s : { size: undefined, unit: undefined }) } } })}
+        onRemove={(k) => save({ ...data, prices: Object.fromEntries(Object.entries(data.prices).filter(([x]) => x !== k)) })}
+        onAdd={(name) => add(name)} />
+
+      <Sheet open={buy} onClose={() => setBuy(false)} title="Lançar o gasto do mercado">
+        {buy && <div className="ls-form"><LaunchForm setup={setup} months={months} estimate={est(done)} store={data.store} onDone={async (mm) => { setBuy(false); setMsg(mm); await finish(done); }} /></div>}
+      </Sheet>
+    </div>
   );
 }
 

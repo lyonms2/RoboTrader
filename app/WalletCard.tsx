@@ -23,7 +23,7 @@ export default function WalletCard({ wallet, history, cfg, latest }: {
     return (
       <section className="card empty">
         <h2>Carteira</h2>
-        <p className="muted">Cadastre os endereços públicos das suas carteiras (Rabby / Phantom) na Configuração para ver saldos,
+        <p className="muted">Cadastre os endereços públicos das suas carteiras (EVM 0x... ou Solana) na Configuração (engrenagem) para ver saldos,
           tokens e lucro aqui. Só leitura: nada e movimentado.</p>
       </section>
     );

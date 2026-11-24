@@ -18,7 +18,8 @@ import ScrollHints from "./ScrollHints";
 import Shell, { type MoreItem, type NavId } from "./Shell";
 import LaunchSheet from "./LaunchSheet";
 import type { FinView } from "./FinanceCard";
-import { ArrowLeftRight, Bitcoin, Bot, CircleHelp, ShoppingCart, UserRound, Users } from "lucide-react";
+import { ArrowLeftRight, Bitcoin, Bot, CircleHelp, RefreshCw, Settings, ShoppingCart, UserRound, Users } from "lucide-react";
+import { Button } from "./ui";
 import { CRYPTO_TABS, Modal, TabId, ago, day, fmt, priceOf } from "./dash/util";
 import { Overview } from "./dash/Overview";
 import { AssetCard, Performance } from "./dash/Robo";
@@ -357,26 +358,23 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             onFin={(s: FinSub | "loans" | "recv") => { try { localStorage.setItem("finSub", s); } catch { /* sem armazenamento */ } goFin(s === "lanc" ? "mes" : s === "compras" ? "compras" : "patrimonio"); }}
             onLaunch={support ? undefined : () => setLaunch(true)} />
         )}
-        {inCrypto && (
-          <div className="toolbar">
-            <nav className="subtabs" role="tablist" aria-label="Cripto">
-              {visibleCrypto.map((x) => (
-                <button key={x.id} role="tab" aria-selected={tab === x.id} className={tab === x.id ? "pill on" : "pill"} onClick={() => setTab(x.id)}>{x.label}</button>
-              ))}
-            </nav>
-            {!support && <div className="toolbar-actions">
-              <button onClick={refresh} disabled={busy} className="primary small-btn" title={member ? "Carteiras e cotações" : "Sinais do robô, carteiras, fichas dos tokens e cotações"}>
-                {busy ? "Atualizando..." : "Atualizar"}
-              </button>
-              <button className="ghost icon" onClick={() => setShowCfg(true)} aria-label="Configuração do cripto" title="Configuração do cripto">
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-              </button>
+        {inCrypto && <>
+          <div className="cr-head">
+            <h1 className="help-title">Cripto</h1>
+            {!support && <div className="cr-acts">
+              <Button variant="primary" size="sm" icon={<RefreshCw size={15} aria-hidden="true" />} onClick={refresh} disabled={busy}
+                title={member ? "Carteiras e cotações" : "Sinais do robô, carteiras, fichas dos tokens e cotações"}>{busy ? "Atualizando..." : "Atualizar"}</Button>
+              <Button variant="icon" aria-label="Configuração do cripto" title="Configuração do cripto" icon={<Settings size={18} aria-hidden="true" />} onClick={() => setShowCfg(true)} />
             </div>}
           </div>
-        )}
+          {visibleCrypto.length > 1 && (
+            <div className="pat-tabs" role="tablist" aria-label="Cripto">
+              {visibleCrypto.map((x) => (
+                <button key={x.id} type="button" role="tab" aria-selected={tab === x.id} className={tab === x.id ? "pat-tab on" : "pat-tab"} onClick={() => setTab(x.id)}>{x.label}</button>
+              ))}
+            </div>
+          )}
+        </>}
         {tab === "sinais" && canRobo && (
           <>
             {member && <p className="banner">Estudo educacional: mostra como a regra do robô (SMA 150 + HMA 100) se comportou e onde está cada moeda em relação a ela.

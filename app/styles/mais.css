@@ -1,0 +1,66 @@
+/* Mais: Ajuda, Lista de compras e Cripto (redesign etapa 6) */
+
+/* Ajuda */
+.help { display: flex; flex-direction: column; gap: var(--s-4); }
+.help-title { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.3px; }
+.help-search { display: flex; align-items: center; gap: var(--s-2); height: 48px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line-strong);
+  background: var(--surface); color: var(--text-3); position: sticky; top: calc(var(--topbar-h, 61px) + 6px); z-index: 14; box-shadow: 0 0 0 6px var(--bg); }
+.help-search:focus-within { border-color: var(--accent); }
+.help-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 16px; outline: none; padding: 0; height: 100%; }
+.help-search input::-webkit-search-cancel-button { display: none; }
+.help-search button { background: none; border: 0; color: var(--text-3); padding: 6px; cursor: pointer; display: flex; }
+.help-list { display: flex; flex-direction: column; }
+.help-topic { padding: 0 14px; }
+.help-topic + .help-topic { border-top: 1px solid var(--line-soft); }
+.help-topic summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: var(--s-2); min-height: 48px; font-size: var(--fs-md); font-weight: 600; }
+.help-topic summary::-webkit-details-marker { display: none; }
+.help-topic summary::after { content: "›"; margin-left: auto; color: var(--text-4); font-size: 18px; transition: transform var(--t-fast); }
+.help-topic[open] summary { color: var(--accent); }
+.help-topic[open] summary::after { transform: rotate(90deg); }
+.help-topic .manual-steps { margin: 0 0 var(--s-3); }
+.help-tip { margin: 0 0 var(--s-3) 22px; font-size: var(--fs-xs); color: var(--text-3); }
+.help .ui-card .manual-steps { margin: 0; }
+
+/* Lista de compras */
+.shop-v2 { display: flex; flex-direction: column; gap: var(--s-4); }
+.shop-top { display: flex; align-items: center; gap: var(--s-2); }
+.shop-v2 .ui-stats .ui-stat.compact { background: var(--surface); padding: 8px 10px; }
+.shop-addcard { display: flex; flex-direction: column; gap: var(--s-3); }
+.shop-v2 .shop-add { margin: 0; }
+.shop-v2 .shop-add input { height: 44px; box-sizing: border-box; }
+.shop-v2 .shop-store { display: flex; align-items: center; gap: var(--s-2); margin: 0; }
+.shop-v2 .shop-store select { flex: 1; min-width: 0; max-width: 260px; }
+.shop-v2 .shop-due, .shop-v2 .shop-freq { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0; }
+.shop-v2 .mes-chip { height: 30px; font-size: var(--fs-xs); }
+.shop-v2 .shop-list { margin: 0; }
+.shop-v2 .shop-list li { padding: 10px 14px; border-bottom: 1px solid var(--line-soft); }
+.shop-v2 .shop-list li:last-child { border-bottom: 0; }
+.shop-v2 .shop-list .shop-head { padding-top: 8px; padding-bottom: 8px; }
+.shop-v2 .shop-check input { width: 20px; height: 20px; accent-color: var(--accent); }
+.shop-actions-v2 { display: flex; flex-direction: column; gap: var(--s-2); }
+.shop-actions-row { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.shop-v2 .shop-sum { margin: 0; }
+.shop-v2 details.eq-more.shop-prod { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 0 14px; margin: 0; }
+.shop-v2 details.eq-more.shop-prod > summary { min-height: 48px; display: flex; align-items: center; font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.shop-v2 details.eq-more.shop-prod[open] { padding-bottom: 14px; }
+
+/* Cripto: cartao do robo */
+.asset-v2 { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: none; display: flex; flex-direction: column; gap: var(--s-3); }
+.asset-head { display: flex; align-items: center; gap: var(--s-2); }
+.asset-head h2 { margin: 0; font-size: 20px; font-weight: 800; }
+.asset-head h2::before { content: none; }
+.asset-head .price-now { margin-left: auto; }
+.asset-v2 .signal { border-radius: var(--r-md); padding: 14px; margin: 0; gap: 4px; }
+.asset-v2 .signal b { font-size: 20px; font-weight: 800; }
+.asset-v2 .signal.buy { background: var(--pos-soft); color: var(--pos); }
+.asset-v2 .signal.sell { background: var(--neg-soft); color: var(--neg); }
+.asset-v2 .signal.hold { background: var(--surface-2); color: var(--text); }
+.asset-v2 .signal-tag { text-transform: none; letter-spacing: 0; font-size: var(--fs-xs); color: var(--text-3); }
+.asset-v2 .preview-box { margin: 0; border-radius: var(--r-md); border-color: var(--line-strong); gap: 6px; align-items: flex-start; }
+.asset-v2 .preview-box .ui-badge { font-size: var(--fs-sm); padding: 5px 12px; white-space: normal; }
+.asset-v2 .pos-row, .asset-v2 .rules, .asset-v2 .history { margin: 0; }
+.asset-v2 .ui-fold-body .results { margin: 0; }
+
+/* Cripto: topo */
+.cr-head { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); }
+.cr-acts { margin-left: auto; display: flex; gap: var(--s-2); align-items: center; }

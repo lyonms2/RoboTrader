@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import "./styles/tokens.css";
+import "./ui/ui.css";
 import { DialogHost } from "./Dialog";
 
 // Fonte do site (baixada no build e servida pelo proprio site)

@@ -1,12 +1,14 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import { ArrowDownLeft, Bot, CalendarClock, CheckCircle2, ChevronRight, Coins, CreditCard, Lightbulb, ListChecks, Plus, Repeat, TrendingDown, TrendingUp, TriangleAlert, Wallet, X } from "lucide-react";
 import { P } from "@/lib/paths";
 import { allocOf } from "@/lib/positions";
 import { allocationBlocks, walletNotices } from "@/lib/allocation";
 import { walletAddresses, walletKey } from "@/lib/addresses";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
 import { SYMBOLS, type AppConfig, type LatestDoc, type FichaDoc, type LighterSyncDoc, type WalletDoc } from "@/lib/types";
-import { MonthAndUpcoming, NetWorthBlock, PatrimonioCard } from "../OverviewBlocks";
+import { HomeHero, MoneyMix, NetWorthBlock, NextPayments, type Ctx } from "../OverviewBlocks";
+import { Button, Card, EmptyState, List, ListRow, Section, Stat, Stats } from "../ui";
 import type { Sub as FinSub } from "../FinanceCard";
 import { reviewCount, saveSetup, upcoming, budgetAlerts } from "../gastosShared";
 import { buildAlerts } from "@/lib/alerts";
@@ -18,11 +20,11 @@ import Note from "../Note";
 import { TabId, ago, fmt, fmtPx, fmtQty, openPnl, ordered, pnlClass, priceOf, signed } from "./util";
 
 // Visao geral: patrimonio, o que fazer hoje, alocacao e posicoes do robo
-export type Money = Parameters<typeof PatrimonioCard>[0] extends infer P ? Omit<P, "onBens"> & { nwHist: NetWorthDoc[] } : never;
+export type Money = Ctx & { nwHist: NetWorthDoc[] };
 // Visao geral: patrimonio, o que fazer hoje, o mes e os proximos pagamentos, evolucao e, depois, o robo e a cripto
-export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, money, onFin }: {
+export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, money, onFin, onLaunch }: {
   member?: boolean; cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null;
-  sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub | "loans" | "recv") => void;
+  sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub | "loans" | "recv") => void; onLaunch?: () => void;
 }) {
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
   const [allTodo, setAllTodo] = useState(false);
@@ -106,13 +108,12 @@ export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, on
     return todo;
   }, [money.months, money.setup, money.cfg, money.fin, money.wallet, money.spend, money.nwHist]);
   todo.push(...finTodo);
-  // Contra poluicao: tira os dispensados neste mes, os mais urgentes primeiro, no maximo 5 (o resto em "ver mais")
+  // Contra poluicao: tira os dispensados neste mes, os mais urgentes primeiro, no maximo 4 (o resto em "ver todos")
   const nowMonth = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 7);
   const idOf = (t: Todo) => t.id ?? (t.tab === "financas" ? `${t.who}:${t.text}` : null);
   const dismissed = money.setup.dismissed ?? {};
   const prioOf = (t: Todo) => t.prio ?? (t.tab !== "financas" ? (t.tone === "info" ? 3 : 0) : 2);
   const visible = todo.filter((t) => { const i = idOf(t); return !i || dismissed[i] !== nowMonth; }).map((t, i) => ({ t, i })).sort((x, y) => prioOf(x.t) - prioOf(y.t) || x.i - y.i).map((x) => x.t);
-  const shownTodo = allTodo ? visible : visible.slice(0, 5);
   const dismiss = async (t: Todo) => {
     const i = idOf(t);
     if (!i) return;
@@ -126,59 +127,65 @@ export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, on
   const pctOf = (v: number) => (total ? `${fmt((v / total) * 100, 1)}%` : "");
   const hasMoney = !!(cfg.finance?.length || Object.keys(money.months).length || money.setup.cards.length || money.setup.loans.length);
   const go = (t: Todo) => (t.fin ? onFin(t.fin) : onTab(t.tab));
-  // numeros do cripto: dentro do quadro Patrimonio (ou sozinhos, se ainda nao ha financas)
-  const cryptoKpis = (
-    <div className="kpis compact">
-      <div><span>{hasMoney ? "Carteira cripto" : "Patrimônio"}</span><b>{total !== null ? `$${fmt(total)}` : "-"}</b>
-        <small className="muted">{total === null ? "cadastre as carteiras" : member ? "suas carteiras" : `núcleo $${fmt(cfg.capitalUsdt)}`}</small></div>
-      {!member && <><div><span>Lucro aberto (robô)</span><b className={pnlClass(open)}>{signed(open)}</b>
-        <small className="muted">{invested > 0 ? `${signed((open / invested) * 100, 1)}% sobre $${fmt(invested)}` : "sem posição"}</small></div>
-      <div><span>Realizado</span><b className={pnlClass(realized)}>{signed(realized)}</b><small className="muted">vendas registradas</small></div>
-      <div><span>Total</span><b className={pnlClass(open + realized)}>{signed(open + realized)}</b><small className="muted">sem taxas e funding</small></div></>}
-    </div>
+  const toMes = () => onFin("lanc");
+  // numeros do cripto (dolar): carteira e, para o dono, o robo
+  const usd = (v: number, tone?: boolean) => <span className={`ui-money size-md${tone ? ` ${pnlClass(v)}` : ""}`}>{tone ? signed(v) : `$${fmt(v)}`}</span>;
+  const cryptoStats = (
+    <Stats scroll cols={member ? 1 : 4}>
+      <Stat label="Carteira cripto" value={total !== null ? usd(total) : "-"}
+        hint={total === null ? "cadastre as carteiras" : member ? "suas carteiras" : `núcleo $${fmt(cfg.capitalUsdt)}`} />
+      {!member && <>
+        <Stat label="Lucro aberto (robô)" value={usd(open, true)} hint={invested > 0 ? `${signed((open / invested) * 100, 1)}% sobre $${fmt(invested)}` : "sem posição"} />
+        <Stat label="Realizado" value={usd(realized, true)} hint="vendas registradas" />
+        <Stat label="Total" value={usd(open + realized, true)} hint="sem taxas e funding" />
+      </>}
+    </Stats>
   );
+  const LIMIT = 4;
+  const shown = allTodo ? visible : visible.slice(0, LIMIT);
 
   return (
-    <>
-      {hasMoney && <PatrimonioCard {...money} start={money.cfg.nwStart ?? null} onBens={() => onFin("bens")}>
-        <div className="sub-block">
-          <div className="sub-head"><b>Cripto</b><button className="link" onClick={() => onTab("carteira")}>ver cripto &rsaquo;</button></div>
-          {cryptoKpis}
-        </div>
-      </PatrimonioCard>}
-
-      <section className="card">
-        <h2>O que fazer hoje</h2>
-        {visible.length ? (
-          <>
-          <ul className="todo">
-            {shownTodo.map((t, i) => (
-              <li key={i} className={`todo-${t.tone}`} onClick={() => go(t)}>
-                <b>{t.who}</b><span>{t.text}</span>
-                {idOf(t) ? <button className="link todo-x" title="Dispensar até o mês que vem" onClick={(e) => { e.stopPropagation(); dismiss(t); }}>dispensar</button> : <em />}
-                <i aria-hidden="true">&rsaquo;</i>
-              </li>
-            ))}
-          </ul>
-          {visible.length > 5 && <button className="link" onClick={() => setAllTodo(!allTodo)}>{allTodo ? "ver menos" : `ver mais ${visible.length - 5}`}</button>}
-          </>
-        ) : (
-          <p className="muted">Nada a fazer: nenhum sinal novo, nenhum pagamento vencido e nenhum aviso.</p>
-        )}
-        <Note>Os mais urgentes primeiro, no máximo 5 (o resto em &quot;ver mais&quot;). Clique num item para ver os detalhes; &quot;dispensar&quot;
-          esconde o aviso até o mês que vem.{member ? "" : " Sinais do robô valem só no fechamento diário (21:00 de Brasília)."}</Note>
-      </section>
-
-      {hasMoney && <MonthAndUpcoming months={money.months} setup={money.setup} onLanc={() => onFin("lanc")} onBens={() => onFin("bens")} />}
-      {hasMoney && <NetWorthBlock {...money} />}
-
-      {!hasMoney && (
-        <section className="card">
-          <div className="card-head"><h2>Cripto</h2><button className="link" onClick={() => onTab("carteira")}>ver cripto &rsaquo;</button></div>
-          {cryptoKpis}
-        </section>
+    <div className="home">
+      {hasMoney ? (
+        <HomeHero {...money} start={money.cfg.nwStart ?? null} onPat={() => onFin("bens")} onMes={toMes} />
+      ) : (
+        <Card>
+          <EmptyState title="Comece pelo mês" text="Importe o extrato do banco ou lance um gasto: o patrimônio, a reserva e as contas aparecem aqui."
+            action={onLaunch && <Button variant="primary" icon={<Plus size={18} aria-hidden="true" />} onClick={onLaunch}>Lançar</Button>} />
+        </Card>
       )}
 
+      <div className="home-two">
+        <Section title="Para hoje" count={visible.length}
+          info={<>Os mais urgentes primeiro. Toque num item para ver os detalhes; o X esconde o aviso até o mês que vem.{member ? "" : " Sinais do robô valem só no fechamento diário (21:00 de Brasília)."}</>}
+          action={visible.length > LIMIT && <Button variant="link" size="sm" onClick={() => setAllTodo(!allTodo)}>{allTodo ? "ver menos" : "ver todos"}</Button>}>
+          {visible.length ? (
+            <List>
+              {shown.map((t, i) => {
+                const k = kindOf(t);
+                return (
+                  <div key={i} className="home-todo">
+                    <ListRow icon={k.icon} iconTone={k.tone} title={t.text} sub={t.who} onClick={() => go(t)} chevron={!idOf(t)} />
+                    {idOf(t) && <Button variant="icon" className="home-todo-x" aria-label="Dispensar até o mês que vem" title="Dispensar até o mês que vem"
+                      icon={<X size={16} aria-hidden="true" />} onClick={() => dismiss(t)} />}
+                  </div>
+                );
+              })}
+            </List>
+          ) : (
+            <Card><p className="home-empty"><CheckCircle2 size={16} aria-hidden="true" /> Tudo em dia: nenhum pagamento vencido, nenhum sinal novo e nenhum aviso.</p></Card>
+          )}
+        </Section>
+
+        {hasMoney && <NextPayments months={money.months} setup={money.setup} onMes={toMes} />}
+      </div>
+
+      {hasMoney && <NetWorthBlock {...money} />}
+      {hasMoney && <MoneyMix {...money} />}
+
+      <Section title="Cripto" action={<Button variant="link" size="sm" onClick={() => onTab("carteira")}>ver cripto <ChevronRight size={14} aria-hidden="true" /></Button>}>
+        {cryptoStats}
+      </Section>
 
       {!member && <details className="more-block">
         <summary>Alocação e posições do robô</summary>
@@ -233,6 +240,26 @@ export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, on
         </section>
         </div>
       </details>}
-    </>
+    </div>
   );
+}
+
+// Icone e cor de cada item de "Para hoje", pelo assunto (ou pelo tom, para os avisos inteligentes)
+type Kind = { icon: ReactNode; tone: "pos" | "neg" | "warn" | "info" | "brand" };
+function kindOf(t: { tone: "buy" | "sell" | "warn" | "info"; who: string }): Kind {
+  const s = 18;
+  switch (t.who) {
+    case "Pagar": return { icon: <CalendarClock size={s} />, tone: "warn" };
+    case "Receber": return { icon: <ArrowDownLeft size={s} />, tone: "pos" };
+    case "Cartão": return { icon: <CreditCard size={s} />, tone: "neg" };
+    case "Fixo": return { icon: <Repeat size={s} />, tone: "info" };
+    case "Finanças": return { icon: <ListChecks size={s} />, tone: "info" };
+    case "Robô": return { icon: <Bot size={s} />, tone: t.tone === "sell" ? "neg" : t.tone === "buy" ? "pos" : "brand" };
+    case "Tokens": return { icon: <Coins size={s} />, tone: "brand" };
+    case "Carteira": case "Lighter": return { icon: <Wallet size={s} />, tone: "warn" };
+  }
+  if (t.tone === "warn") return { icon: <TriangleAlert size={s} />, tone: "warn" };
+  if (t.tone === "buy") return { icon: <TrendingUp size={s} />, tone: "pos" };
+  if (t.tone === "sell") return { icon: <TrendingDown size={s} />, tone: "neg" };
+  return { icon: <Lightbulb size={s} />, tone: "info" };
 }

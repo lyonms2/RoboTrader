@@ -13,7 +13,7 @@ import { ask, askText, tell } from "./Dialog";
 
 import Note from "./Note";
 import { BalanceEq, FinBar } from "./OverviewBlocks";
-export { MonthAndUpcoming, NetWorthBlock, PatrimonioCard } from "./OverviewBlocks";
+export { NetWorthBlock } from "./OverviewBlocks";
 import ExportData from "./ExportData";
 import ShoppingList from "./ShoppingList";
 import { Segmented } from "./ui";

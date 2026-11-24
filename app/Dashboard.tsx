@@ -354,7 +354,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         {tab === "geral" && (
           <Overview member={member} cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} sync={cfg.lighter?.enabled ? sync : null} onTab={setTab}
             money={{ cfg, fin: finance, wallet: walletOk ? wallet : null, spend, debt, months, setup: gSetup, nwHist }}
-            onFin={(s: FinSub | "loans" | "recv") => { try { localStorage.setItem("finSub", s); } catch { /* sem armazenamento */ } goFin(s === "lanc" ? "mes" : s === "compras" ? "compras" : "patrimonio"); }} />
+            onFin={(s: FinSub | "loans" | "recv") => { try { localStorage.setItem("finSub", s); } catch { /* sem armazenamento */ } goFin(s === "lanc" ? "mes" : s === "compras" ? "compras" : "patrimonio"); }}
+            onLaunch={support ? undefined : () => setLaunch(true)} />
         )}
         {inCrypto && (
           <div className="toolbar">

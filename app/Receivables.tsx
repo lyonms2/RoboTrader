@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { Plus, UserRound } from "lucide-react";
+import { Button, Card as UiCard, EmptyState, List, ListRow, Money, Section, Sheet, Stat, Stats } from "./ui";
 import {
   RECV_BACK_CAT, RECV_OUT_CAT, RECV_SALE_CAT, accountsOf, addMonths, descKey, fixoActive, fixoExpected, monthLabel, monthOf, newId, recvDue, recvLedger, recvStatus, todayBR,
   type Gasto, type GastosSetup, type LedgerEntry, type MonthDoc, type Recv, type RecvRow,
@@ -49,35 +51,48 @@ export default function ReceivablesPart({ months, setup, openId }: { months: Rec
   const list = (setup.recvs ?? []).map((r) => ({ r, st: recvStatus(r, months, today) }));
   const left = list.reduce((t, x) => t + x.st.leftV, 0);
   const got = list.reduce((t, x) => t + x.st.gotV, 0);
-  const late = list.reduce((t, x) => t + x.st.late, 0);
-  const lateV = list.reduce((t, x) => t + x.st.lateV, 0);
   const nx = list.filter((x) => x.st.next).sort((a, b) => a.st.next!.localeCompare(b.st.next!))[0];
-  const [adding, setAdding] = useState(!list.length);
+  const [adding, setAdding] = useState(false);
+  const [open, setOpen] = useState<string | null>(openId ?? null);
+  useEffect(() => { if (openId) setOpen(openId); }, [openId]);
+  const cur = list.find((x) => x.r.id === open);
   return (
-    <>
-      <section className="card">
-        <h2>A receber</h2>
-        <div className="kpis">
-          <div><span>Te devem</span><b className="pos">{brl(left)}</b><small className="muted">{list.filter((x) => x.st.leftV > 0).length} {list.filter((x) => x.st.leftV > 0).length === 1 ? "pessoa/dívida" : "pessoas/dívidas"} - entra no patrimônio</small></div>
-          {late > 0 && <div><span>Parcelas atrasadas</span><b className="warn">{late} - {brl(lateV)}</b><small className="muted">venceram sem pagamento</small></div>}
-          <div><span>Próxima a receber</span><b>{nx ? brl(nx.r.parcela) : "-"}</b>
-            <small className="muted">{nx ? `${nx.r.name} ${nx.st.nextK! + 1}/${nx.r.n} - ${nx.st.next! < today ? "venceu" : "dia"} ${dm(nx.st.next!)}/${nx.st.next!.slice(2, 4)}` : "nenhuma"}</small></div>
-          <div><span>Já recebido</span><b>{brl(got)}</b><small className="muted">soma das parcelas recebidas</small></div>
-        </div>
-        <Note>Pix com o nome da pessoa no extrato é reconhecido sozinho como parcela recebida. Recebeu e não aparece? Use &quot;recebi&quot;.
-          Dinheiro que você emprestou volta como &quot;Devolução de empréstimo&quot; (não é renda); venda ou serviço parcelado entra como renda.</Note>
-      </section>
-
-      <section className="card">
-        <div className="card-head"><h2>Quem te deve</h2>
-          {!adding && <button className="ghost small-btn" onClick={() => setAdding(true)}>+ novo a receber</button>}</div>
-        {adding && <div className="loan-form"><RecvForm months={months} setup={setup} onDone={() => setAdding(false)} /></div>}
-        {list.map(({ r, st }) => r.kind === "conta"
-          ? <ContaItem key={r.id} r={r} months={months} setup={setup} single={list.length === 1} initial={openId === r.id} />
-          : <RecvItem key={r.id} r={r} st={st} months={months} setup={setup} single={list.length === 1} initial={openId === r.id} />)}
-        {!list.length && !adding && <p className="muted small">Ninguém te deve nada cadastrado.</p>}
-      </section>
-    </>
+    <div className="pat-part">
+      {list.length > 0 ? <>
+        <Stats scroll cols={3}>
+          <Stat label="Te devem" value={<Money value={left} size="md" cents={false} tone="pos" />} hint="entra no patrimônio" />
+          <Stat label="Próxima a receber" value={nx ? <Money value={nx.r.parcela} size="md" cents={false} /> : "-"}
+            hint={nx ? `${nx.r.name} · ${nx.st.next! < today ? "venceu" : "dia"} ${dm(nx.st.next!)}` : "nenhuma"} />
+          <Stat label="Já recebido" value={<Money value={got} size="md" cents={false} />} hint="parcelas recebidas" />
+        </Stats>
+        <Section title="Quem te deve" info={<>Pix com o nome da pessoa no extrato é reconhecido sozinho como parcela recebida. Dinheiro que você emprestou volta como
+          &quot;Devolução de empréstimo&quot; (não é renda); venda ou serviço parcelado entra como renda.</>}
+          action={<Button variant="link" size="sm" icon={<Plus size={14} aria-hidden="true" />} onClick={() => setAdding(true)}>a receber</Button>}>
+          <List>
+            {list.map(({ r, st }) => {
+              const conta = r.kind === "conta";
+              return (
+                <ListRow key={r.id} onClick={() => setOpen(r.id)} icon={<UserRound size={18} />} iconTone={st.late ? "neg" : "pos"} title={r.name}
+                  sub={conta ? (st.saldo >= 0 ? "conta com a pessoa · te deve hoje" : "conta com a pessoa · você deve a ela")
+                    : `${r.kind === "emprestei" ? "empréstimo" : "venda"} · ${st.got} de ${r.n} recebidas${st.late ? ` · ${st.late} atrasada${st.late > 1 ? "s" : ""}` : ""}`}
+                  value={<span className={conta && st.saldo < 0 ? "warn" : "pos"}>{brl(conta ? Math.abs(st.saldo) : st.leftV, 0)}</span>} />
+              );
+            })}
+          </List>
+        </Section>
+      </> : (
+        <UiCard><EmptyState title="Ninguém te deve" text="Emprestou dinheiro, vendeu parcelado ou divide contas com alguém? Cadastre aqui e o site reconhece os Pix recebidos."
+          action={<Button variant="primary" icon={<Plus size={18} aria-hidden="true" />} onClick={() => setAdding(true)}>Cadastrar a receber</Button>} /></UiCard>
+      )}
+      <Sheet open={adding} onClose={() => setAdding(false)} title="Novo a receber">
+        {adding && <div className="ls-form"><RecvForm months={months} setup={setup} onDone={() => setAdding(false)} /></div>}
+      </Sheet>
+      <Sheet open={!!cur && !adding} onClose={() => setOpen(null)} title={cur?.r.name}>
+        {cur && <div className="pat-detail">{cur.r.kind === "conta"
+          ? <ContaItem key={cur.r.id} r={cur.r} months={months} setup={setup} single initial />
+          : <RecvItem key={cur.r.id} r={cur.r} st={cur.st} months={months} setup={setup} single initial />}</div>}
+      </Sheet>
+    </div>
   );
 }
 

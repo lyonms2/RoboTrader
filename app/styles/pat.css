@@ -1,0 +1,66 @@
+/* Patrimonio (redesign etapa 5): medidas da amostra aprovada em 24/11/2026 */
+.pat-head { display: flex; flex-direction: column; gap: var(--s-3); margin-bottom: var(--s-3); }
+.pat-title { display: flex; align-items: center; gap: var(--s-2); }
+.pat-title h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.3px; }
+.pat-bal { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); }
+.pat-bal > div { display: flex; flex-direction: column; min-width: 0; }
+.pat-bal span:first-child { font-size: 11px; color: var(--text-3); }
+.pat-bal .ui-money { font-size: 15px; }
+.pat-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-right: calc(-1 * var(--s-4)); padding: 6px var(--s-4) 6px 0; margin-bottom: var(--s-3);
+  position: sticky; top: var(--topbar-h, 61px); z-index: 15; background: var(--bg); }
+.pat-tabs::-webkit-scrollbar { display: none; }
+.pat-tab { flex: none; height: 36px; padding: 0 14px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--surface); color: var(--text-2);
+  font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.pat-tab.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.pat-tab:focus-visible, .pat-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.pat-part { display: flex; flex-direction: column; gap: var(--s-4); }
+.pat-part > section.card, .pat-part .ui-fold-body > section.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); margin: 0; box-shadow: none; }
+
+/* cartoes: escolher o cartao */
+.pat-chips { display: flex; gap: var(--s-2); align-items: center; overflow-x: auto; scrollbar-width: none; margin-right: calc(-1 * var(--s-4)); padding-right: var(--s-4); }
+.pat-chips::-webkit-scrollbar { display: none; }
+.pat-chip { flex: none; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--text-2);
+  font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.pat-chip.on { background: var(--text); border-color: var(--text); color: var(--bg); font-weight: 700; }
+.pat-chip.add { width: 34px; padding: 0; border-style: dashed; border-color: #3a414c; color: var(--text-3); display: flex; align-items: center; justify-content: center; }
+.pat-chip-edit { margin-left: auto; flex: none; }
+
+/* fatura em destaque */
+.pat-fatura { border-radius: var(--r-xl); padding: var(--s-4); background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; }
+.pat-fatura-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pat-fatura-head .ui-btn.icon.sm { width: 28px; height: 28px; background: transparent; border-color: transparent; }
+.pat-fatura-title { font-size: var(--fs-sm); color: var(--text-3); font-weight: 600; text-transform: none; }
+.pat-fatura-head .ui-badge { margin-left: auto; }
+.pat-fatura-v { margin-top: 6px; }
+.pat-fatura-v .ui-money { font-size: 30px; letter-spacing: -0.8px; }
+.pat-fatura .ui-progress { margin-top: var(--s-3); }
+.pat-fatura-foot { display: flex; justify-content: space-between; gap: var(--s-2); flex-wrap: wrap; font-size: var(--fs-xs); color: var(--text-3); margin-top: 6px; }
+.pat-fatura-note { margin: 6px 0 0; font-size: var(--fs-xs); color: var(--text-3); }
+.pat-fatura-acts { display: flex; gap: var(--s-2); margin-top: 14px; }
+.pat-fatura-acts .ui-btn { flex: 1; height: 44px; }
+.pat-next { font-size: var(--fs-sm); color: var(--text-2); font-weight: 600; }
+
+/* detalhe de emprestimo / a receber dentro da folha: sem a linha que abria e fechava */
+.pat-detail .loan { border: 0; padding: 0; background: transparent; }
+.pat-detail .loan-head { display: none; }
+.pat-detail .loan-body { padding: 0; border: 0; }
+
+@media (min-width: 900px) {
+  .pat-tabs, .pat-chips { margin-right: 0; padding-right: 0; }
+  .pat-bal { max-width: 560px; }
+  .pat-bal .ui-money { font-size: 18px; }
+  .pat-fatura-acts { max-width: 420px; }
+}
+
+/* investimentos */
+.pat-inv-acts { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.pat-grp { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--s-2); }
+.pat-grp-head { display: flex; justify-content: space-between; gap: var(--s-2); font-size: var(--fs-sm); font-weight: 600; }
+.pat-grp-head > span:last-child { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.pat-grp-head .dot { margin-right: 6px; }
+.pat-inv-v { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.pat-inv-v small { font-size: var(--fs-xs); font-weight: 500; }
+.pat-part .ui-row-title .ui-badge { margin-left: 6px; vertical-align: 1px; }
+.pat-part .ui-card .viz > figcaption { display: none; }
+.pat-part .ui-card .viz { margin: 0; }

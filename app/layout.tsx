@@ -6,6 +6,7 @@ import "./ui/ui.css";
 import "./styles/shell.css";
 import "./styles/home.css";
 import "./styles/mes.css";
+import "./styles/pat.css";
 import { DialogHost } from "./Dialog";
 
 // Fonte do site (baixada no build e servida pelo proprio site)

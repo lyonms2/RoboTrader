@@ -34,9 +34,16 @@ export function sampleDemo(member: boolean): Demo {
       { id: "f3", desc: "Academia", v: 107, cat: "Saude", dia: Math.min(28, Number(t.slice(8, 10)) + 1) },
     ],
     budgets: { Moradia: 1300, Mercado: 900, Compras: 400 },
+    loans: [{ id: "l1", name: "Empréstimo pessoal", parcela: 480, n: 24, first: addMonths(m, -6), dueDay: 15, paidBefore: 5 }],
+    recvs: [{ id: "r1", name: "Pessoa A", kind: "emprestei", parcela: 200, n: 5, first: addMonths(m, -1), dueDay: 20, gotBefore: 1 }],
   };
+  const cfg = { ...DEFAULT_CONFIG, finance: [
+    { id: "i1", kind: "caixa" as const, name: "Cofrinho", balance: 6100, balanceAt: Date.now() - 10 * 86_400_000, cdiPct: 100, reserva: true },
+    { id: "i2", kind: "outro" as const, name: "Previdência", value: 3200 },
+    { id: "b1", kind: "bem" as const, name: "Carro", value: 38000, bemType: "veiculo" as const },
+  ] };
   return {
-    cfg: DEFAULT_CONFIG, latest: [], trades: [], wallet: null, walletHistory: [], fichas: null, months, setup,
+    cfg, latest: [], trades: [], wallet: null, walletHistory: [], fichas: null, months, setup,
     ...(member ? { member: true, until: Date.now() + 4 * 86_400_000 } : {}),
   };
 }

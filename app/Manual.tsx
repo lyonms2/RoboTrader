@@ -104,10 +104,15 @@ const TOPICS: { group: string; items: Topic[] }[] = [
   ] },
   { group: "Orçamento e metas", items: [
     { title: "Definir um orçamento por categoria", steps: [
-      "Em Finanças → Lançamentos, clique em \"+ definir orçamento por categoria\" (ou \"+ categoria\" no bloco Orçamento do mês).",
-      "Escolha a categoria e o limite por mês (ex.: Alimentação R$ 600) e salve.",
+      "Em Finanças → Lançamentos, clique em \"+ definir orçamento por categoria\" (ou \"+ categoria\" no bloco Orçamento do mês, parte \"Por categoria\").",
+      "Escolha a categoria de gasto e o limite por mês (ex.: Alimentação R$ 600) e salve.",
       "A barra mostra quanto já foi e quanto sobra. Para mudar ou remover, clique em \"alterar\" (0 remove).",
-    ], tips: ["O orçamento conta o que saiu da conta e também as compras no cartão feitas no mês. A Visão geral avisa aos 80% e quando passar."] },
+    ], tips: ["Conta o que saiu da conta e as compras no cartão feitas no mês, cada uma na sua categoria. O pagamento da fatura não tem limite aqui: as compras dela já foram contadas. A Visão geral avisa aos 80% e quando passar."] },
+    { title: "Planejar quanto gastar na fatura de um cartão", steps: [
+      "No bloco Orçamento do mês, parte \"Faturas dos cartões\", clique no nome do cartão (ou em \"alterar\").",
+      "No cadastro do cartão, preencha \"Planejado por fatura\" (ex.: R$ 1.500) e salve.",
+      "A barra mostra quanto a fatura que está recebendo compras já usou. A Visão geral avisa aos 80%.",
+    ], tips: ["É outro jeito de olhar as mesmas compras: não se soma ao orçamento por categoria."] },
     { title: "Criar uma meta de economia", steps: [
       "Em Finanças → Investimentos, no bloco Metas, clique em \"+ nova meta\".",
       "Dê um nome, diga quanto quer juntar e, se quiser, até quando.",

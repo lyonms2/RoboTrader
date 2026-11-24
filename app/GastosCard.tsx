@@ -53,8 +53,8 @@ export function DebtsBlock({ months, setup, onEdit }: { months: Record<string, M
   );
 }
 
-export default function GastosCard({ months, setup, invest = [], onBens, entry }: {
-  months: Record<string, MonthDoc>; setup: GastosSetup; invest?: FinItem[]; onBens?: () => void; entry?: React.ReactNode;
+export default function GastosCard({ months, setup, invest = [], onBens, onCard, entry }: {
+  months: Record<string, MonthDoc>; setup: GastosSetup; invest?: FinItem[]; onBens?: () => void; onCard?: (id: string | null) => void; entry?: React.ReactNode;
 }) {
   const [m, setM] = useState(monthOf(todayBR()));
   const [filter, setFilter] = useState<string | null>(null);
@@ -340,7 +340,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, entry }
         <MonthsChart months={months} current={m} onPick={setM} />
       </section>
 
-      <BudgetCard months={months} setup={setup} m={m} />
+      <BudgetCard months={months} setup={setup} m={m} onCard={onCard} />
 
       {(bills.length > 0 || recs.length > 0 || incomes.length > 0) && (
         <section className="card bills-card">
@@ -629,9 +629,10 @@ export function CustomCatsManager({ months, setup }: { months: Record<string, Mo
 // "ver todas as categorias" abre a lista completa quando precisar
 const NEUTRO_OUT = ["Investimento", "Compra de cripto", "Transferencia entre contas", "Emprestei dinheiro"];
 const NEUTRO_IN = ["Investimento", "Venda de cripto", "Transferencia entre contas", "Emprestimo recebido", "Devolucao de emprestimo"];
-export function CatSelect({ value, onChange, dir }: { value: string; onChange: (c: string) => void; dir?: "in" | "out" }) {
+// gastoOnly: so categorias de gasto (orcamento): sem pagamento de fatura, sem "dinheiro mudando de lugar" e sem entradas
+export function CatSelect({ value, onChange, dir, gastoOnly }: { value: string; onChange: (c: string) => void; dir?: "in" | "out"; gastoOnly?: boolean }) {
   const [all, setAll] = useState(false);
-  const only = all ? undefined : dir;
+  const only = gastoOnly ? "out" : all ? undefined : dir;
   const mine = customCats();
   const create = async (tipo: "gasto" | "receita", suggestion = "") => {
     const raw = await askText(tipo === "gasto" ? "O que é esse gasto? (vira uma categoria sua, ex.: Presentes, Pet, Academia)"
@@ -666,7 +667,7 @@ export function CatSelect({ value, onChange, dir }: { value: string; onChange: (
   const gastos = [...CATS_GASTO.filter((c) => c !== "Outros"), ...g];
   const entradas = [...CATS_RECEITA.filter((c) => c !== "Outras entradas"), ...r];
   const neutros = only === "out" ? NEUTRO_OUT : only === "in" ? NEUTRO_IN : CATS_NEUTRO.filter((c) => c !== CARD_PAY_CAT);
-  const shown = new Set([...(only !== "in" ? [...gastos, CARD_PAY_CAT] : []), ...(only !== "out" ? entradas : []), ...neutros]);
+  const shown = new Set([...(only !== "in" ? [...gastos, ...(gastoOnly ? [] : [CARD_PAY_CAT])] : []), ...(only !== "out" ? entradas : []), ...(gastoOnly ? [] : neutros)]);
   // a categoria atual aparece sempre (mesmo se for do outro sentido)
   const extra = value && !GENERIC_CATS.includes(value) && !shown.has(value);
   return (
@@ -674,13 +675,13 @@ export function CatSelect({ value, onChange, dir }: { value: string; onChange: (
       {GENERIC_CATS.includes(value) && <option value={value} disabled>{value}: escolha a categoria</option>}
       {extra && <option value={value}>{catLabel(value)}</option>}
       {only !== "in" && <optgroup label="Gastos">{gastos.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
-        <option value={CARD_PAY_CAT}>Fatura do cartão (pagamento)</option>
+        {!gastoOnly && <option value={CARD_PAY_CAT}>Fatura do cartão (pagamento)</option>}
         <option value="__new_g">+ nova categoria de gasto</option></optgroup>}
       {only !== "out" && <optgroup label="Entradas">{entradas.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
         <option value="__new_r">+ nova categoria de entrada</option></optgroup>}
-      <optgroup label={only === "out" ? "Saiu, mas não é gasto (seu dinheiro mudando de lugar)" : only === "in" ? "Entrou, mas não é renda (seu dinheiro voltando)" : "Nem gasto nem renda (seu dinheiro mudando de lugar)"}>
-        {neutros.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}</optgroup>
-      {only && <option value="__all">ver todas as categorias...</option>}
+      {!gastoOnly && <optgroup label={only === "out" ? "Saiu, mas não é gasto (seu dinheiro mudando de lugar)" : only === "in" ? "Entrou, mas não é renda (seu dinheiro voltando)" : "Nem gasto nem renda (seu dinheiro mudando de lugar)"}>
+        {neutros.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}</optgroup>}
+      {only && !gastoOnly && <option value="__all">ver todas as categorias...</option>}
     </select>
   );
 }
@@ -1824,8 +1825,15 @@ function SplitForm({ g, m, items, onDone }: { g: Gasto; m: string; items: Gasto[
   );
 }
 
-// Orcamento por categoria: limite por mes, quanto ja foi e quanto sobra
-function BudgetCard({ months, setup, m }: { months: Record<string, MonthDoc>; setup: GastosSetup; m: string }) {
+// Orcamento do mes, em duas partes que nao se somam:
+// 1) por categoria: limite por mes do que saiu da conta + compras no cartao feitas no mes (pela data da compra)
+// 2) faturas dos cartoes: o "planejado por fatura" de cada cartao (cadastrado no cartao), contra a fatura que recebe compras agora
+// O pagamento da fatura nao e gasto (as compras ja contaram nas categorias), por isso nao tem limite de categoria.
+const BudgetBar = ({ used, lim }: { used: number; lim: number }) => {
+  const pct = lim > 0 ? used / lim : 0;
+  return <span className="limit"><span className={pct > 1 ? "limit-fill over" : pct >= 0.8 ? "limit-fill high" : "limit-fill"} style={{ width: `${Math.min(100, pct * 100)}%` }} /></span>;
+};
+function BudgetCard({ months, setup, m, onCard }: { months: Record<string, MonthDoc>; setup: GastosSetup; m: string; onCard?: (id: string | null) => void }) {
   const budgets = setup.budgets ?? {};
   const spent = budgetSpent(months, setup, m);
   const [adding, setAdding] = useState(false);
@@ -1849,36 +1857,86 @@ function BudgetCard({ months, setup, m }: { months: Record<string, MonthDoc>; se
     if (ans === null) return;
     await save(c, num(ans));
   };
-  const totalLim = list.reduce((t, [, lim]) => t + lim, 0);
-  const totalSpent = list.reduce((t, [c]) => t + (spent[c] ?? 0), 0);
-  if (!list.length && !adding)
-    return <p className="small budget-empty"><button className="link" onClick={() => setAdding(true)}>+ definir orçamento por categoria</button> <span className="muted">(um limite de gasto por mês, ex.: Alimentação R$ 600)</span></p>;
+  // limite salvo antes numa categoria que nao e gasto (ex.: Fatura do cartao): nunca conta, fica fora do total
+  const isGasto = (c: string) => { const t = tipoOfCat(c); return t === null || t === "gasto"; };
+  const totalLim = list.reduce((t, [c, lim]) => t + (isGasto(c) ? lim : 0), 0);
+  const totalSpent = list.reduce((t, [c]) => t + (isGasto(c) ? spent[c] ?? 0 : 0), 0);
+  // faturas: a que esta recebendo compras hoje
+  const today = todayBR();
+  const cards = setup.cards.map((c) => {
+    const fm = faturaMonth(c, today);
+    return { c, fm, used: cardStatus(c, months).all.find((x) => x.m === fm)?.v ?? 0 };
+  });
+  const planned = cards.filter((x) => x.c.budget);
+  const unplanned = cards.filter((x) => !x.c.budget);
+  if (!list.length && !planned.length && !adding)
+    return (
+      <p className="small budget-empty"><button className="link" onClick={() => setAdding(true)}>+ definir orçamento por categoria</button> <span className="muted">(limite de gasto por mês, ex.: Alimentação R$ 600)</span>
+        {onCard && cards.length > 0 && <> · <button className="link" onClick={() => onCard(cards[0].c.id)}>planejar a fatura de um cartão</button></>}</p>
+    );
   return (
     <section className="card">
-      <div className="card-head"><h2>Orçamento do mês</h2>
-        <span className="muted small">{list.length ? `${brl(totalSpent, 0)} de ${brl(totalLim, 0)}` : ""}<button className="link" onClick={() => setAdding(!adding)}>{adding ? "fechar" : "+ categoria"}</button></span></div>
-      {adding && (
-        <form className="row wrapline fin-form" onSubmit={add}>
-          <label>Categoria<CatSelect value={cat} onChange={setCat} dir="out" /></label>
-          <label>Limite por mês (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="600,00" /></label>
-          <button className="primary" type="submit" disabled={!(num(v) > 0)}>Salvar</button>
-        </form>
-      )}
-      <div className="budgets">
-        {list.map(([c, lim]) => {
-          const s = spent[c] ?? 0, pct = s / lim;
-          return (
-            <div key={c} className="budget-row">
-              <span className="b-name">{catLabel(c)}</span>
-              <span className="limit"><span className={pct > 1 ? "limit-fill over" : pct >= 0.8 ? "limit-fill high" : "limit-fill"} style={{ width: `${Math.min(100, pct * 100)}%` }} /></span>
-              <span className="b-num small">{brl(s, 0)} de {brl(lim, 0)}</span>
-              <span className={`small ${pct > 1 ? "warn" : "muted"}`}>{pct > 1 ? `passou ${brl(s - lim, 0)}` : `sobram ${brl(lim - s, 0)}`}</span>
-              <button className="link" onClick={() => change(c, lim)}>alterar</button>
-            </div>
-          );
-        })}
+      <div className="card-head"><h2>Orçamento do mês</h2></div>
+
+      <div className="budget-part">
+        <h3 className="budget-h">Por categoria <span className="muted small">limite por mês</span>
+          <span className="budget-tot muted small">{list.length ? `${brl(totalSpent, 0)} de ${brl(totalLim, 0)}` : ""}<button className="link" onClick={() => setAdding(!adding)}>{adding ? "fechar" : "+ categoria"}</button></span></h3>
+        {adding && (
+          <form className="row wrapline fin-form" onSubmit={add}>
+            <label>Categoria de gasto<CatSelect value={cat} onChange={setCat} gastoOnly /></label>
+            <label>Limite por mês (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="600,00" /></label>
+            <button className="primary" type="submit" disabled={!(num(v) > 0)}>Salvar</button>
+          </form>
+        )}
+        {list.length > 0 ? (
+          <div className="budgets">
+            {list.map(([c, lim]) => {
+              const s = spent[c] ?? 0, pct = s / lim;
+              const notGasto = !isGasto(c);
+              return (
+                <div key={c} className="budget-row">
+                  <span className="b-name">{catLabel(c)}</span>
+                  <BudgetBar used={s} lim={lim} />
+                  <span className="b-num small">{brl(s, 0)} de {brl(lim, 0)}</span>
+                  <span className={`small ${pct > 1 || notGasto ? "warn" : "muted"}`}>{notGasto ? "não é gasto: nunca conta" : pct > 1 ? `passou ${brl(s - lim, 0)}` : `sobram ${brl(lim - s, 0)}`}</span>
+                  <button className="link" onClick={() => (notGasto ? save(c, 0) : change(c, lim))}>{notGasto ? "remover" : "alterar"}</button>
+                </div>
+              );
+            })}
+          </div>
+        ) : !adding && <p className="muted small">Nenhum limite por categoria ainda.</p>}
+        <p className="muted small budget-note">Conta o que saiu da conta e as compras no cartão feitas no mês, cada uma na sua categoria (pela data da compra).
+          O pagamento da fatura não entra aqui: as compras dela já foram contadas.</p>
       </div>
-      <Note>Conta o que saiu da conta e também as compras no cartão feitas no mês (pela data da compra). Avisa na Visão geral aos 80% e quando passar.</Note>
+
+      {cards.length > 0 && (
+        <div className="budget-part">
+          <h3 className="budget-h">Faturas dos cartões <span className="muted small">planejado por fatura</span></h3>
+          {planned.length > 0 && (
+            <div className="budgets">
+              {planned.map(({ c, fm, used }) => {
+                const lim = c.budget!, pct = used / lim;
+                return (
+                  <div key={c.id} className="budget-row">
+                    <span className="b-name">{c.name} <span className="muted small">fatura de {monthLabel(fm)}</span></span>
+                    <BudgetBar used={used} lim={lim} />
+                    <span className="b-num small">{brl(used, 0)} de {brl(lim, 0)}</span>
+                    <span className={`small ${pct > 1 ? "warn" : "muted"}`}>{pct > 1 ? `passou ${brl(used - lim, 0)}` : `sobram ${brl(lim - used, 0)}`}</span>
+                    {onCard && <button className="link" onClick={() => onCard(c.id)}>alterar</button>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {unplanned.length > 0 && (
+            <p className="small budget-unplanned">{planned.length ? "Sem valor planejado:" : "Nenhum cartão com valor planejado ainda:"}{" "}
+              {unplanned.map(({ c }, i) => <Fragment key={c.id}>{i > 0 && ", "}{onCard ? <button className="link" onClick={() => onCard(c.id)}>{c.name}</button> : c.name}</Fragment>)}
+              <span className="muted"> (clique para definir quanto quer gastar por fatura)</span></p>
+          )}
+          <p className="muted small budget-note">É quanto você quer gastar em cada fatura, somando todas as categorias. Fica no cadastro do cartão
+            (Cartões e empréstimos) e avisa na Visão geral aos 80%. Não se soma ao orçamento por categoria: é outro jeito de olhar as mesmas compras.</p>
+        </div>
+      )}
     </section>
   );
 }

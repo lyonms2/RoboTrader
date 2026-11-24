@@ -64,3 +64,8 @@
 /* Cripto: topo */
 .cr-head { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); }
 .cr-acts { margin-left: auto; display: flex; gap: var(--s-2); align-items: center; }
+
+/* busca da Ajuda: sem o estilo antigo de rotulo/campo (globals.css) */
+.help label.help-search { flex-direction: row; margin: 0; font-size: var(--fs-md); }
+.help .help-search input { border: 0; background: transparent; box-shadow: none; padding: 0; width: auto; }
+.shop-v2 label.shop-store { flex-direction: row; }

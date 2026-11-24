@@ -6,7 +6,6 @@ import { db } from "@/lib/firebaseClient";
 import { dayBR, endOfDayBR, fmtBR, plusMonths, renew, subLabel, subStatus } from "@/lib/assinatura";
 import { ask, tell } from "../Dialog";
 import ExportData from "../ExportData";
-import { day } from "./util";
 
 // Administracao (so o dono): quem pode entrar e ate quando a assinatura esta paga (vencimento e so aviso, nao bloqueia)
 export type MemberRow = { email: string; name?: string; at?: number; until?: number };

@@ -8,7 +8,6 @@ import {
 } from "@/lib/gastos";
 import { CatSelect, saveMonth, saveSetup } from "./GastosCard";
 import { ask, askText, tell } from "./Dialog";
-import Note from "./Note";
 void tell;
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });

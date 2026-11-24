@@ -36,7 +36,7 @@ button.mes-bill-txt:not(:disabled) { cursor: pointer; }
 button.mes-bill-txt:not(:disabled):hover .mes-bill-name { text-decoration: underline; text-decoration-color: var(--text-4); }
 .mes-bill-name { font-size: var(--fs-md); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .mes-bill-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.mes-bill-sub { font-size: var(--fs-xs); color: var(--text-4); }
+.mes-bill-sub { font-size: var(--fs-xs); color: var(--text-3); }
 .mes-bill-v { font-size: var(--fs-md); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mes-bill-v.pos { color: var(--pos); }
 .mes-bill .ui-btn.sm { flex: none; }
@@ -105,3 +105,4 @@ button.mes-bill-txt:not(:disabled):hover .mes-bill-name { text-decoration: under
   .mes-chips { margin-right: 0; padding-right: 0; flex-wrap: wrap; }
   .mes-selbar { bottom: var(--s-4); }
 }
+.mes-undo { flex: none; color: var(--text-3); }

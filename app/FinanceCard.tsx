@@ -1,15 +1,14 @@
 "use client";
-import { deleteField, doc, setDoc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { P } from "@/lib/paths";
-import { GROUPS, cdiYear, compareCdi, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
+import { GROUPS, compareCdi, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
-import { INVEST_CAT, goalStatus, type Goal, recvStatus, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Card, type Gasto, type GastosSetup, type Loan, type MonthDoc } from "@/lib/gastos";
-import GastosCard, { guardWrite, AccountForm, AccountsPanel, CardForm, DebtsBlock, FixoForm, Fixos, ImportPanel, LoanForm, QuickAdd, monthSnapshot, saveSetup, upcoming, PayableForm } from "./GastosCard";
+import { INVEST_CAT, goalStatus, type Goal, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Gasto, type GastosSetup, type MonthDoc } from "@/lib/gastos";
+import GastosCard, { guardWrite, AccountForm, AccountsPanel, FixoForm, monthSnapshot, saveSetup, PayableForm } from "./GastosCard";
 import CardsLoans, { type CardsEntry } from "./CardsLoans";
-import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
-import { ask, askText, tell } from "./Dialog";
+import { ask, tell } from "./Dialog";
 
 import Note from "./Note";
 import { BalanceEq, FinBar } from "./OverviewBlocks";
@@ -121,9 +120,6 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   const crypto = s.byGroup.cripto + s.byGroup.dolar;
   const contas = s.byGroup.conta;
   const investido = s.total - crypto - contas - s.bens;
-  const bruto = contas + investido + s.bens + debt.recv;
-  const liquido = bruto - debt.total;
-  const finGroups = { ...s.byGroup, cripto: 0, dolar: 0 };
   const invRows = rows.filter((r) => r.item.kind !== "bem");
   const invTot = invRows.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.value ?? 0), 0);
   const invMonthly = invRows.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.monthly ?? 0), 0);
@@ -378,31 +374,6 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
   );
 }
 
-function ItemRow({ r, onEdit }: { r: FinRow; onEdit: () => void }) {
-  const it = r.item;
-  const qty = it.kind === "caixa" ? (it.balance !== undefined ? `saldo ${brl(it.balance)}` : "-")
-    : it.kind === "outro" ? "-" : (it.qty ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 6 });
-  const gain = r.cost !== null && r.value !== null ? r.value - r.cost : null;
-  return (
-    <tr>
-      <td>
-        <i className={`dot g-${r.group}`} aria-hidden="true" /><b>{it.name}</b> <span className="tag">{r.kindLabel}</span>
-        {it.reserva && <span className="tag">reserva</span>}
-        <div className="muted small">{r.note || r.problem}</div>
-      </td>
-      <td data-label="Quantidade">{qty}</td>
-      <td data-label="Preço">{r.price !== null ? <span className="cell">{brl(r.price)}{r.change !== null && <small className={pnlClass(r.change)}>{r.change > 0 ? "+" : ""}{pctS(r.change)} hoje</small>}</span> : "-"}</td>
-      <td data-label="Valor"><b>{r.value !== null ? brl(r.value) : "-"}</b></td>
-      <td data-label="Lucro" className={gain !== null ? pnlClass(gain) : "muted"}>
-        {gain !== null ? <span className="cell">{signed(gain)}{r.cost! > 0 && <small>{pctS(gain / r.cost!)}</small>}</span> : it.kind === "outro" ? "-" : "informe o preço médio"}
-      </td>
-      <td data-label="Rende/mês">{r.monthly !== null ? <span className="cell">{brl(r.monthly)}{r.yieldYear !== null && <small className="muted">{pctS(r.yieldYear)} ao ano</small>}</span> : "-"}</td>
-      <td className="actions">
-        <button className="link" onClick={onEdit}>alterar</button>
-      </td>
-    </tr>
-  );
-}
 
 // Formulario de inclusao/edicao: os campos mudam com o tipo
 function ItemForm({ initial, fin, onSave, onCancel, only }: {

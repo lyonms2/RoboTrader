@@ -2,15 +2,15 @@
 import { doc, setDoc } from "firebase/firestore";
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { db } from "@/lib/firebaseClient";
-import { P, isReadOnly } from "@/lib/paths";
+import { P } from "@/lib/paths";
 import { negativeStarts } from "@/lib/alerts";
 import { CARD_PAY_CAT, GENERIC_CATS, INVEST_CAT, TRANSFER_CAT, customCats, setCustomCats, accNameFromDesc, looksDuplicate, suggestCard, suggestToAcc, unmatchedTransfers, accIdOf, accountsOf, accountsStatus, cardStatus, debts, guessBank, invNameFromDesc, linkable, ofxBalance, prevDay, suggestInv, type Account } from "@/lib/gastos";
 import type { FinItem } from "@/lib/types";
 import { CardPayForm } from "./CardsLoans";
 import { RecvSelect, linkRecv, receive } from "./Receivables";
 import {
-  catLabel, CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, loanStatus, monthLabel,
-  dirOf, monthIncomes, fixoActive, fixoExpected, fixoHistory, fixoReajPending, fixoValue, budgetSpent, splitGasto, parcelSiblings, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX, pendingFor, summarize, tipoOfCat, todayBR,
+  catLabel, CATS_GASTO, CATS_NEUTRO, CATS_RECEITA, addMonths, avgMonthly, categorize, dayIn, decode, descKey, faturaMonth, monthLabel,
+  dirOf, monthIncomes, fixoValue, budgetSpent, splitGasto, parcelSiblings, accountMoves, RECV_BACK_CAT, RECV_OUT_CAT, monthBills, monthOf, monthReceipts, newId, recvFixes, plain, parcOf, parseCSV, parseOFX,  summarize, tipoOfCat, todayBR,
   type Bill, type Card, type CustomCat, type Fixo, type Gasto, type GastosSetup, type Loan, type MonthDoc, type Raw, type Tipo,
 } from "@/lib/gastos";
 import { ask, askText, tell } from "./Dialog";
@@ -44,16 +44,6 @@ export { debts };
 const isFaturaOut = (g: Gasto) =>
   g.cat === CARD_PAY_CAT && !g.card && dirOf(g) < 0;
 
-// Cartoes e dividas: resumo + cartoes + emprestimos
-export function DebtsBlock({ months, setup, onEdit }: { months: Record<string, MonthDoc>; setup: GastosSetup; onEdit?: (type: "card" | "loan", id: string | null) => void }) {
-  const cards = setup.cards.map((c) => ({ c, st: cardStatus(c, months) }));
-  return (
-    <div className="two-col">
-      <Cards cards={cards} setup={setup} onEdit={onEdit && ((id) => onEdit("card", id))} />
-      <Loans setup={setup} months={months} onEdit={onEdit && ((id) => onEdit("loan", id))} />
-    </div>
-  );
-}
 
 export default function GastosCard({ months, setup, invest = [], onBens, onCard, onFixo }: {
   months: Record<string, MonthDoc>; setup: GastosSetup; invest?: FinItem[]; onBens?: () => void; onCard?: (id: string | null) => void;
@@ -113,8 +103,6 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
     await saveMonth(m, items.map((x) => (x.id === g.id || (key && x.cat === INVEST_CAT && descKey(x.desc) === key) ? { ...x, inv: target } : x)));
     if (key && target) await saveSetup({ invRules: { ...(setup.invRules ?? {}), [key]: target } });
   };
-  const [editing, setEditing] = useState<string | null>(null);
-  const [splitting, setSplitting] = useState<string | null>(null);
   // Marcar lancamentos para somar (so na tela, nada e salvo) e simulacao de valores
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [sim, setSim] = useState(false);
@@ -261,7 +249,11 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
         </button>
         <span className={income ? "mes-bill-v pos" : "mes-bill-v"}>{income ? "+" : ""}{p.varia && !p.paid ? "~" : ""}{brl(p.paid ? p.paid.v : p.v, p.paid ? 2 : 0)}</span>
         {p.paid
-          ? <span className="mes-ok" title={income ? "recebido" : "pago"}><Check size={14} aria-hidden="true" /><span className="sr-only">{income ? "recebido" : "pago"}</span></span>
+          ? <>
+            {p.fixo && <Button variant="ghost" size="sm" className="mes-undo" title={`Desfaz: a conta volta para ${income ? "a receber" : "a pagar"} e você escolhe de novo`}
+              onClick={async () => { if (await ask(`Desfazer o ${income ? "recebimento" : "pagamento"} de "${p.desc}"? A conta volta para ${income ? "a receber" : "a pagar"}.`)) await notThis(p); }}>desfazer</Button>}
+            <span className="mes-ok" title={income ? "recebido" : "pago"}><Check size={14} aria-hidden="true" /><span className="sr-only">{income ? "recebido" : "pago"}</span></span>
+          </>
           : <Button variant="primary" size="sm" onClick={() => setPay({ kind: income ? "income" : "bill", ref: p.ref })}>{income ? "Recebi" : "Pagar"}</Button>}
       </div>
       {!p.paid && p.sug && (
@@ -1393,52 +1385,6 @@ function MonthsChart({ months, current, onPick }: { months: Record<string, Month
   );
 }
 
-export function Cards({ cards, setup, onEdit }: { cards: { c: Card; st: ReturnType<typeof cardStatus> }[]; setup: GastosSetup; onEdit?: (id: string | null) => void }) {
-  const [form, setForm] = useState<Card | null>(null);
-  const save = async (c: Card) => {
-    await saveSetup({ cards: setup.cards.some((x) => x.id === c.id) ? setup.cards.map((x) => (x.id === c.id ? c : x)) : [...setup.cards, c] });
-    setForm(null);
-  };
-  const remove = async (c: Card) => {
-    if (await ask(`Remover o cartão ${c.name}? (os lançamentos continuam)`)) await saveSetup({ cards: setup.cards.filter((x) => x.id !== c.id) });
-  };
-  return (
-    <section className="card">
-      <div className="card-head"><h2>Cartões</h2>{!form && <button className="ghost small-btn" onClick={() => (onEdit ? onEdit(null) : setForm({ id: newId(), name: "", closeDay: 1, dueDay: 8 }))}>+ cartão</button>}</div>
-      {form && <CardForm c={form} onSave={save} onCancel={() => setForm(null)} />}
-      {cards.length ? cards.map(({ c, st }) => (
-        <div key={c.id} className="debt">
-          <div className="row between">
-            <b>{c.name}</b>
-            <span className="muted small">fecha dia {c.closeDay}, vence dia {c.dueDay}
-              {onEdit ? <button className="link" onClick={() => onEdit(c.id)}>alterar</button>
-                : <><button className="link" onClick={() => setForm(c)}>editar</button><button className="link" onClick={() => remove(c)}>remover</button></>}</span>
-          </div>
-          {st.overdue.map((f) => <p key={f.m} className="small warn">Fatura de {monthLabel(f.m)} vencida em {dm(f.due)}: {brl(f.rest)} sem pagamento lançado</p>)}
-          {st.next ? (
-            <p className="small">Próxima fatura: <b>{brl(st.next.v)}</b> vence {dm(st.next.due)} <span className="muted">({st.next.status === "fechada" ? "fechada" : "ainda aberta"})</span>
-              {(() => {
-                const later = st.faturas.filter((f) => f.status !== "vencida" && f.m > st.next!.m);
-                return later.length ? <span className="muted"> - depois: {later.slice(0, 3).map((f) => `${monthLabel(f.m)} ${brl(f.v, 0)}`).join(", ")}{later.length > 3 ? "..." : ""}</span> : null;
-              })()}</p>
-          ) : <p className="muted small">Sem fatura em aberto lançada.</p>}
-          {(() => {
-            const last = [...st.all].reverse().find((f) => f.status === "paga");
-            return last ? <p className="muted small">Última paga: {monthLabel(last.m)} ({brl(last.v)})</p> : null;
-          })()}
-          {c.limit ? (
-            <div className="limit" title={`${brl(st.open)} de ${brl(c.limit)}`}>
-              <span className={st.open > c.limit * 0.8 ? "limit-fill high" : "limit-fill"} style={{ width: `${Math.min(100, (st.open / c.limit) * 100)}%` }} />
-              <small className="muted">limite usado {fmt((st.open / c.limit) * 100, 0)}% ({brl(st.open, 0)} de {brl(c.limit, 0)})</small>
-            </div>
-          ) : st.open > 0 ? <p className="muted small">Em aberto (com parcelas futuras): {brl(st.open)}</p> : null}
-        </div>
-      )) : !form && <p className="muted small">Cadastre seus cartões para ver a fatura de cada um e as parcelas que ainda vem.</p>}
-      {cards.length > 0 && <Note>A dívida do cartão baixa quando o pagamento da fatura aparece no extrato da conta (ou na própria fatura).
-        Se pagar antes do vencimento, já sai da dívida no dia.</Note>}
-    </section>
-  );
-}
 
 export function CardForm({ c, onSave, onCancel }: { c: Card; onSave: (c: Card) => void; onCancel: () => void }) {
   const [name, setName] = useState(c.name);
@@ -1461,46 +1407,6 @@ export function CardForm({ c, onSave, onCancel }: { c: Card; onSave: (c: Card) =
   );
 }
 
-export function Loans({ setup, months, onEdit, onPrepay }: { setup: GastosSetup; months?: Record<string, MonthDoc>; onEdit?: (id: string | null) => void; onPrepay?: (id: string) => void }) {
-  const [form, setForm] = useState<Loan | null>(null);
-  const today = todayBR();
-  const save = async (l: Loan) => {
-    await saveSetup({ loans: setup.loans.some((x) => x.id === l.id) ? setup.loans.map((x) => (x.id === l.id ? l : x)) : [...setup.loans, l] });
-    setForm(null);
-  };
-  const remove = async (l: Loan) => {
-    if (await ask(`Remover ${l.name}?`)) await saveSetup({ loans: setup.loans.filter((x) => x.id !== l.id) });
-  };
-  const list = setup.loans.map((l) => ({ l, st: loanStatus(l, today, months ? { months, setup } : undefined) }));
-  const total = list.reduce((s, x) => s + x.st.saldo, 0);
-  const monthly = list.filter((x) => x.st.left > 0).reduce((s, x) => s + x.l.parcela, 0);
-  return (
-    <section className="card">
-      <div className="card-head"><h2>Empréstimos e financiamentos</h2>{!form && <button className="ghost small-btn" onClick={() => (onEdit ? onEdit(null) : setForm({ id: newId(), name: "", parcela: 0, n: 12, first: monthOf(today), dueDay: 10, paidBefore: 0 }))}>+ empréstimo</button>}</div>
-      {form && <LoanForm l={form} onSave={save} onCancel={() => setForm(null)} />}
-      {list.length > 0 && <p className="small">Devendo <b>{brl(total)}</b> - {brl(monthly)} por mês em parcelas.</p>}
-      {list.map(({ l, st }) => (
-        <div key={l.id} className="debt">
-          <div className="row between">
-            <b>{l.name}</b>
-            <span className="muted small">{onPrepay && st.left > 0 && <button className="link" onClick={() => onPrepay(l.id)}>adiantar parcelas</button>}
-              {onEdit ? <button className="link" onClick={() => onEdit(l.id)}>alterar</button>
-              : <><button className="link" onClick={() => setForm(l)}>editar</button><button className="link" onClick={() => remove(l)}>remover</button></>}</span>
-          </div>
-          <div className="limit">
-            <span className="limit-fill paid" style={{ width: `${(st.paid / l.n) * 100}%` }} />
-            <small className="muted">{st.paid} de {l.n} parcelas pagas{st.prepaid ? ` (${st.prepaid} adiantadas)` : ""}{st.late ? `, ${st.late} atrasada${st.late > 1 ? "s" : ""}` : ""} - {st.left > 0 ? `termina em ${monthLabel(st.end, true)}` : "quitado"}
-              {st.left > 0 && st.end !== st.originalEnd ? ` (era ${monthLabel(st.originalEnd, true)})` : ""}</small>
-          </div>
-          {st.saved > 0.005 && <p className="small pos">Economizou {brl(st.saved)} adiantando parcelas</p>}
-          {st.left > 0 && <p className="small">Parcela {brl(l.parcela)} (dia {l.dueDay}) - saldo devedor {l.rate ? "" : "~"}{brl(st.saldo)}
-            {l.rate ? <span className="muted"> com juros de {fmt(l.rate)}% ao mês</span> : <span className="muted"> (soma das parcelas; informe os juros para o valor de quitação)</span>}</p>}
-        </div>
-      ))}
-      {!list.length && !form && <p className="muted small">Cadastre empréstimos e financiamentos: a parcela entra sozinha no &quot;ainda a pagar&quot; de cada mês e a dívida é descontada do patrimônio.</p>}
-    </section>
-  );
-}
 
 export function LoanForm({ l, onSave, onCancel }: { l: Loan; onSave: (l: Loan) => void; onCancel: () => void }) {
   const [name, setName] = useState(l.name);
@@ -1531,48 +1437,6 @@ export function LoanForm({ l, onSave, onCancel }: { l: Loan; onSave: (l: Loan) =
   );
 }
 
-// Lista dos gastos fixos (Contas e bens: so mostra)
-export function Fixos({ setup, months, onEdit, entrada = false }: { setup: GastosSetup; months?: Record<string, MonthDoc>; onEdit?: (id: string | null) => void; entrada?: boolean }) {
-  const m = monthOf(todayBR());
-  const val = (f: Fixo) => fixoExpected(f, m, months);
-  const fixos = setup.fixos.filter((f) => !f.once && !!f.entrada === entrada).sort((a, b) => a.dia - b.dia);
-  const total = fixos.filter((f) => fixoActive(f, m)).reduce((s, f) => s + val(f), 0);
-  // situacao de cada fixo neste mes (pago, a pagar, atrasado)
-  const bills = months ? (entrada ? monthIncomes : monthBills)(m, months[m]?.items ?? [], setup, months) : [];
-  const billOf = (f: Fixo) => bills.find((b) => b.ref === f.id);
-  const active = fixos.filter((f) => fixoActive(f, m));
-  const paidN = active.filter((f) => billOf(f)?.paid).length;
-  const today = todayBR();
-  if (entrada && !fixos.length) return null;
-  return (
-    <section className="card">
-      <div className="card-head"><h2>{entrada ? "Entradas fixas" : "Gastos fixos"}</h2>
-        <span className="muted small">{fixos.length ? `${entrada ? "+" : ""}~${brl(total)} por mês${months && active.length ? ` - ${paidN} de ${active.length} ${entrada ? "recebidas" : "pagos"} este mês` : ""}` : ""}{onEdit && <button className="link" onClick={() => onEdit(null)}>{entrada ? "+ entrada" : "+ fixo"}</button>}</span></div>
-      {fixos.length > 0 ? (
-        <ul className="pend small">
-          {fixos.map((f) => {
-            const next = (f.steps ?? []).filter((x) => x.from > m).sort((x, y) => x.from.localeCompare(y.from))[0];
-            return (
-              <li key={f.id}><span className="muted">dia {f.dia}</span> <b>{f.desc}</b> <span className="muted">{catLabel(f.cat)}</span>
-                {f.varia && <span className="tag">varia{months && fixoHistory(f, m, months).length ? ": média" : ""}</span>}
-                {f.reaj && <span className={fixoReajPending(f, m) ? "tag warn" : "tag"}>reajuste em {monthLabel(`2000-${String(f.reaj).padStart(2, "0")}`).slice(0, 3)}</span>}
-                {next && <span className="muted">{brl(next.v)} a partir de {monthLabel(next.from)}</span>}
-                {f.start && f.start > m && <span className="tag">começa em {monthLabel(f.start)}</span>}
-                {f.end && <span className={f.end < m ? "tag warn" : "tag"}>{f.end < m ? "terminou" : "até"} {monthLabel(f.end)}</span>}
-                <span>{f.varia ? "~" : ""}{brl(val(f))}</span>
-                {(() => { const b = billOf(f); if (!b) return null;
-                  return b.paid ? <span className="sit sit-paga" title={`${b.paid.desc} - ${brl(b.paid.v)}`}>{entrada ? "recebido" : "pago"} {dm(b.paid.d)}</span>
-                    : b.d < today ? <span className="sit sit-atrasada">atrasado</span> : <span className="sit sit-aberta">{entrada ? "a receber" : "a pagar"}</span>; })()}
-                {onEdit && <button className="link" onClick={() => onEdit(f.id)}>alterar</button>}</li>
-            );
-          })}
-        </ul>
-      ) : <p className="muted small">Nenhum gasto fixo cadastrado.</p>}
-      <Note>Fixos aparecem em &quot;Previstos&quot; todo mês até o pagamento aparecer: lançamento ligado a ele, mesmo valor (2%) ou,
-        se o valor varia (luz, água), um gasto da mesma categoria perto da média.</Note>
-    </section>
-  );
-}
 
 // Conta a pagar avulsa (boleto, conserto, IPVA...): aparece em Contas do mes ate ser paga; nao conta como gasto antes disso
 export function PayableForm({ setup, fixo, onDone }: { setup: GastosSetup; fixo: Fixo | null; onDone: (msg?: string) => void }) {

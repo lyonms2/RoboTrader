@@ -10,7 +10,7 @@ import type { FinItem } from "@/lib/types";
 import { CardForm, CatSelect, LoanForm, QuickAdd, saveMonth, saveSetup } from "./GastosCard";
 import { bestBuy } from "@/lib/alerts";
 import ReceivablesPart, { RecvSelect } from "./Receivables";
-import { ask, askText, tell } from "./Dialog";
+import { ask, tell } from "./Dialog";
 
 import Note from "./Note";
 import { budgetAlerts } from "./gastosShared";

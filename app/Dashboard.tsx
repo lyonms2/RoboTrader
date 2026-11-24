@@ -19,8 +19,8 @@ import Shell, { type MoreItem, type NavId } from "./Shell";
 import LaunchSheet from "./LaunchSheet";
 import type { FinView } from "./FinanceCard";
 import { ArrowLeftRight, Bitcoin, Bot, CircleHelp, RefreshCw, Settings, ShoppingCart, UserRound, Users } from "lucide-react";
-import { Button } from "./ui";
-import { CRYPTO_TABS, Modal, TabId, ago, day, fmt, priceOf } from "./dash/util";
+import { Button, Skeleton } from "./ui";
+import { CRYPTO_TABS, Modal, TabId, ago, fmt, priceOf } from "./dash/util";
 import { Overview } from "./dash/Overview";
 import { AssetCard, Performance } from "./dash/Robo";
 import { TradeForm, TradesTable } from "./dash/Trades";
@@ -28,7 +28,12 @@ import { ConfigForm, MemberConfigForm } from "./dash/ConfigForms";
 import { MembersAdmin, MyAccount } from "./dash/Members";
 const SHOW_CANDIDATES = false;
 // Abas que carregam so quando abertas (a Visao geral abre sem baixar o codigo delas)
-const loadingTab = () => <p className="muted">Carregando...</p>;
+// carregando uma tela: esqueleto no lugar do texto (some sozinho quando o codigo da tela chega)
+const loadingTab = () => (
+  <div className="ui-loading" role="status" aria-label="Carregando">
+    <Skeleton w="45%" h={22} /><Skeleton w="100%" h={120} /><Skeleton w="100%" h={64} /><Skeleton w="100%" h={64} />
+  </div>
+);
 const FinanceCard = dynamic(() => import("./FinanceCard"), { loading: loadingTab });
 const WalletCard = dynamic(() => import("./WalletCard"), { loading: loadingTab });
 const FichasCard = dynamic(() => import("./FichasCard"), { loading: loadingTab });
@@ -283,14 +288,15 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
 
   if (!firebaseConfigured && !demo)
     return <main className="wrap center"><h1>SeuBitico</h1><p className="error">Firebase não configurado: cadastre as variáveis NEXT_PUBLIC_FIREBASE_* na Vercel e faça Redeploy.</p></main>;
-  if (user === undefined || (user && role === null)) return <main className="wrap"><p>Carregando...</p></main>;
+  if (user === undefined || (user && role === null))
+    return <main className="wrap login" role="status" aria-label="Carregando"><img className="brand-mark boot" src="/seubitico-256.png" alt="" width={72} height={72} /><Skeleton w={180} h={14} /></main>;
   if (!user)
     return (
       <main className="wrap login">
         <img className="brand-mark" src="/seubitico-256.png" alt="SeuBitico" width={96} height={96} />
         <h1 className="brand-name">Seu<span className="bb">Bitico</span></h1>
         <p className="muted">Finanças pessoais e cripto num lugar só: contas, cartões, investimentos e carteira.</p>
-        <button onClick={() => signInWithPopup(auth(), new GoogleAuthProvider())}>Entrar com Google</button>
+        <Button variant="primary" className="login-btn" onClick={() => signInWithPopup(auth(), new GoogleAuthProvider())}>Entrar com Google</Button>
         <p className="muted small">Ferramenta educacional, não é recomendação de investimento.</p>
       </main>
     );

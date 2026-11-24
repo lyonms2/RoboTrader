@@ -2,6 +2,7 @@ rules_version = '2';
 // Cole no Firebase > Firestore > Regras, trocando SEU_EMAIL@gmail.com pelo seu e-mail do Google.
 // O servidor (cron e rotas) usa a conta de servico e nao passa por estas regras.
 // Dono: le tudo na raiz (como sempre). Membro: e-mail em access/{email} com role "member"; so le e grava em users/{uid}/...
+// access/{email}.until (vencimento da assinatura) e so aviso no painel: nao bloqueia o acesso.
 service cloud.firestore {
   match /databases/{database}/documents {
     function isOwner() {
@@ -44,16 +45,6 @@ service cloud.firestore {
         && request.resource.data.until is int
         && request.resource.data.until <= request.time.toMillis() + 86460000;
     }
-    // Membro com "Robo e tokens" (access/{email}.robo diferente de false): ve os sinais do robo (estudo) e as fichas publicas
-    function memberRobo() {
-      return isMember()
-        && get(/databases/$(database)/documents/access/$(request.auth.token.email.lower())).data.get("robo", true) == true;
-    }
-    match /latest/{symbol} {
-      allow read: if memberRobo();
-    }
-    match /fichas_pub/{id} {
-      allow read: if memberRobo();
-    }
+    // Sinais do robo (latest/) e fichas (fichas_pub/): so o dono, pela regra geral acima. Membro pagante nao le.
   }
 }

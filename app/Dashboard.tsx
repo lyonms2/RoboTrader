@@ -1,6 +1,6 @@
 "use client";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
-import { addDoc, collection, deleteDoc, doc, documentId, getDoc, getDocs, limitToLast, onSnapshot, orderBy, query, setDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, deleteField, doc, documentId, getDoc, getDocs, limitToLast, onSnapshot, orderBy, query, setDoc, where, writeBatch } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { P, memberBase, setDataBase, setReadOnly } from "@/lib/paths";
@@ -11,6 +11,7 @@ import { allocationBlocks, walletNotices } from "@/lib/allocation";
 import { isEvmAddress, isSolAddress, walletAddresses, walletKey } from "@/lib/addresses";
 import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
 import { health, referenceOf } from "@/lib/robotStats";
+import { dayBR, endOfDayBR, fmtBR, plusMonths, renew, subLabel, subStatus } from "@/lib/assinatura";
 import { DEFAULT_CONFIG, SYMBOLS, type AppConfig, type LatestDoc, type FichaDoc, type LighterSyncDoc, type FinanceDoc, type TradeDoc, type WalletDoc, type WalletHistoryDoc } from "@/lib/types";
 import Chart from "./Chart";
 import PerfChart from "./PerfChart";
@@ -91,7 +92,7 @@ export type Demo = {
   walletHistory: WalletHistoryDoc[]; fichas: FichaDoc | null; candidates?: CandidatesDoc | null; finance?: FinanceDoc | null;
   months?: Record<string, MonthDoc>; setup?: GastosSetup; nwHist?: NetWorthDoc[];
   member?: boolean; // demo vista como membro
-  robo?: boolean; // demo de membro com "Robo e tokens"
+  until?: number; // demo: vencimento da assinatura do membro
 };
 
 export default function Dashboard({ demo }: { demo?: Demo }) {
@@ -142,8 +143,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   useEffect(() => (demo ? undefined : firebaseConfigured ? onAuthStateChanged(auth(), setUser) : setUser(null)), [demo]);
   // Quem entrou: dono (le a raiz, como sempre), membro (access/{email} -> users/{uid}/) ou sem acesso
   const [role, setRole] = useState<"owner" | "member" | "none" | null>(demo ? (demo.member ? "member" : "owner") : null);
-  // nivel do membro: com "Robo e tokens" (padrao) ou sem
-  const [robo, setRobo] = useState(demo ? demo.robo !== false : true);
+  // vencimento da assinatura do membro (so aviso: ninguem e bloqueado por ele)
+  const [until, setUntil] = useState<number | null>(demo?.until ?? null);
   useEffect(() => {
     if (demo || !user) return;
     let alive = true;
@@ -153,7 +154,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         const a = await getDoc(doc(db(), "access", email));
         if (a.exists() && (a.data() as { role?: string }).role === "member") {
           setDataBase(memberBase(user.uid));
-          if (alive) { setRobo((a.data() as { robo?: boolean }).robo !== false); setRole("member"); }
+          if (alive) { setUntil(typeof (a.data() as { until?: unknown }).until === "number" ? (a.data() as { until: number }).until : null); setRole("member"); }
           return;
         }
       } catch { /* sem regra de acesso ainda: segue para o teste de dono */ }
@@ -168,8 +169,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     return () => { alive = false; };
   }, [user, demo]);
   const member = role === "member" || !!support;
-  // acesso ao Robo e tokens: dono sempre; membro conforme o nivel (no suporte, o dono ve como o membro ve o resto)
-  const canRobo = !member || !!support || robo;
+  // Robo e tokens: so o dono (membro pagante ve so financas e a propria carteira). No suporte, o dono continua vendo
+  const canRobo = !member || !!support;
   // a autorizacao expira sozinha
   useEffect(() => {
     if (!support) return;
@@ -198,7 +199,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     const owner = role === "owner" && !support;
     const none = () => undefined;
     const u1 = onSnapshot(doc(db(), P("config/main")), (s) => s.exists() && setCfg({ ...DEFAULT_CONFIG, ...(s.data() as AppConfig) }), onErr);
-    const u2 = !owner && !robo ? none : onSnapshot(collection(db(), "latest"), (s) => setLatest(s.docs.map((d) => d.data() as LatestDoc)), onErr);
+    const u2 = role === "member" ? none : onSnapshot(collection(db(), "latest"), (s) => setLatest(s.docs.map((d) => d.data() as LatestDoc)), onErr);
     const u3 = !owner ? none : onSnapshot(query(collection(db(), "trades"), orderBy("t", "desc")),
       (s) => setTrades(s.docs.map((d) => ({ id: d.id, ...(d.data() as TradeDoc) }))), onErr);
     const u4 = onSnapshot(doc(db(), P("wallet/main")), (s) => setWallet(s.exists() ? (s.data() as WalletDoc) : null), onErr);
@@ -220,8 +221,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     };
     const u5 = monthly<WalletHistoryDoc>("wallet_history", 13, 365, setWalletHistory);
     const u6 = !owner ? none : onSnapshot(doc(db(), "sync/lighter"), (s) => setSync(s.exists() ? (s.data() as LighterSyncDoc) : null), onErr);
-    // membro com Robo e tokens le a copia publica (sem a carteira do dono)
-    const u7 = owner || robo ? onSnapshot(doc(db(), owner ? "fichas/main" : "fichas_pub/main"), (s) => setFichas(s.exists() ? (s.data() as FichaDoc) : null), () => setFichas(null)) : none;
+    // fichas dos tokens: so o dono (no suporte ele le a copia publica, sem a carteira dele)
+    const u7 = role === "member" ? none : onSnapshot(doc(db(), owner ? "fichas/main" : "fichas_pub/main"), (s) => setFichas(s.exists() ? (s.data() as FichaDoc) : null), () => setFichas(null));
     const u8 = !owner ? none : onSnapshot(doc(db(), "candidates/main"), (s) => setCandidates(s.exists() ? (s.data() as CandidatesDoc) : null), onErr);
     const u9 = onSnapshot(doc(db(), P("finance/main")), (s) => setFinance(s.exists() ? (s.data() as FinanceDoc) : null), onErr);
     // Gastos: config/gastos-AAAA-MM (um por mes) e config/gastos-setup
@@ -237,7 +238,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     }, onErr);
     const u11 = monthly<NetWorthDoc>("patrimonio_history", 60, 1500, setNwHist);
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); u11(); };
-  }, [user, demo, role, support, robo]);
+  }, [user, demo, role, support]);
 
   // Financas (cotacoes, CDI, Tesouro) numa chamada separada: o arquivo do Tesouro e grande e nao pode atrasar os sinais
   async function refreshFinance() {
@@ -393,6 +394,13 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
       <main className="wrap">
         {support && <p className="banner support-bar"><b>Modo suporte:</b> vendo a conta de {support.email}, só leitura, até {new Date(support.until).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}.
           <button className="primary small-btn" onClick={exitSupport}>Sair do suporte</button></p>}
+        {member && !support && (() => {
+          const st = subStatus(until);
+          if (until === null || (st.s !== "atrasado" && st.s !== "vence")) return null;
+          return <p className={`banner sub-bar sub-${st.s}`}>{st.s === "atrasado"
+            ? <>Sua assinatura venceu em {fmtBR(until)}. Renove para continuar usando.</>
+            : <>Sua assinatura vence {st.dias === 0 ? "hoje" : `em ${st.dias} ${st.dias === 1 ? "dia" : "dias"}`} ({fmtBR(until)}).</>}</p>;
+        })()}
         {error && <p className="banner error">{error}</p>}
         {notice && <p className="banner">{notice}</p>}
 
@@ -409,7 +417,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
               ))}
             </nav>
             {!support && <div className="toolbar-actions">
-              <button onClick={refresh} disabled={busy} className="primary small-btn" title="Sinais do robô, carteiras, fichas dos tokens e cotações">
+              <button onClick={refresh} disabled={busy} className="primary small-btn" title={member ? "Carteiras e cotações" : "Sinais do robô, carteiras, fichas dos tokens e cotações"}>
                 {busy ? "Atualizando..." : "Atualizar"}
               </button>
               <button className="ghost icon" onClick={() => setShowCfg(true)} aria-label="Configuração do cripto" title="Configuração do cripto">
@@ -450,8 +458,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
           </>
         )}
 
-        <p className="muted small footer">Ferramenta educacional, não é recomendação de investimento. O candle diário fecha às 21:00 (Brasília).
-          Opere só na sua carteira (DEX); a Binance é usada apenas como fonte de preços.</p>
+        <p className="muted small footer">Ferramenta educacional, não é recomendação de investimento.{!member && <> O candle diário fecha às 21:00 (Brasília).
+          Opere só na sua carteira (DEX); a Binance é usada apenas como fonte de preços.</>}</p>
       </main>
       {showCfg && (
         <Modal onClose={() => setShowCfg(false)}>
@@ -459,7 +467,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         </Modal>
       )}
       {showAdmin && <Modal onClose={() => setShowAdmin(false)}><MembersAdmin onClose={() => setShowAdmin(false)} onSupport={enterSupport} /></Modal>}
-      {showAccount && user && <Modal onClose={() => setShowAccount(false)}><MyAccount user={user} onClose={() => setShowAccount(false)} /></Modal>}
+      {showAccount && user && <Modal onClose={() => setShowAccount(false)}><MyAccount user={user} subUntil={until} onClose={() => setShowAccount(false)} /></Modal>}
     </>
   );
 }
@@ -1294,75 +1302,84 @@ function MemberConfigForm({ cfg, onClose }: { cfg: AppConfig; onClose: () => voi
   );
 }
 
-// Administracao (so o dono): quem pode entrar
+// Administracao (so o dono): quem pode entrar e ate quando a assinatura esta paga (vencimento e so aviso, nao bloqueia)
+type MemberRow = { email: string; name?: string; at?: number; until?: number };
+const SUB_ORDER = { atrasado: 0, vence: 1, sem: 2, ok: 3 } as const;
 function MembersAdmin({ onClose, onSupport }: { onClose: () => void; onSupport: (x: { uid: string; email: string; until: number }) => void }) {
   const [grants, setGrants] = useState<{ uid: string; email: string; until: number }[]>([]);
   useEffect(() => onSnapshot(collection(db(), "support"), (s) => setGrants(s.docs.map((d) => ({ uid: d.id, ...(d.data() as { email: string; until: number }) }))), () => undefined), []);
-  const [list, setList] = useState<{ email: string; name?: string; at?: number; robo?: boolean }[] | null>(null);
+  const [list, setList] = useState<MemberRow[] | null>(null);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [lvl, setLvl] = useState<"robo" | "basico">("robo");
+  const [due, setDue] = useState(() => plusMonths(dayBR(Date.now())));
   const [err, setErr] = useState("");
   useEffect(() => onSnapshot(collection(db(), "access"), (s) => setList(s.docs.filter((d) => (d.data() as { role?: string }).role === "member")
-    .map((d) => ({ email: d.id, ...(d.data() as { name?: string; at?: number; robo?: boolean }) })).sort((a, b) => (b.at ?? 0) - (a.at ?? 0))),
+    .map((d) => {
+      const x = d.data() as { name?: string; at?: number; until?: unknown };
+      return { email: d.id, name: x.name, at: x.at, until: typeof x.until === "number" ? x.until : undefined };
+    })),
     (e) => setErr(e.message.includes("permission") ? "As regras do Firestore ainda não foram atualizadas (veja firestore.rules)." : e.message)), []);
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     const em = email.trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) return setErr("E-mail inválido.");
+    if (!due) return setErr("Escolha a data de vencimento.");
     setErr("");
     try {
-      await setDoc(doc(db(), "access", em), { role: "member", at: Date.now(), robo: lvl === "robo", ...(name.trim() ? { name: name.trim() } : {}) });
+      await setDoc(doc(db(), "access", em), { role: "member", at: Date.now(), until: endOfDayBR(due), ...(name.trim() ? { name: name.trim() } : {}) });
       setEmail(""); setName("");
     } catch (x) { setErr(`Não salvou: ${String(x)}`); }
   };
-  const setLevel = async (em: string, on: boolean) => {
-    try { await setDoc(doc(db(), "access", em), { robo: on }, { merge: true }); } catch (x) { setErr(`Não salvou: ${String(x)}`); }
+  const setUntil = async (em: string, v: number | null) => {
+    try { await setDoc(doc(db(), "access", em), { until: v === null ? deleteField() : v }, { merge: true }); } catch (x) { setErr(`Não salvou: ${String(x)}`); }
   };
   const remove = async (em: string) => {
     if (!(await ask(`Remover o acesso de ${em}? Os dados dele continuam guardados; ele só não entra mais.`))) return;
     await deleteDoc(doc(db(), "access", em));
   };
+  const now = Date.now();
+  const rows = (list ?? []).map((m) => ({ ...m, st: subStatus(m.until, now) }))
+    .sort((a, b) => SUB_ORDER[a.st.s] - SUB_ORDER[b.st.s] || (a.until ?? 0) - (b.until ?? 0) || (b.at ?? 0) - (a.at ?? 0));
+  const count = (k: keyof typeof SUB_ORDER) => rows.filter((r) => r.st.s === k).length;
+  const summary = [`${rows.length} ${rows.length === 1 ? "membro" : "membros"}`,
+    count("vence") && `${count("vence")} vencem esta semana`, count("atrasado") && `${count("atrasado")} ${count("atrasado") === 1 ? "atrasado" : "atrasados"}`,
+    count("sem") && `${count("sem")} sem data`].filter(Boolean).join(" · ");
   return (
     <section className="cfg">
       <div className="modal-head"><h2>Membros</h2><button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button></div>
       <p className="muted small">Só entra quem estiver nesta lista (o e-mail da conta Google). Cada membro tem os próprios dados; ninguém vê os seus nem os de outro membro.
-        Nível: &quot;com Robô e tokens&quot; vê os sinais do robô (como estudo) e as fichas dos tokens, sem nada da sua carteira; &quot;sem&quot; vê só finanças e a própria carteira cripto.
-        Mudar o nível vale no próximo acesso do membro.</p>
+        Membros veem finanças e a própria carteira cripto; o Robô e as fichas dos tokens são só seus.
+        O vencimento é só um lembrete: ninguém é bloqueado sozinho. Renove com &quot;+1 mês&quot; e remova quem não pagou.</p>
       <form className="row wrapline" onSubmit={add}>
         <label className="grow">E-mail Google<input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="membro@gmail.com" /></label>
         <label>Nome (opcional)<input value={name} onChange={(e) => setName(e.target.value)} /></label>
-        <label>Nível
-          <select value={lvl} onChange={(e) => setLvl(e.target.value as "robo" | "basico")}>
-            <option value="robo">Com Robô e tokens</option>
-            <option value="basico">Sem Robô e tokens</option>
-          </select>
-        </label>
+        <label>Vence em<input type="date" value={due} onChange={(e) => setDue(e.target.value)} /></label>
         <button className="primary" type="submit">Liberar acesso</button>
       </form>
       {err && <p className="error small">{err}</p>}
-      {list === null ? <p className="muted small">Carregando...</p> : list.length ? (
-        <ul className="pend small members">
-          {list.map((m) => (
-            <li key={m.email}><b>{m.email}</b>{m.name && <span className="muted">{m.name}</span>}
-              <select className="lvl-sel" value={m.robo === false ? "basico" : "robo"} aria-label={`Nível de ${m.email}`}
-                onChange={(e) => setLevel(m.email, e.target.value === "robo")}>
-                <option value="robo">com Robô e tokens</option>
-                <option value="basico">sem Robô e tokens</option>
-              </select>
-              <span className="muted">{m.at ? `desde ${new Date(m.at).toLocaleDateString("pt-BR")}` : ""}</span>
-              {(() => { const g = grants.find((x) => x.email === m.email && x.until > Date.now()); return g
-                ? <button className="primary small-btn" onClick={() => onSupport(g)}>Ver conta (suporte)</button> : <span className="muted">sem suporte liberado</span>; })()}
-              <button className="link" onClick={() => remove(m.email)}>remover</button></li>
-          ))}
-        </ul>
+      {list === null ? <p className="muted small">Carregando...</p> : rows.length ? (
+        <>
+          <p className="small members-sum">{summary}</p>
+          <ul className="pend small members">
+            {rows.map((m) => (
+              <li key={m.email} className={`sub-${m.st.s}`}><b>{m.email}</b>{m.name && <span className="muted">{m.name}</span>}
+                <span className={`sub-tag sub-${m.st.s}`}>{subLabel(m.st, m.until)}</span>
+                <input className="due-sel" type="date" aria-label={`Vencimento de ${m.email}`} value={m.until !== undefined ? dayBR(m.until) : ""}
+                  onChange={(e) => setUntil(m.email, e.target.value ? endOfDayBR(e.target.value) : null)} />
+                <button className="ghost small-btn" onClick={() => setUntil(m.email, renew(m.until))}>+1 mês</button>
+                {(() => { const g = grants.find((x) => x.email === m.email && x.until > Date.now()); return g
+                  ? <button className="primary small-btn" onClick={() => onSupport(g)}>Ver conta (suporte)</button> : <span className="muted">sem suporte liberado</span>; })()}
+                <button className="link" onClick={() => remove(m.email)}>remover</button></li>
+            ))}
+          </ul>
+        </>
       ) : <p className="muted small">Nenhum membro liberado ainda.</p>}
     </section>
   );
 }
 
 // Minha conta (membro): privacidade e apagar os dados
-function MyAccount({ user, onClose }: { user: User; onClose: () => void }) {
+function MyAccount({ user, subUntil, onClose }: { user: User; subUntil: number | null; onClose: () => void }) {
   const [until, setUntil] = useState<number | null>(null);
   useEffect(() => {
     try { return onSnapshot(doc(db(), "support", user.uid), (s) => setUntil(s.exists() ? (s.data() as { until: number }).until : null), () => undefined); }
@@ -1390,6 +1407,10 @@ function MyAccount({ user, onClose }: { user: User; onClose: () => void }) {
     <section className="cfg">
       <div className="modal-head"><h2>Minha conta</h2><button className="ghost icon" onClick={onClose} aria-label="Fechar">&#x2715;</button></div>
       <p className="small">Entrou como <b>{user.email}</b>.</p>
+      <h3>Assinatura</h3>
+      <p className="small">{subUntil === null ? "Sem data de vencimento registrada."
+        : subStatus(subUntil).s === "atrasado" ? <>Venceu em <b className="warn">{fmtBR(subUntil)}</b>. Renove com o SeuBitico para continuar usando.</>
+        : <>Paga até <b>{fmtBR(subUntil)}</b>. Para renovar, fale com o SeuBitico.</>}</p>
       <h3>Suporte</h3>
       {active
         ? <p className="small"><b className="warn">Suporte liberado</b> até {new Date(until!).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. O SeuBitico pode ver seus dados, sem alterar nada.

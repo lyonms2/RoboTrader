@@ -73,6 +73,15 @@ O GitHub pode atrasar execuções agendadas em alguns minutos e desativa agendam
 
 O cron (`vercel.json`) roda uma vez por dia e fica de reserva. No plano gratuito, a Vercel pode executá-lo em qualquer momento dentro da hora agendada (00:10–00:59 UTC).
 
+## Membros (assinatura manual)
+
+- No site, o botão **Membros** (só o dono) libera o e-mail Google de quem pagou, com a **data de vencimento** (padrão: daqui a 1 mês).
+- O vencimento é **só um lembrete**: ninguém é bloqueado sozinho. A lista mostra primeiro os atrasados (vermelho) e os que vencem em até 7 dias (amarelo).
+  Quando o membro pagar, clique em **+1 mês**; quem não pagou, clique em **remover** (os dados dele continuam guardados).
+- O membro vê um aviso no topo do site uma semana antes de vencer, e a data em **Minha conta**.
+- Membros veem finanças e a própria carteira cripto. **O Robô e as fichas dos tokens são só do dono.**
+- Ao atualizar o [`firestore.rules`](firestore.rules), cole o arquivo de novo em **Firestore → Regras** e clique em Publicar.
+
 ## Desenvolvimento local
 
 ```bash

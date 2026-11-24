@@ -96,11 +96,14 @@ const TOPICS: { group: string; items: Topic[] }[] = [
     { title: "Salvar o preço dos produtos e ver se está caro", steps: [
       "Digite o preço de um item da lista: ele fica salvo no produto, com a data.",
       "Na próxima lista, o item já vem com o último preço. Mudou o preço? O site compara: menor preço, barato, na média ou caro (+%).",
-      "Em \"Produtos salvos\" você vê último, menor e média de cada produto e pode salvar um preço sem estar comprando.",
+      "Em \"Produtos salvos\", toque num produto para abrir a ficha: o histórico de preços com data e mercado, o menor, a média e o maior.",
+      "Errou um preço? Na ficha, use o lápis para corrigir valor, data ou mercado, a lixeira para apagar, ou a seta para mover o preço para o produto certo.",
+      "Dois nomes para o mesmo produto? Use \"Juntar com outro produto\" (ou renomeie para o nome do outro). Na lista, \"ver histórico\" abre a ficha do item.",
     ], tips: ["Use sempre o mesmo nome e o preço da mesma unidade (ex.: o pacote de 5 kg), para a comparação fazer sentido."] },
     { title: "Lista de compras inteligente", steps: [
       "Mercado de hoje: escolha no topo da lista; os preços digitados ficam com o mercado e a tabela mostra onde cada produto saiu mais barato.",
-      "Tamanho da embalagem (Produtos salvos, \"+ tamanho\"): aparece o preço por kg/litro, para comparar pacotes diferentes.",
+      "Tamanho e grupo (na ficha do produto): com o tamanho aparece o preço por kg/litro. Produtos no mesmo grupo (ex.: \"Café 500 g\") ficam juntos, e o mais barato por kg/litro é marcado. O site não junta produtos sozinho.",
+      "Nota fiscal: o item que você já ligou antes vem \"ligado\"; o resto vem como produto novo, com \"parece ser X\" para você confirmar.",
       "Depois de 2 compras terminadas, o site sabe de quanto em quanto tempo você compra cada coisa e mostra \"Está na hora de comprar\".",
       "\"Bom para estocar\": item que você compra sempre, no menor preço da sua história.",
       "Sua inflação no mercado: quanto os seus produtos subiram em 3, 6 e 12 meses, ao lado do IPCA.",

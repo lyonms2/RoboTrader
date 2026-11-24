@@ -1045,16 +1045,17 @@ export function AccountForm({ acc, canRemove, onSave, onCancel, onRemove }: {
 }
 
 // Lancamento rapido: categoria sugerida pela descricao; no cartao pode ser parcelado
-export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta", onAdded }: {
+export function QuickAdd({ months, setup, invest, defaultDate, mode = "conta", onAdded, preset }: {
   months: Record<string, MonthDoc>; setup: GastosSetup; invest: FinItem[]; defaultDate: string; mode?: "conta" | "cartao";
+  preset?: "gasto" | "entrada" | "transfer"; // folha Lancar: ja abre como gasto, entrada ou transferencia entre contas
   onAdded?: (card: string, d: string) => void; // compra no cartao lancada: mostra a fatura onde ela caiu
 }) {
   const [done, setDone] = useState("");
   const [d, setD] = useState(defaultDate);
   const [desc, setDesc] = useState("");
   const [v, setV] = useState("");
-  const [entrada, setEntrada] = useState(false);
-  const [cat, setCat] = useState<string | null>(null);
+  const [entrada, setEntrada] = useState(preset === "entrada");
+  const [cat, setCat] = useState<string | null>(preset === "transfer" ? TRANSFER_CAT : null);
   const accs = accountsOf(setup);
   const [src, setSrc] = useState(mode === "cartao" && setup.cards[0] ? `card:${setup.cards[0].id}` : `acc:${accs[0].id}`); // "acc:id" ou "card:id"
   const card = src.startsWith("card:") ? src.slice(5) : "";

@@ -16,15 +16,12 @@ import { BalanceEq, FinBar } from "./OverviewBlocks";
 export { MonthAndUpcoming, NetWorthBlock, PatrimonioCard } from "./OverviewBlocks";
 import ExportData from "./ExportData";
 import ShoppingList from "./ShoppingList";
+import { Segmented } from "./ui";
 // membro: dados em users/{uid}/ (o dono exporta tambem as operacoes manuais)
 const isMemberBase = () => P("").startsWith("users/");
 // Resumo = ver como esta; Lancamentos = unico lugar onde o dinheiro se move; Contas e bens = unico lugar com saldos e cadastros
 // O resumo (patrimonio, mes, proximos pagamentos, evolucao) fica na Visao geral
 export type Sub = "lanc" | "invest" | "cards" | "bens" | "compras";
-const SUBS: { id: Sub; label: string }[] = [
-  { id: "bens", label: "Contas e bens" }, { id: "lanc", label: "Lançamentos" }, { id: "invest", label: "Investimentos" },
-  { id: "cards", label: "Cartões e empréstimos" }, { id: "compras", label: "Lista de compras" },
-];
 const OLD_SUB: Record<string, Sub> = { gastos: "lanc", dividas: "bens", resumo: "lanc", loans: "cards", recv: "cards" };
 
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -49,25 +46,37 @@ const KINDS: { key: FinKind; label: string; hint: string }[] = [
 ];
 
 // Aba Financas: tudo num lugar so (cripto das carteiras + reserva, Tesouro, acoes/FIIs e outros), em reais
-export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spend, debt, months, setup }: {
+export type FinView = "mes" | "patrimonio" | "compras";
+const PAT_SUBS: { id: Sub; label: string }[] = [
+  { id: "bens", label: "Contas e bens" }, { id: "invest", label: "Investimentos" }, { id: "cards", label: "Cartões e empréstimos" },
+];
+export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spend, debt, months, setup, view, onView }: {
   cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; onChanged: () => void; onQuotes?: () => Promise<void>;
   spend: { value: number; months: number } | null; // media de gastos
   debt: { total: number; loans: number; cards: number; recv: number };
   months: Record<string, MonthDoc>; setup: GastosSetup;
+  view: FinView; onView: (v: FinView) => void; // Mes = Lancamentos; Patrimonio = contas e bens, investimentos, cartoes; Lista de compras
 }) {
-  // Sub-aba aberta, lembrada neste navegador
-  const [sub, setSubState] = useState<Sub>(() => {
+  // Parte do Patrimonio aberta, lembrada neste navegador
+  const [patSub, setSubState] = useState<Sub>(() => {
     try {
       const raw = localStorage.getItem("finSub") ?? "";
       const v = (OLD_SUB[raw] ?? raw) as Sub;
-      return SUBS.some((x) => x.id === v) ? v : "bens";
+      return PAT_SUBS.some((x) => x.id === v) ? v : "bens";
     } catch {
       return "bens";
     }
   });
+  const sub: Sub = view === "mes" ? "lanc" : view === "compras" ? "compras" : patSub;
   const setSub = (v: Sub) => {
-    setSubState(v);
-    try { localStorage.setItem("finSub", v); } catch { /* sem armazenamento */ }
+    if (PAT_SUBS.some((x) => x.id === v)) {
+      setSubState(v);
+      try { localStorage.setItem("finSub", v); } catch { /* sem armazenamento */ }
+      if (view !== "patrimonio") onView("patrimonio");
+    } else if (v === "lanc" || v === "compras") {
+      const to: FinView = v === "lanc" ? "mes" : "compras";
+      if (view !== to) onView(to);
+    }
     window.scrollTo({ top: 0 });
   };
   const [entry, setEntry] = useState<{ type: EntryType; id: string | null }>({ type: "mov", id: null });
@@ -126,12 +135,9 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   const invMonthly = invRows.filter((r) => !r.item.ignore).reduce((t, r) => t + (r.monthly ?? 0), 0);
   const bemRows = rows.filter((r) => r.item.kind === "bem");
 
-  const nav = (
-    <nav className="subtabs" role="tablist" aria-label="Finanças">
-      {SUBS.map((x) => (
-        <button key={x.id} role="tab" aria-selected={sub === x.id} className={sub === x.id ? "pill on" : "pill"} onClick={() => setSub(x.id)}>{x.label}</button>
-      ))}
-    </nav>
+  // so o Patrimonio tem partes; Mes e Lista de compras sao uma tela so
+  const nav = view !== "patrimonio" ? null : (
+    <div className="pat-nav"><Segmented label="Patrimônio" value={patSub} onChange={setSub} options={PAT_SUBS} /></div>
   );
   const entryPanel = (
     <EntryPanel entry={entry} setEntry={setEntry} months={months} setup={setup} invest={items} fin={fin}

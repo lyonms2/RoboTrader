@@ -461,13 +461,16 @@ export const fixoReajPending = (f: Fixo, m: string) =>
   !!f.reaj && Number(m.slice(5, 7)) === f.reaj && !(f.steps ?? []).some((s) => s.from.slice(0, 4) === m.slice(0, 4));
 
 // Contas do mes: cada fixo e parcela de emprestimo, com o lancamento que pagou (ou nenhum).
-// Pago quando ha: 1) lancamento ligado a ele; 2) descricao ja aprendida ou com o nome do fixo (ex.: "CELESC" no extrato);
-// 3) valor que varia: mesma categoria + nome parecido; 4) mesmo valor (2%) na mesma categoria; 5) mesmo valor em qualquer
-// categoria (aluguel por Pix cai em "Pix e transferencias"). O "como" aparece na tela, com "nao e este" para desfazer.
+// Conta fixa paga sozinha so quando: 1) ha lancamento ligado a ela; 2) a descricao ja foi aprendida ou tem o nome da conta
+// (ex.: "CELESC" no extrato) com valor proximo. Valor parecido (2%), na mesma categoria ou em outra (aluguel por Pix cai em
+// "Pix e transferencias"), vira so SUGESTAO: aparece "parece ser" e voce confirma ou diz que nao e.
+// Compra no cartao so conta para a conta que e paga naquele cartao. Parcela de emprestimo: valor da parcela (2%) na
+// categoria Emprestimos ainda conta sozinha. O "como" aparece na tela, com "alterar" para desfazer.
 export type BillHow = "ligado" | "nome" | "valor-cat" | "valor";
 export type Bill = {
   ref: string; desc: string; v: number; cat: string; d: string; card?: string; parc?: [number, number]; varia?: boolean; reaj?: boolean;
   fixo?: boolean; once?: boolean; entrada?: boolean; paid?: Gasto; how?: BillHow;
+  sug?: Gasto; sugHow?: BillHow; // so sugestao (valor parecido): nao conta como pago ate voce confirmar
 };
 // Conta a pagar avulsa: aparece no mes do vencimento; se ficou sem pagar, continua no mes atual (atrasada) ate ser paga
 function onceSettled(f: Fixo, setup: GastosSetup, months: Record<string, MonthDoc> | undefined, before: string) {
@@ -489,20 +492,34 @@ export function billActive(f: Fixo, m: string, setup: GastosSetup, months?: Reco
 const nameWords = (s: string) => plain(s).split(" ").filter((w) => w.length > 3 && !/^(conta|pagamento|parcela|boleto)$/.test(w));
 export function monthBills(m: string, items: Gasto[], setup: GastosSetup, months?: Record<string, MonthDoc>): Bill[] {
   const used = new Set<string>();
-  const match = (ref: string, v: number, cat: string, k?: number, opt: { name?: (i: Gasto) => boolean; not?: string[] } = {}): [Gasto, BillHow] | null => {
-    // lancamento ligado a outra parcela (ex.: parcela atrasada paga neste mes) nao conta para esta
-    const free = items.filter((i) => !used.has(i.id) && i.tipo === "gasto" && !(i.ref && i.ref !== ref) && !(k && i.ref === ref && i.parc && i.parc[0] !== k)
-      && !(opt.not ?? []).includes(i.id));
+  const suggested = new Set<string>();
+  type Opt = { name?: (i: Gasto) => boolean; not?: string[]; card?: string };
+  const pool = (ref: string, k: number | undefined, opt: Opt) =>
+    // lancamento ligado a outra parcela (ex.: parcela atrasada paga neste mes) nao conta para esta.
+    // Compra no cartao: so para a conta paga naquele cartao (uma compra qualquer de valor parecido nao paga a conta)
+    items.filter((i) => !used.has(i.id) && i.tipo === "gasto" && !(i.ref && i.ref !== ref) && !(k && i.ref === ref && i.parc && i.parc[0] !== k)
+      && !(opt.not ?? []).includes(i.id) && (i.ref === ref || !i.card || i.card === opt.card));
+  const close = (i: Gasto, v: number) => Math.abs(i.v - v) <= v * 0.02;
+  const match = (ref: string, v: number, cat: string, k?: number, opt: Opt = {}): [Gasto, BillHow] | null => {
+    const free = pool(ref, k, opt);
     const tries: [Gasto | undefined, BillHow][] = [
       [free.find((i) => i.ref === ref), "ligado"],
       [opt.name ? free.find((i) => !i.ref && opt.name!(i)) : undefined, "nome"],
-      [free.find((i) => !i.ref && i.cat === cat && Math.abs(i.v - v) <= v * 0.02), "valor-cat"],
-      [k ? undefined : free.find((i) => !i.ref && Math.abs(i.v - v) <= v * 0.02), "valor"],
+      // parcela de emprestimo: o valor da parcela na categoria Emprestimos e sinal forte
+      [k ? free.find((i) => !i.ref && i.cat === cat && close(i, v)) : undefined, "valor-cat"],
     ];
     const hit = tries.find(([g]) => g);
     if (!hit) return null;
     used.add(hit[0]!.id);
     return [hit[0]!, hit[1]];
+  };
+  // so sugestao: valor parecido (mesma categoria primeiro). Nao marca como pago e nao tira o lancamento de outra conta
+  const suggest = (ref: string, v: number, cat: string, opt: Opt = {}): [Gasto, BillHow] | null => {
+    const free = pool(ref, undefined, opt).filter((i) => !i.ref && !suggested.has(i.id));
+    const g = free.find((i) => i.cat === cat && close(i, v)) ?? free.find((i) => close(i, v));
+    if (!g) return null;
+    suggested.add(g.id);
+    return [g, g.cat === cat ? "valor-cat" : "valor"];
   };
   const out: Bill[] = [];
   for (const f of setup.fixos) {
@@ -512,10 +529,17 @@ export function monthBills(m: string, items: Gasto[], setup: GastosSetup, months
     // pelo nome: descricao aprendida, ou o nome do fixo no texto do extrato; valor que varia aceita ate 50% de diferenca
     const name = (i: Gasto) => fixoLinked(f, i)
       || (words.length > 0 && words.some((w) => plain(i.desc).includes(w)) && Math.abs(i.v - v) <= v * (f.varia ? 0.5 : 0.1));
-    const r = match(f.id, v, f.cat, undefined, { name, not: f.notIds });
+    const r = match(f.id, v, f.cat, undefined, { name, not: f.notIds, card: f.card });
     out.push({ ref: f.id, desc: f.desc, v, cat: f.cat, d: f.once && f.due ? f.due : dayIn(m, f.dia), card: f.card, varia: f.varia, reaj: fixoReajPending(f, m), fixo: true,
       ...(f.once ? { once: true } : {}),
       ...(r ? { paid: r[0], how: r[1] } : {}) });
+  }
+  // sugestoes depois de todas as ligacoes certas, so para as contas fixas que ficaram sem pagamento
+  for (const b of out) {
+    if (b.paid) continue;
+    const f = setup.fixos.find((x) => x.id === b.ref);
+    const s = suggest(b.ref, b.v, b.cat, { not: f?.notIds, card: f?.card });
+    if (s) { b.sug = s[0]; b.sugHow = s[1]; }
   }
   for (const l of setup.loans) {
     const k = loanInstallment(l, m);

@@ -20,7 +20,7 @@
 .home-stat-btn > .ui-stat { height: 100%; box-sizing: border-box; }
 .home-stat-btn:hover > .ui-stat { border-color: var(--line-strong); background: var(--surface-2); }
 .home-stat-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.ui-stats.scroll > .home-stat-btn { flex: 0 0 132px; scroll-snap-align: start; }
+.ui-stats.scroll > .home-stat-btn { flex: 0 0 auto; min-width: 132px; scroll-snap-align: start; }
 
 /* Para hoje: linha tocavel + X de dispensar ao lado */
 .home-todo { display: flex; align-items: stretch; }

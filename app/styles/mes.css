@@ -107,3 +107,6 @@ button.mes-bill-txt:not(:disabled):hover .mes-bill-name { text-decoration: under
   .mes-selbar { bottom: var(--s-4); }
 }
 .mes-undo { flex: none; color: var(--text-3); }
+/* centavos menores no resumo do mes (cabe no celular sem arredondar) */
+.mes-stats .ui-money.size-lg { letter-spacing: 0; font-weight: 700; }
+.mes-stats .ui-money .cents { font-size: 0.72em; }

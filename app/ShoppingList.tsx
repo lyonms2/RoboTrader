@@ -369,7 +369,7 @@ export default function ShoppingList({ months, setup, ipca12m }: { months: Recor
       <Stats cols={3}>
         <Stat compact label="A comprar" value={<span className="ui-money size-md">{open.length}</span>} />
         <Stat compact label="No carrinho" value={<span className="ui-money size-md">{done.length}</span>} />
-        <Stat compact label="Estimado" value={<Money value={est(data.items)} size="md" cents={false} />} />
+        <Stat compact label="Estimado" value={<Money value={est(data.items)} size="md" />} />
       </Stats>
 
       <UiCard className="shop-addcard">

@@ -310,18 +310,18 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
       </div>
       <div className="mes-head">
         <div className="mes-stats">
-          <Stat compact label="Entrou" value={<Money value={s.receitas} cents={false} prefix="" />} />
-          <Stat compact label="Saiu" value={<Money value={s.gastos} cents={false} prefix="" tone={avg && s.gastos > avg.value * 1.1 ? "warn" : undefined} />} />
-          <Stat compact label="Sobrou" value={<Money value={s.receitas - s.gastos} cents={false} prefix="" tone="auto" />} />
-          <Stat compact label="A receber" value={<Money value={toGet} cents={false} prefix="" tone={toGet > 0 ? "pos" : undefined} />} />
-          <Stat compact label="A pagar" value={<Money value={pendingTotal} cents={false} prefix="" tone={pendingTotal > 0 ? "warn" : undefined} />} />
+          <Stat compact label="Entrou" value={<Money size="lg" value={s.receitas} prefix="" />} />
+          <Stat compact label="Saiu" value={<Money size="lg" value={s.gastos} prefix="" tone={avg && s.gastos > avg.value * 1.1 ? "warn" : undefined} />} />
+          <Stat compact label="Sobrou" value={<Money size="lg" value={s.receitas - s.gastos} prefix="" tone="auto" />} />
+          <Stat compact label="A receber" value={<Money size="lg" value={toGet} prefix="" tone={toGet > 0 ? "pos" : undefined} />} />
+          <Stat compact label="A pagar" value={<Money size="lg" value={pendingTotal} prefix="" tone={pendingTotal > 0 ? "warn" : undefined} />} />
         </div>
         <p className="mes-line">
-          {(toGet > 0 || pendingTotal > 0) && <>Previsto no fim do mês: entra {brl(s.receitas + toGet, 0)}, sai {brl(s.gastos + pendingTotal, 0)},
-            sobra <b className={s.receitas + toGet - s.gastos - pendingTotal >= 0 ? "pos" : "neg"}>{brl(s.receitas + toGet - s.gastos - pendingTotal, 0)}</b><br /></>}
-          {avg ? <>média de gastos {brl(avg.value, 0)}</> : "a média aparece no 2º mês"}
+          {(toGet > 0 || pendingTotal > 0) && <>Previsto no fim do mês: entra {brl(s.receitas + toGet)}, sai {brl(s.gastos + pendingTotal)},
+            sobra <b className={s.receitas + toGet - s.gastos - pendingTotal >= 0 ? "pos" : "neg"}>{brl(s.receitas + toGet - s.gastos - pendingTotal)}</b><br /></>}
+          {avg ? <>média de gastos {brl(avg.value)}</> : "a média aparece no 2º mês"}
           {s.receitas > 0 && <> · sobrou {fmt(((s.receitas - s.gastos) / s.receitas) * 100, 0)}% das entradas</>}
-          {acSt.rows.some((r) => r.used || r.informed) && <> · {isNow ? "nas contas hoje" : "nas contas no fim do mês"} <b className={acSt.end < 0 ? "neg" : ""}>{brl(acSt.end, 0)}</b>
+          {acSt.rows.some((r) => r.used || r.informed) && <> · {isNow ? "nas contas hoje" : "nas contas no fim do mês"} <b className={acSt.end < 0 ? "neg" : ""}>{brl(acSt.end)}</b>
             {!acSt.allInformed && <span className="warn"> (confira o saldo)</span>}</>}
         </p>
       </div>
@@ -341,7 +341,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
               {showPaid ? "esconder as pagas" : `ver ${paidBills.length > 1 ? `as ${paidBills.length} contas pagas` : "a conta paga"}`}</button>}
           </div>
         ) : <UiCard><p className="mes-empty">Nenhuma conta a pagar neste mês. Cadastre aluguel, internet, luz… e o site avisa quando vencer e liga ao extrato sozinho.</p></UiCard>}
-        {pendingTotal > 0 && <p className="mes-line">Falta pagar {brl(pendingTotal)} · previsto no mês {brl(s.gastos + pendingTotal, 0)}</p>}
+        {pendingTotal > 0 && <p className="mes-line">Falta pagar {brl(pendingTotal)} · previsto no mês {brl(s.gastos + pendingTotal)}</p>}
         {(incomes.length > 0 || onFixo) && (
           <div className="mes-subhead"><b>Entradas fixas</b>
             <span>{incomes.length ? `${incomes.length - incLeft.length} de ${incomes.length} recebidas` : ""}</span>
@@ -360,7 +360,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
                     <span className="mes-bill-txt"><span className="mes-bill-name">{x.r.name} ({x.row.k + 1}/{x.r.n})</span>
                       <span className="mes-bill-tags">{x.row.status === "atrasada" && <Badge tone="neg">atrasada</Badge>}
                         {got && <span className="mes-bill-sub">{x.row.via === "extrato" && x.row.g ? `recebido em ${dm(x.row.g.d)}` : x.row.via === "antes" ? "recebido antes do cadastro" : `marcado como recebido${x.row.d ? ` em ${dm(x.row.d)}` : ""}`}</span>}</span></span>
-                    <span className="mes-bill-v pos">+{brl(x.row.v ?? x.r.parcela, 0)}</span>
+                    <span className="mes-bill-v pos">+{brl(x.row.v ?? x.r.parcela)}</span>
                     {got ? <span className="mes-ok"><Check size={14} aria-hidden="true" /></span>
                       : <Button variant="primary" size="sm" onClick={() => setPay({ kind: "recv", id: x.r.id, k: x.row.k })}>Recebi</Button>}
                   </div>
@@ -374,7 +374,7 @@ export default function GastosCard({ months, setup, invest = [], onBens, onCard,
       <BudgetCard months={months} setup={setup} m={m} onCard={onCard} />
 
       {cats.length > 0 && (
-        <Fold title="Por categoria" meta={`${brl(s.gastos, 0)} em gastos`}>
+        <Fold title="Por categoria" meta={`${brl(s.gastos)} em gastos`}>
           <UiCard>
             <figure className="viz">
               <figcaption className="small muted">{prevAvg.n ? <><i className="tick-key" /> média dos {prevAvg.n} meses anteriores · </> : ""}toque para filtrar os lançamentos</figcaption>
@@ -1408,7 +1408,7 @@ function MonthsChart({ months, current, onPick }: { months: Record<string, Month
     <figure className="viz">
       <figcaption className="small muted">
         Últimos 6 meses <i className="key k-in" /> entradas <i className="key k-out" /> gastos
-        {h ? ` - ${monthLabel(h.m)}: entradas ${brl(h.receitas, 0)}, gastos ${brl(h.gastos, 0)}` : ""}
+        {h ? ` - ${monthLabel(h.m)}: entradas ${brl(h.receitas)}, gastos ${brl(h.gastos)}` : ""}
       </figcaption>
       <div className="mbars six" onMouseLeave={() => setHover(null)}>
         {list.map((x, i) => (
@@ -1832,12 +1832,12 @@ function BudgetCard({ months, setup, m, onCard }: { months: Record<string, Month
     <div key={key} className="mes-budget">
       <div className="mes-budget-top"><span className="mes-budget-name">{name}</span><span className="mes-budget-num">{fmt(used, 0)} / {fmt(lim, 0)}</span></div>
       <Progress value={used / lim} label={typeof name === "string" ? name : undefined} />
-      <div className="mes-budget-foot"><span className={used > lim || note ? "warn" : ""}>{note ?? (used > lim ? `passou ${brl(used - lim, 0)}` : `sobram ${brl(lim - used, 0)}`)}</span>{act}</div>
+      <div className="mes-budget-foot"><span className={used > lim || note ? "warn" : ""}>{note ?? (used > lim ? `passou ${brl(used - lim)}` : `sobram ${brl(lim - used)}`)}</span>{act}</div>
     </div>
   );
   return (
     <Fold title="Orçamento" defaultOpen={hot} count={list.filter(([c, lim]) => isGasto(c) && (spent[c] ?? 0) > lim).length || undefined} countTone="neg"
-      meta={list.length ? `${brl(totalSpent, 0)} de ${brl(totalLim, 0)}` : undefined}
+      meta={list.length ? `${brl(totalSpent)} de ${brl(totalLim)}` : undefined}
       action={<Button variant="link" size="sm" icon={adding ? undefined : <Plus size={14} aria-hidden="true" />} onClick={() => setAdding(!adding)}>{adding ? "fechar" : "categoria"}</Button>}>
       {adding && (
         <UiCard>

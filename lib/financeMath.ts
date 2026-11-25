@@ -22,6 +22,8 @@ export type FinRow = {
   note: string;
   problem: string | null; // por que nao ha valor
   stale: string | null; // aviso de valor desatualizado
+  // cofrinho: como o valor foi calculado (saldo base, rendimento, movimentos) e o bruto/liquido
+  calc?: { base: number; at: number; gain: number; flows: Flow[]; gross: number; net: number | null; checkedDay: string; diff: number | null };
 };
 
 const DAY = 86_400_000;
@@ -41,10 +43,27 @@ export const cdiYear = (f: FinanceDoc | null) => {
 // Fator de rendimento de um % do CDI nos dias uteis a partir de "from", inclusive (sem IR).
 // O banco credita o CDI do dia D na manha de D+1: o saldo visto no dia X ja tem ate X-1, entao o dia X ainda falta.
 // A serie do Banco Central vai ate ontem, que e o ultimo rendimento que o banco ja creditou hoje.
-export function cdiFactor(f: FinanceDoc, from: string, pct: number) {
+export function cdiFactor(f: FinanceDoc, from: string, pct: number, to?: string) {
   let fac = 1;
-  for (let i = 0; i < f.cdi.d.length; i++) if (f.cdi.d[i] >= from) fac *= 1 + (f.cdi.v[i] / 100) * pct;
+  for (let i = 0; i < f.cdi.d.length; i++) if (f.cdi.d[i] >= from && (!to || f.cdi.d[i] < to)) fac *= 1 + (f.cdi.v[i] / 100) * pct;
   return fac;
+}
+
+// IR da renda fixa (tabela regressiva) e IOF dos primeiros 30 dias, sobre o rendimento
+export const irRate = (days: number) => (days <= 180 ? 0.225 : days <= 360 ? 0.2 : days <= 720 ? 0.175 : 0.15);
+export const iofRate = (days: number) => (days >= 30 ? 0 : Math.max(0, (30 - days) / 30) * 0.96);
+
+// % do CDI que o cofrinho rendeu de verdade entre duas conferencias (saldo do banco), contando os movimentos ligados
+// no meio. Busca binaria: o fator cresce com o %. null = poucos dias uteis, sem dados ou fora de 0-300%
+export function impliedCdiPct(f: FinanceDoc, a: { d: string; v: number }, b: { d: string; v: number }, flows: Flow[]) {
+  const days = f.cdi.d.filter((d) => d >= a.d && d < b.d).length;
+  if (days < 5 || !(a.v > 0)) return null;
+  const mid = flows.filter((x) => x.d > a.d && x.d <= b.d);
+  const at = (pct: number) => a.v * cdiFactor(f, a.d, pct, b.d) + mid.reduce((s, x) => s + x.v * cdiFactor(f, x.d, pct, b.d), 0);
+  let lo = 0, hi = 3;
+  if (at(lo) > b.v || at(hi) < b.v) return null;
+  for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if (at(m) < b.v) lo = m; else hi = m; }
+  return (lo + hi) / 2;
 }
 
 // Proventos por cota nos ultimos 12 meses
@@ -74,7 +93,10 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     // Movimentos ligados ate a data do saldo ja estao dentro dele (mostra para nao parecer que sumiram)
     const inside = flows.length - fl.length;
     const incl = inside > 0 ? ` (${inside} ${inside > 1 ? "movimentos anteriores já estão" : "movimento anterior já está"} nesse saldo)` : "";
-    if (!f?.cdi.d.length) return { ...r, value: bal + net, cost: bal + net, note: `${fmtP(pct)} do CDI${tier} - saldo de ${fmtD(at)}${incl}${moved}`, problem: null };
+    const last0 = item.checks?.[item.checks.length - 1];
+    const checked = { checkedDay: last0 && last0.d >= dayBR(at) ? last0.d : dayBR(at), diff: last0 && last0.d === dayBR(at) ? last0.bank - last0.est : null };
+    if (!f?.cdi.d.length) return { ...r, value: bal + net, cost: bal + net, note: `${fmtP(pct)} do CDI${tier} - saldo de ${fmtD(at)}${incl}${moved}`, problem: null,
+      calc: { base: bal, at, gain: 0, flows: fl, gross: bal + net, net: null, ...checked } };
     const v2 = p2 ? p2.v * cdiFactor(f, dayBR(at), p2.pct) : 0;
     const value = (bal - (p2?.v ?? 0)) * cdiFactor(f, dayBR(at), pct) + v2 + fl.reduce((s, x) => s + x.v * cdiFactor(f, x.d, pct), 0);
     const y1 = (1 + cdiDaily(f)! * pct) ** 252 - 1;
@@ -82,9 +104,15 @@ export function financeRow(item: FinItem, f: FinanceDoc | null, flows: Flow[] = 
     // taxa media pesada pelo valor de cada parte
     const year = value > 0 ? ((value - v2) * y1 + v2 * y2) / value : y1;
     const days = Math.floor((Date.now() - at) / DAY);
+    // liquido: o rendimento estimado desde o saldo informado paga IR (pela idade da aplicacao) e IOF nos 1os 30 dias
+    const gain = value - (bal + net);
+    const age = Math.floor((Date.now() - (item.since ?? at)) / DAY);
+    const netValue = item.shows === "liquido" ? bal + net + gain * (1 - iofRate(age)) * (1 - irRate(age)) : null;
+    const calc = { base: bal, at, gain, flows: fl, gross: value, net: netValue, ...checked };
+    const shown = netValue ?? value;
     return {
-      ...r, value, cost: bal + net, monthly: monthlyOf(value, year), yieldYear: year,
-      note: `${(pct * 100).toLocaleString("pt-BR")}% do CDI${tier} - saldo de ${fmtD(at)}${incl}${moved} + rendimento estimado`,
+      ...r, value: shown, cost: bal + net, monthly: monthlyOf(shown, year) * (netValue !== null ? 1 - irRate(age) : 1), yieldYear: year, calc,
+      note: `${(pct * 100).toLocaleString("pt-BR")}% do CDI${tier} - saldo de ${fmtD(at)}${incl}${moved} + rendimento estimado${netValue !== null ? " (líquido de IR)" : ""}`,
       stale: days > 60 ? `saldo informado há ${days} dias: confira no app do banco` : null,
     };
   }

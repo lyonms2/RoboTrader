@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState, type ReactNode } from "react";
-import { ArrowDownLeft, Bot, CalendarClock, CheckCircle2, ChevronRight, Coins, CreditCard, Lightbulb, ListChecks, Plus, Repeat, TrendingDown, TrendingUp, TriangleAlert, Wallet, X } from "lucide-react";
+import { ArrowDownLeft, Bot, CalendarClock, CheckCircle2, ChevronRight, Coins, CreditCard, Lightbulb, ListChecks, PiggyBank, Plus, Repeat, TrendingDown, TrendingUp, TriangleAlert, Wallet, X } from "lucide-react";
 import { allocOf } from "@/lib/positions";
 import { allocationBlocks, walletNotices } from "@/lib/allocation";
 import { walletAddresses, walletKey } from "@/lib/addresses";
@@ -23,7 +23,7 @@ export type Money = Ctx & { nwHist: NetWorthDoc[] };
 // Visao geral: patrimonio, o que fazer hoje, o mes e os proximos pagamentos, evolucao e, depois, o robo e a cripto
 export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, money, onFin, onLaunch }: {
   member?: boolean; cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null;
-  sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub | "loans" | "recv") => void; onLaunch?: () => void;
+  sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub | "loans" | "recv", open?: string) => void; onLaunch?: () => void;
 }) {
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
   const [allTodo, setAllTodo] = useState(false);
@@ -46,7 +46,7 @@ export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, on
   const realized = Object.values(cfg.realized ?? {}).reduce((a, b) => a + b, 0);
 
   // O que fazer hoje: sinais do robo, acoes das fichas e avisos da carteira
-  type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId; fin?: FinSub | "loans" | "recv"; prio?: number; id?: string };
+  type Todo = { tone: "buy" | "sell" | "warn" | "info"; who: string; text: string; tab: TabId; fin?: FinSub | "loans" | "recv"; prio?: number; id?: string; open?: string };
   const todo: Todo[] = [];
   // Sinais do robo: uma linha so (os detalhes ficam na aba Robo). Previas nao entram aqui
   const sigs: { coin: string; sell: boolean; usd: number }[] = [];
@@ -96,6 +96,20 @@ export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, on
       if (!b.paid && b.d < t0) todo.push({ tone: "info", who: "Receber", prio: 2, id: `inc:${b.ref}:${cm}`, tab: "financas", fin: "lanc",
         text: `${b.desc} costuma cair até o dia ${b.d.slice(8, 10)} e ainda não veio no extrato (R$\u00a0${fmt(b.v)})` });
   }
+  // cofrinho sem conferir com o app do banco ha mais de 30 dias (o estimado vai se afastando do real)
+  {
+    const t0 = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
+    for (const it of money.cfg.finance ?? []) {
+      if (it.kind !== "caixa" || it.ignore) continue;
+      const lastCheck = it.checks?.[it.checks.length - 1]?.d ?? "";
+      const atDay = it.balanceAt ? new Date(it.balanceAt - 3 * 3_600_000).toISOString().slice(0, 10) : "";
+      const last = lastCheck > atDay ? lastCheck : atDay;
+      if (!last) continue;
+      const dd = Math.floor((Date.parse(`${t0}T12:00:00Z`) - Date.parse(`${last}T12:00:00Z`)) / 86_400_000);
+      if (dd > 30) todo.push({ tone: "info", who: "Cofrinho", prio: 2, id: `chk:${it.id}:${t0.slice(0, 7)}`, tab: "financas", fin: "invest", open: it.id,
+        text: `Confira o saldo de ${it.name} no app do banco (última conferência há ${dd} dias)` });
+    }
+  }
   const rc = reviewCount(money.months, money.setup);
     if (rc) todo.push({ tone: "info", who: "Finanças", text: `${rc} ${rc > 1 ? "pontos" : "ponto"} para revisar nos lançamentos (para os números ficarem certos)`, tab: "financas", fin: "lanc" });
 
@@ -125,7 +139,7 @@ export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, on
   const alloc = allocOf(cfg);
   const pctOf = (v: number) => (total ? `${fmt((v / total) * 100, 1)}%` : "");
   const hasMoney = !!(cfg.finance?.length || Object.keys(money.months).length || money.setup.cards.length || money.setup.loans.length);
-  const go = (t: Todo) => (t.fin ? onFin(t.fin) : onTab(t.tab));
+  const go = (t: Todo) => (t.fin ? onFin(t.fin, t.open) : onTab(t.tab));
   const toMes = () => onFin("lanc");
   // numeros do cripto (dolar): carteira e, para o dono, o robo
   const usd = (v: number, tone?: boolean) => <span className={`ui-money size-md${tone ? ` ${pnlClass(v)}` : ""}`}>{tone ? signed(v) : `$${fmt(v)}`}</span>;
@@ -252,6 +266,7 @@ function kindOf(t: { tone: "buy" | "sell" | "warn" | "info"; who: string }): Kin
     case "Receber": return { icon: <ArrowDownLeft size={s} />, tone: "pos" };
     case "Cartão": return { icon: <CreditCard size={s} />, tone: "neg" };
     case "Fixo": return { icon: <Repeat size={s} />, tone: "info" };
+    case "Cofrinho": return { icon: <PiggyBank size={s} />, tone: "pos" };
     case "Finanças": return { icon: <ListChecks size={s} />, tone: "info" };
     case "Robô": return { icon: <Bot size={s} />, tone: t.tone === "sell" ? "neg" : t.tone === "buy" ? "pos" : "brand" };
     case "Tokens": return { icon: <Coins size={s} />, tone: "brand" };

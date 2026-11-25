@@ -39,7 +39,7 @@ export function sampleDemo(member: boolean): Demo {
     recvs: [{ id: "r1", name: "Pessoa A", kind: "emprestei", parcela: 200, n: 5, first: addMonths(m, -1), dueDay: 20, gotBefore: 1 }],
   };
   const cfg = { ...DEFAULT_CONFIG, finance: [
-    { id: "i1", kind: "caixa" as const, name: "Cofrinho", balance: 6100, balanceAt: Date.now() - 10 * 86_400_000, cdiPct: 100, reserva: true },
+    { id: "i1", kind: "caixa" as const, name: "Cofrinho", balance: 6100, balanceAt: Date.now() - 40 * 86_400_000, cdiPct: 100, reserva: true },
     { id: "i2", kind: "outro" as const, name: "Previdência", value: 3200 },
     { id: "b1", kind: "bem" as const, name: "Carro", value: 38000, bemType: "veiculo" as const },
   ] };

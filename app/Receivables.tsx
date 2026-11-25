@@ -59,10 +59,10 @@ export default function ReceivablesPart({ months, setup, openId }: { months: Rec
     <div className="pat-part">
       {list.length > 0 ? <>
         <Stats scroll cols={3}>
-          <Stat label="Te devem" value={<Money value={left} size="md" cents={false} tone="pos" />} hint="entra no patrimônio" />
-          <Stat label="Próxima a receber" value={nx ? <Money value={nx.r.parcela} size="md" cents={false} /> : "-"}
+          <Stat label="Te devem" value={<Money value={left} size="md" tone="pos" />} hint="entra no patrimônio" />
+          <Stat label="Próxima a receber" value={nx ? <Money value={nx.r.parcela} size="md" /> : "-"}
             hint={nx ? `${nx.r.name} · ${nx.st.next! < today ? "venceu" : "dia"} ${dm(nx.st.next!)}` : "nenhuma"} />
-          <Stat label="Já recebido" value={<Money value={got} size="md" cents={false} />} hint="parcelas recebidas" />
+          <Stat label="Já recebido" value={<Money value={got} size="md" />} hint="parcelas recebidas" />
         </Stats>
         <Section title="Quem te deve" info={<>Pix com o nome da pessoa no extrato é reconhecido sozinho como parcela recebida. Dinheiro que você emprestou volta como
           &quot;Devolução de empréstimo&quot; (não é renda); venda ou serviço parcelado entra como renda.</>}
@@ -74,7 +74,7 @@ export default function ReceivablesPart({ months, setup, openId }: { months: Rec
                 <ListRow key={r.id} onClick={() => setOpen(r.id)} icon={<UserRound size={18} />} iconTone={st.late ? "neg" : "pos"} title={r.name}
                   sub={conta ? (st.saldo >= 0 ? "conta com a pessoa · te deve hoje" : "conta com a pessoa · você deve a ela")
                     : `${r.kind === "emprestei" ? "empréstimo" : "venda"} · ${st.got} de ${r.n} recebidas${st.late ? ` · ${st.late} atrasada${st.late > 1 ? "s" : ""}` : ""}`}
-                  value={<span className={conta && st.saldo < 0 ? "warn" : "pos"}>{brl(conta ? Math.abs(st.saldo) : st.leftV, 0)}</span>} />
+                  value={<span className={conta && st.saldo < 0 ? "warn" : "pos"}>{brl(conta ? Math.abs(st.saldo) : st.leftV)}</span>} />
               );
             })}
           </List>
@@ -127,10 +127,10 @@ function RecvItem({ r, st, months, setup, single, initial }: { r: Recv; st: RSta
     <div className={`loan${open ? " open" : ""}`}>
       <button className="loan-head" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span className="loan-caret" aria-hidden>{open ? "▾" : "▸"}</span>
-        <span className="loan-name"><b>{r.name}</b><small className="muted">{st.got} de {r.n} recebidas - falta {brl(st.leftV, 0)} - {r.kind === "emprestei" ? "empréstimo" : "venda/serviço"}</small></span>
+        <span className="loan-name"><b>{r.name}</b><small className="muted">{st.got} de {r.n} recebidas - falta {brl(st.leftV)} - {r.kind === "emprestei" ? "empréstimo" : "venda/serviço"}</small></span>
         <span className="loan-badge small">
           {st.late > 0 ? <span className="warn">{st.late} {st.late > 1 ? "atrasadas" : "atrasada"}</span>
-            : st.next ? <span className="muted">próxima {dm(st.next)} - {brl(r.parcela, 0)}</span> : <span className="pos">quitado</span>}
+            : st.next ? <span className="muted">próxima {dm(st.next)} - {brl(r.parcela)}</span> : <span className="pos">quitado</span>}
         </span>
       </button>
       {open && (

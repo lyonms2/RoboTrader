@@ -79,7 +79,7 @@ function CardsPart({ months, setup, invest, entry, setEntry, owed, com }: {
       )}
 
       {card && st && <FaturaView card={card} st={st} fm={fm} setFm={setFm} months={months} setup={setup} onBuy={() => setBuy(true)} />}
-      {card && <p className="mes-line">Devendo nos cartões <b>{brl(owed, 0)}</b> (faturas a pagar e parcelas futuras) · faturas de {monthLabel(next.m)} <b>{brl(next.cards, 0)}</b></p>}
+      {card && <p className="mes-line">Devendo nos cartões <b>{brl(owed)}</b> (faturas a pagar e parcelas futuras) · faturas de {monthLabel(next.m)} <b>{brl(next.cards)}</b></p>}
 
       {card && st && (
         <Fold title="Próximas faturas e assinaturas">
@@ -124,17 +124,17 @@ function LoansPart({ months, setup, entry, setEntry, owed, com }: {
     <div className="pat-part">
       {sts.length > 0 ? <>
         <Stats scroll cols={3}>
-          <Stat label="Devendo" value={<Money value={owed} size="md" cents={false} />} hint={`${active.length} ${active.length === 1 ? "empréstimo" : "empréstimos"}`} />
-          <Stat label="Próxima parcela" value={nx ? <Money value={nx.l.parcela} size="md" cents={false} tone={nx.st.next! < today ? "warn" : undefined} /> : "-"}
+          <Stat label="Devendo" value={<Money value={owed} size="md" />} hint={`${active.length} ${active.length === 1 ? "empréstimo" : "empréstimos"}`} />
+          <Stat label="Próxima parcela" value={nx ? <Money value={nx.l.parcela} size="md" tone={nx.st.next! < today ? "warn" : undefined} /> : "-"}
             hint={nx ? `${nx.st.next! < today ? "venceu" : "vence"} ${dm(nx.st.next!)}${sts.length > 1 ? ` · ${nx.l.name}` : ""}` : "nenhuma"} />
-          <Stat label="Livre em" value={<span className="ui-money size-md">{lastEnd ? monthLabel(lastEnd) : "-"}</span>} hint={saved > 0.005 ? `economizou ${brl(saved, 0)} adiantando` : "última parcela"} />
+          <Stat label="Livre em" value={<span className="ui-money size-md">{lastEnd ? monthLabel(lastEnd) : "-"}</span>} hint={saved > 0.005 ? `economizou ${brl(saved)} adiantando` : "última parcela"} />
         </Stats>
         <Section title="Seus empréstimos" action={<Button variant="link" size="sm" icon={<Plus size={14} aria-hidden="true" />} onClick={() => setAdding(true)}>empréstimo</Button>}>
           <List>
             {sts.map(({ l, st }) => (
               <ListRow key={l.id} onClick={() => setEntry({ type: "loan", id: l.id })} icon={<Landmark size={18} />} iconTone={st.late ? "neg" : st.left ? "info" : "pos"}
-                title={l.name} sub={`${st.paid} de ${l.n} pagas · saldo ${brl(st.saldo, 0)}`}
-                value={st.late > 0 ? <Badge tone="neg">{st.late} {st.late > 1 ? "atrasadas" : "atrasada"}</Badge> : st.next ? <span className="pat-next">{dm(st.next)} · {brl(l.parcela, 0)}</span> : <Badge tone="pos">quitado</Badge>} />
+                title={l.name} sub={`${st.paid} de ${l.n} pagas · saldo ${brl(st.saldo)}`}
+                value={st.late > 0 ? <Badge tone="neg">{st.late} {st.late > 1 ? "atrasadas" : "atrasada"}</Badge> : st.next ? <span className="pat-next">{dm(st.next)} · {brl(l.parcela)}</span> : <Badge tone="pos">quitado</Badge>} />
             ))}
           </List>
         </Section>
@@ -194,10 +194,10 @@ function LoanItem({ l, st, months, setup, single, initial }: {
     <div className={`loan${open ? " open" : ""}`}>
       <button className="loan-head" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span className="loan-caret" aria-hidden>{open ? "\u25BE" : "\u25B8"}</span>
-        <span className="loan-name"><b>{l.name}</b><small className="muted">{st.paid} de {l.n} pagas - saldo {brl(st.saldo, 0)}</small></span>
+        <span className="loan-name"><b>{l.name}</b><small className="muted">{st.paid} de {l.n} pagas - saldo {brl(st.saldo)}</small></span>
         <span className="loan-badge small">
           {st.late > 0 ? <span className="warn">{st.late} {st.late > 1 ? "atrasadas" : "atrasada"}</span>
-            : st.next ? <span className="muted">próxima {dm(st.next)} - {brl(l.parcela, 0)}</span> : <span className="pos">quitado</span>}
+            : st.next ? <span className="muted">próxima {dm(st.next)} - {brl(l.parcela)}</span> : <span className="pos">quitado</span>}
         </span>
       </button>
       {open && (
@@ -336,7 +336,7 @@ function FaturaView({ card, st, fm, setFm, months, setup, onBuy }: {
         <div className="pat-fatura-v"><Money value={total} size="xl" /></div>
         {card.budget ? <Progress value={pct!} label="Usado do planejado" /> : null}
         <div className="pat-fatura-foot">
-          <span>{card.budget ? `planejado ${brl(card.budget, 0)}` : "sem valor planejado"}</span>
+          <span>{card.budget ? `planejado ${brl(card.budget)}` : "sem valor planejado"}</span>
           <span>{f ? `fecha ${dm(f.close)} · vence ${dm(f.due)}` : "sem compras"}</span>
         </div>
         {f && (f.paid > 0.005 || futuro > 0) && <p className="pat-fatura-note">{f.paid > 0.005 ? `pago ${brl(f.paid)}${f.status !== "paga" ? `, falta ${brl(f.rest)}` : ""}` : ""}{f.paid > 0.005 && futuro > 0 ? " · " : ""}{futuro > 0 ? `inclui ${brl(futuro)} de parcelas previstas` : ""}</p>}
@@ -346,7 +346,7 @@ function FaturaView({ card, st, fm, setFm, months, setup, onBuy }: {
         </div>
       </section>
       {(best || card.limit) && <p className="mes-line">{best ? <>Melhor dia para comprar: <b>dia {best.day}</b> (próximo {dm(best.d)}, paga em {dm(best.due)}, {best.prazo} dias)</> : null}
-        {best && card.limit ? " · " : ""}{card.limit ? <>limite usado <b>{fmt((st.open / card.limit) * 100, 0)}%</b> ({brl(st.open, 0)} de {brl(card.limit, 0)})</> : null}</p>}
+        {best && card.limit ? " · " : ""}{card.limit ? <>limite usado <b>{fmt((st.open / card.limit) * 100, 0)}%</b> ({brl(st.open)} de {brl(card.limit)})</> : null}</p>}
 
       <Section title="Compras desta fatura" action={<span>{list.length} {list.length === 1 ? "compra" : "compras"}</span>}>
         {list.length ? (

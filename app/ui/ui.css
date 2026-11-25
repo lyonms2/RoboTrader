@@ -25,7 +25,7 @@
 .ui-stats { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: var(--s-2); }
 .ui-stats.scroll { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin-right: calc(-1 * var(--s-4)); padding-right: var(--s-4); }
 .ui-stats.scroll::-webkit-scrollbar { display: none; }
-.ui-stats.scroll > * { flex: 0 0 132px; scroll-snap-align: start; }
+.ui-stats.scroll > * { flex: 0 0 auto; min-width: 132px; scroll-snap-align: start; }
 @media (min-width: 600px) { .ui-stats.scroll { display: grid; margin-right: 0; padding-right: 0; } }
 
 /* ---------- botoes ---------- */

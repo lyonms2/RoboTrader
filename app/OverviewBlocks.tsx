@@ -51,7 +51,7 @@ export function FinBar({ byGroup }: { byGroup: Record<FinGroup, number> }) {
       <ul className="viz-legend small">
         {segs.map((g) => (
           <li key={g.key} onMouseEnter={() => setHover(g.key)} onMouseLeave={() => setHover(null)}>
-            <i className={`g-${g.key}`} />{g.label} <b>{pctS(g.pct)}</b> <span className="muted">{brl(g.value, 0)}</span>
+            <i className={`g-${g.key}`} />{g.label} <b>{pctS(g.pct)}</b> <span className="muted">{brl(g.value)}</span>
           </li>
         ))}
       </ul>
@@ -60,10 +60,11 @@ export function FinBar({ byGroup }: { byGroup: Record<FinGroup, number> }) {
 }
 
 // A conta do patrimonio linha a linha: o que tem - o que deve = liquido (cripto so quando informada)
-export function BalanceEq({ contas, investido, crypto, bens, recv, cards, loans }: {
+export function BalanceEq({ contas, investido, crypto, bens, recv, cards, loans, people = 0 }: {
   contas: number; investido: number; crypto?: number; bens: number; recv: number; cards: number; loans: number;
+  people?: number; // conta com a pessoa em que voce deve a ela (ex.: ela te pagou um pouco a mais)
 }) {
-  const liquido = contas + investido + (crypto ?? 0) + bens + recv - cards - loans;
+  const liquido = contas + investido + (crypto ?? 0) + bens + recv - cards - loans - people;
   return (
     <ul className="bal-eq">
       <li><span>Contas</span><b>{brl(contas)}</b></li>
@@ -73,6 +74,7 @@ export function BalanceEq({ contas, investido, crypto, bens, recv, cards, loans 
       {recv > 0 && <li><span>A receber</span><b className="pos">{brl(recv)}</b></li>}
       {cards > 0 && <li className="minus"><span>Cartões (faturas e parcelas)</span><b>-{brl(cards)}</b></li>}
       {loans > 0 && <li className="minus"><span>Empréstimos</span><b>-{brl(loans)}</b></li>}
+      {people > 0.004 && <li className="minus"><span>Você deve a pessoas (A receber)</span><b>-{brl(people)}</b></li>}
       <li className="total"><span>Líquido</span><b className={liquido < 0 ? "neg" : "pos"}>{brl(liquido)}</b></li>
     </ul>
   );
@@ -81,7 +83,7 @@ export function BalanceEq({ contas, investido, crypto, bens, recv, cards, loans 
 // ---------- blocos do Inicio (redesign etapa 3, amostra aprovada em 24/11/2026) ----------
 export type Ctx = {
   cfg: AppConfig; fin: FinanceDoc | null; wallet: WalletDoc | null; spend: { value: number; months: number } | null;
-  debt: { total: number; loans: number; cards: number; recv: number }; months: Record<string, MonthDoc>; setup: GastosSetup;
+  debt: { total: number; loans: number; cards: number; recv: number; people?: number }; months: Record<string, MonthDoc>; setup: GastosSetup;
 };
 
 // Topo do Inicio: patrimonio liquido em destaque (a conta fica no "i") e os numeros do mes em carrossel
@@ -115,7 +117,7 @@ export function HomeHero({ cfg, fin, wallet, spend, debt, months, setup, nwHist 
           <InfoTip label="Como é calculado">
             <b>O que você tem − o que deve</b>
             <BalanceEq contas={s.byGroup.conta} investido={s.total - s.byGroup.cripto - s.byGroup.dolar - s.byGroup.conta - s.bens}
-              crypto={s.byGroup.cripto + s.byGroup.dolar} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} />
+              crypto={s.byGroup.cripto + s.byGroup.dolar} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} people={debt.people ?? debt.total - debt.cards - debt.loans} />
             {s.bens > 0 && <span className="home-tip-line">Sem os bens: {brl(liquido - s.bens)}</span>}
             {s.usd && wallet ? <span className="home-tip-line">~US$ {fmt(bruto / s.usd, 0)} no total</span> : null}
             {indic.length > 0 && <span className="home-tip-line">{indic.join(" · ")}</span>}
@@ -125,25 +127,25 @@ export function HomeHero({ cfg, fin, wallet, spend, debt, months, setup, nwHist 
         <div className="home-hero-value"><Money value={liquido} size="xl" tone={liquido < 0 ? "neg" : undefined} /></div>
         <div className="home-hero-foot">
           {chg !== null && Math.abs(chg) >= 1 && (
-            <Badge tone={chg >= 0 ? "pos" : "neg"}>{chg >= 0 ? "▲" : "▼"} {brl(Math.abs(chg), 0)} desde {new Date(ref!.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</Badge>
+            <Badge tone={chg >= 0 ? "pos" : "neg"}>{chg >= 0 ? "▲" : "▼"} {brl(Math.abs(chg))} desde {new Date(ref!.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</Badge>
           )}
-          <span>tem {brl(bruto, 0)} · {debt.total > 0 ? `deve ${brl(debt.total, 0)}` : "sem dívidas"}</span>
+          <span>tem {brl(bruto)} · {debt.total > 0 ? `deve ${brl(debt.total)}` : "sem dívidas"}</span>
         </div>
         {wallet && !s.usd && <p className="home-hero-warn">Falta o dólar: Atualizar cotações em Patrimônio &gt; Investimentos.</p>}
       </Card>
 
       <Stats scroll cols={s.cost > 0 ? 5 : 4}>
-        <Stat label="Reserva" value={<Money value={s.reserve} size="md" cents={false} />}
+        <Stat label="Reserva" value={<Money value={s.reserve} size="md" />}
           hint={s.reserveMonths !== null ? `${fmt(s.reserveMonths, 1)} meses` : "média após o 1º mês"} />
         <button type="button" className="home-stat-btn" onClick={onMes} aria-label={`${monthLabel(mon.m, true)}: ver o mês`}>
-          <Stat label="Sobrou no mês" value={hasMonth ? <Money value={sobrou} size="md" cents={false} tone="auto" /> : "-"}
-            hint={hasMonth ? `de ${brl(mon.receitas, 0)}` : "nada lançado"} />
+          <Stat label="Sobrou no mês" value={hasMonth ? <Money value={sobrou} size="md" tone="auto" /> : "-"}
+            hint={hasMonth ? `de ${brl(mon.receitas)}` : "nada lançado"} />
         </button>
-        <Stat label="Em conta" value={acct ? <Money value={acct.value} size="md" cents={false} tone={acct.value < 0 ? "neg" : undefined} /> : "-"}
+        <Stat label="Em conta" value={acct ? <Money value={acct.value} size="md" tone={acct.value < 0 ? "neg" : undefined} /> : "-"}
           hint={acct ? (acct.informed ? "saldo das contas" : <span className="warn">confira o saldo</span>) : "cadastre as contas"} />
-        <Stat label="Rende por mês" value={<Money value={s.monthly} size="md" cents={false} />}
-          hint={s.dividends > 0 ? `${brl(s.dividends, 0)} de proventos` : "estimado"} />
-        {s.cost > 0 && <Stat label="Lucro / prejuízo" value={<Money value={s.gain} size="md" cents={false} tone="auto" signed />}
+        <Stat label="Rende por mês" value={<Money value={s.monthly} size="md" />}
+          hint={s.dividends > 0 ? `${brl(s.dividends)} de proventos` : "estimado"} />
+        {s.cost > 0 && <Stat label="Lucro / prejuízo" value={<Money value={s.gain} size="md" tone="auto" signed />}
           hint={`${pctS(s.gain / s.cost)} fora cripto`} />}
       </Stats>
     </>
@@ -181,14 +183,14 @@ export function MoneyMix({ cfg, fin, wallet, spend, months, setup }: Ctx) {
     <Section title="Onde está o dinheiro">
       <Card>
         <FinBar byGroup={s.byGroup} />
-        {s.bens > 0 && <p className="home-note">Fora da barra: bens {brl(s.bens, 0)}.</p>}
+        {s.bens > 0 && <p className="home-note">Fora da barra: bens {brl(s.bens)}.</p>}
         {(notices.length > 0 || (fin?.errors.length ?? 0) > 0) && (
           <ul className="alerts small">
             {notices.map((n) => <li key={n} className="warn">{n}</li>)}
             {fin?.errors.map((e) => <li key={e} className="error">Fonte de dados: {e}</li>)}
           </ul>
         )}
-        {fin && <p className="home-note">Cotações de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}{spend ? ` · gasto médio ${brl(spend.value, 0)}/mês` : ""}</p>}
+        {fin && <p className="home-note">Cotações de {new Date(fin.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}{spend ? ` · gasto médio ${brl(spend.value)}/mês` : ""}</p>}
       </Card>
     </Section>
   );

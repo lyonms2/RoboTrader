@@ -160,6 +160,13 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Toque em \"Atualizar cotações\" para trazer preços e proventos.",
       "Cofrinho com duas taxas (uma parte rende mais)? Marque \"Uma parte do saldo rende outra taxa\" e informe o valor e o % dessa parte.",
     ], tips: ["Se o app do banco mostra o valor já sem IR, o site (que calcula o bruto) fica um pouco acima: atualize o saldo de vez em quando.", "Aplicações e resgates do extrato (categoria Investimento) ligados a um cofrinho somam e descontam o saldo dele sozinhos."] },
+    { title: "O saldo do cofrinho não bate com o banco: conferir", steps: [
+      "O site estima o cofrinho: o saldo que você informou, mais o CDI de cada dia útil, mais os depósitos e resgates do extrato ligados a ele.",
+      "Ele se afasta do banco quando o app mostra o valor já sem IR, quando você guarda ou resgata direto no app (sem passar pelo extrato) ou quando o % do CDI é outro.",
+      "Para acertar: em Patrimônio → Investimentos, toque no cofrinho e use \"Conferir com o app do banco\": digite o valor que o app mostra hoje. Ele vira o novo saldo e o site mostra a diferença.",
+      "Conferindo duas vezes (com alguns dias entre elas), o site calcula quanto do CDI rendeu de verdade e sugere \"usar X%\". Se o app mostra o saldo já sem IR, escolha \"Líquido\".",
+      "Diferença grande quase sempre é um movimento que não está ligado ao cofrinho: ligue o lançamento no Mês (categoria Investimento, com o destino).",
+    ], tips: ["O Início lembra de conferir quando passa de 30 dias da última conferência."] },
     { title: "Comparar seus investimentos com o CDI", steps: [
       "Em Patrimônio → Investimentos, toque no Tesouro ou na ação.",
       "Informe o preço médio e a data da compra e salve.",

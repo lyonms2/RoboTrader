@@ -3,7 +3,7 @@ import { doc, setDoc } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebaseClient";
 import { P } from "@/lib/paths";
-import { GROUPS, compareCdi, financeSummary, tesouroOptions, type FinGroup, type FinRow } from "@/lib/financeMath";
+import { GROUPS, compareCdi, dayBR, financeSummary, impliedCdiPct, irRate, tesouroOptions, type FinGroup, type FinRow, type Flow } from "@/lib/financeMath";
 import type { AppConfig, FinanceDoc, FinItem, FinKind, WalletDoc } from "@/lib/types";
 import { INVEST_CAT, goalStatus, type Goal, accountBalance, accountsOf, addMonths, dirOf, investFlows, monthLabel, monthOf, newId, todayBR, type Account, type Gasto, type GastosSetup, type MonthDoc } from "@/lib/gastos";
 import GastosCard, { guardWrite, AccountForm, AccountsPanel, FixoForm, monthSnapshot, saveSetup, PayableForm } from "./GastosCard";
@@ -83,7 +83,11 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   // "loans" (aviso de parcela atrasada na Visao geral) abre direto em Emprestimos
   const [cardsEntry, setCardsEntry] = useState<CardsEntry>({ type: "compra", id: null });
   // investimento aberto para incluir/alterar na sub-aba Investimentos (undefined = fechado, null = novo)
-  const [invEdit, setInvEdit] = useState<string | null | undefined>(undefined);
+  const [invEdit, setInvEdit] = useState<string | null | undefined>(() => {
+    // aviso do Inicio ("confira o saldo do cofrinho"): abre a ficha dele uma vez
+    try { const id = localStorage.getItem("invOpen"); if (id) { localStorage.removeItem("invOpen"); return id; } } catch { /* sem armazenamento */ }
+    return undefined;
+  });
   const [bemEdit, setBemEdit] = useState<string | null | undefined>(undefined); // bens tambem se cadastram em Investimentos
   // cartao e emprestimo se lancam em Cartoes e emprestimos; investimento em Investimentos; o resto em Lancamentos
   const goEdit = (type: EntryType | "card" | "loan", id: string | null) => {
@@ -101,11 +105,17 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
     await setDoc(doc(db(), P("config/main")), { finance: JSON.parse(JSON.stringify(list)) }, { merge: true });
     if (fetchQuotes) onChanged();
   }
-  const upsert = async (it: FinItem) => {
+  const upsert = async (it0: FinItem) => {
+    // o formulario nao conhece as conferencias, o bruto/liquido e o "aplicado desde" do cofrinho: mantem os que ja havia
+    const prev = items.find((x) => x.id === it0.id);
+    const keep = prev && prev.kind === it0.kind && it0.kind === "caixa" ? { ...(prev.checks ? { checks: prev.checks } : {}), ...(prev.shows ? { shows: prev.shows } : {}), ...(prev.since ? { since: prev.since } : {}) } : {};
+    const it = { ...keep, ...it0 };
     const list = items.some((x) => x.id === it.id) ? items.map((x) => (x.id === it.id ? it : x)) : [...items, it];
     if (it.kind === "bem") setBemEdit(undefined); else setInvEdit(undefined);
     await save(list, it.kind === "acao" || it.kind === "tesouro");
   };
+  // conferir cofrinho: grava sem fechar a folha
+  const saveItem = (it: FinItem) => save(items.map((x) => (x.id === it.id ? it : x)), false);
   const remove = async (it: FinItem) => {
     if (!await ask(`Remover "${it.name}" da lista? (só tira do site, não mexe no investimento)`)) return;
     await save(items.filter((x) => x.id !== it.id), false);
@@ -149,7 +159,7 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   if (sub === "cards" || sub === "loans" || sub === "recv") return <>{nav}<CardsLoans key={sub} part={sub} months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} />{entrySheet}</>;
   if (sub === "invest") return (
     <>{nav}<InvestPart items={items} rows={rows} fin={fin} months={months} reserve={s.reserve} reserveMonths={s.reserveMonths}
-      setup={setup} onQuotes={onQuotes} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} />{entrySheet}</>
+      setup={setup} onQuotes={onQuotes} onCheck={saveItem} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} />{entrySheet}</>
   );
   if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} onCard={(id) => goEdit("card", id)} onFixo={(id, kind) => setEntry({ type: kind, id })}
     onCardBuy={(id, d) => { setCardsEntry({ type: "compra", id, d }); setSub("cards"); }} />{entrySheet}</>;
@@ -195,9 +205,9 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
 }
 
 // ---------- sub-aba Investimentos: cadastro, carteira, aportes/resgates e proventos ----------
-function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, onQuotes, edit, setEdit, bemEdit, setBemEdit, bensTotal, onSave, onRemove, onLanc }: {
+function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, onQuotes, onCheck, edit, setEdit, bemEdit, setBemEdit, bensTotal, onSave, onRemove, onLanc }: {
   items: FinItem[]; rows: FinRow[]; fin: FinanceDoc | null; months: Record<string, MonthDoc>;
-  setup: GastosSetup; reserve: number; reserveMonths: number | null; onQuotes?: () => Promise<void>;
+  setup: GastosSetup; reserve: number; reserveMonths: number | null; onQuotes?: () => Promise<void>; onCheck: (it: FinItem) => Promise<void>;
   edit: string | null | undefined; setEdit: (id: string | null | undefined) => void;
   bemEdit: string | null | undefined; setBemEdit: (id: string | null | undefined) => void; bensTotal: number;
   onSave: (it: FinItem) => void; onRemove: (it: FinItem) => void; onLanc: () => void;
@@ -229,6 +239,14 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
   const nameOf = (id?: string) => items.find((i) => i.id === id)?.name;
   const cur = edit ? items.find((i) => i.id === edit) ?? null : null;
   const shown = allMoves ? moves : moves.slice(0, 8);
+  const invFlows = investFlows(months);
+  // cofrinho: ha quantos dias foi conferido (ou o saldo informado) e a diferenca da ultima conferencia
+  const checkedInfo = (r: FinRow) => {
+    if (!r.calc) return null;
+    const dd = Math.floor((Date.parse(`${dayBR(Date.now())}T12:00:00Z`) - Date.parse(`${r.calc.checkedDay}T12:00:00Z`)) / 86_400_000);
+    const txt = dd <= 0 ? "conferido hoje" : `conferido há ${dd} ${dd === 1 ? "dia" : "dias"}`;
+    return r.calc.diff !== null && Math.abs(r.calc.diff) >= 1 ? `${txt} (diferença de ${brl(Math.abs(r.calc.diff))})` : txt;
+  };
   return (
     <div className="pat-part">
       <div className="pat-inv-acts">
@@ -262,7 +280,7 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
                   return (
                     <ListRow key={r.item.id} onClick={() => setEdit(r.item.id)} chevron={false} muted={!!r.item.ignore}
                       title={<>{r.item.name}{r.item.reserva && <Badge tone="info">reserva</Badge>}</>}
-                      sub={r.problem ? <span className="warn">{r.problem}</span> : [r.kindLabel, r.yieldYear !== null ? `${pctS(r.yieldYear, 1)} ao ano` : null, r.monthly ? `rende ~${brl(r.monthly, 0)}/mês` : null].filter(Boolean).join(" · ")}
+                      sub={r.problem ? <span className="warn">{r.problem}</span> : [r.kindLabel, r.yieldYear !== null ? `${pctS(r.yieldYear, 1)} ao ano` : null, r.monthly ? `rende ~${brl(r.monthly, 0)}/mês` : null, checkedInfo(r)].filter(Boolean).join(" · ")}
                       value={<span className="pat-inv-v"><b>{r.value !== null ? brl(r.value) : "-"}</b>{gn !== null && Math.abs(gn) >= 0.01 && <small className={pnlClass(gn)}>{signed(gn)}</small>}</span>} />
                   );
                 })}
@@ -275,7 +293,8 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
 
       <Sheet open={edit !== undefined} onClose={() => setEdit(undefined)} title={cur ? `Alterar ${cur.name}` : "Novo investimento"} width={640}>
         {edit !== undefined && <div className="ls-form">
-          <ItemForm key={edit ?? "novo"} initial={cur} fin={fin} onSave={onSave} onCancel={() => setEdit(undefined)} />
+          {cur?.kind === "caixa" && <CheckBank item={cur} row={rows.find((r) => r.item.id === cur.id)} fin={fin} flows={invFlows[cur.id] ?? []} months={months} onCheck={onCheck} />}
+          <ItemForm key={`${edit ?? "novo"}-${cur?.balanceAt ?? ""}-${cur?.cdiPct ?? ""}`} initial={cur} fin={fin} onSave={onSave} onCancel={() => setEdit(undefined)} />
           {cur && <Button variant="danger" size="sm" className="pay-remove" onClick={() => onRemove(cur)}>Remover este investimento</Button>}
         </div>}
       </Sheet>
@@ -802,5 +821,81 @@ function GoalForm({ goal, invs, onSave, onCancel, onRemove }: { goal?: Goal; inv
         {onRemove && <button className="ghost small-btn" type="button" onClick={onRemove}>remover meta</button>}
       </div>
     </form>
+  );
+}
+
+// Conferir o cofrinho com o app do banco: mostra como o site chegou no valor, grava o saldo do banco como o novo saldo
+// e, com duas conferencias, calcula o % do CDI que rendeu de verdade (contando os movimentos ligados no meio)
+function CheckBank({ item, row, fin, flows, months, onCheck }: {
+  item: FinItem; row: FinRow | undefined; fin: FinanceDoc | null; flows: Flow[]; months: Record<string, MonthDoc>; onCheck: (it: FinItem) => Promise<void>;
+}) {
+  const [v, setV] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const c = row?.calc;
+  const est = row?.value ?? null;
+  const checks = item.checks ?? [];
+  const today = dayBR(Date.now());
+  const confer = async () => {
+    const bank = Math.round(parse(v) * 100) / 100;
+    if (!(bank >= 0) || !v.trim() || est === null) return;
+    const next: FinItem = { ...item, balance: bank, balanceAt: Date.now(), checks: [...checks.filter((x) => x.d !== today), { d: today, bank, est: Math.round(est * 100) / 100 }].slice(-12) };
+    // mostra o resultado na hora; a gravacao segue (sem internet, o Firebase envia quando voltar)
+    onCheck(next).catch(() => { void tell("Não salvou a conferência (modo suporte ou sem conexão). Tente de novo."); });
+    const diff = bank - est;
+    setMsg(Math.abs(diff) < 0.01 ? "Bateu certinho com o estimado." : `Estimado ${brl(est)} · banco ${brl(bank)} · diferença ${diff > 0 ? "+" : "−"}${brl(Math.abs(diff))}. O saldo do banco virou o novo saldo de hoje.`);
+    setV("");
+  };
+  // % do CDI de verdade entre as duas ultimas conferencias
+  const [a, b] = checks.slice(-2);
+  const pct = a && b && fin?.cdi.d.length ? impliedCdiPct(fin, { d: a.d, v: a.bank }, { d: b.d, v: b.bank }, flows) : null;
+  const curPct = item.cdiPct ?? 100;
+  const gap = a && b ? b.bank - b.est : 0;
+  const strange = !!(a && b) && pct === null && Math.abs(gap) > 1;
+  // lancamentos de Investimento sem destino no periodo (candidatos a movimento que faltou ligar)
+  const loose = a && b ? Object.values(months).flatMap((md) => md.items).filter((g) => g.cat === INVEST_CAT && !g.inv && g.d > a.d && g.d <= b.d) : [];
+  const setShows = (shows: "bruto" | "liquido") => onCheck({ ...item, shows });
+  return (
+    <div className="chk">
+      <b className="chk-title">Conferir com o app do banco</b>
+      {!fin?.cdi.d.length && <p className="mes-line">Sem os dados do CDI ainda: o valor é o saldo informado mais os movimentos ligados.</p>}
+      {c ? (
+        <ul className="chk-calc">
+          <li><span>Saldo informado em {new Date(c.at).toLocaleDateString("pt-BR")}</span><b>{brl(c.base)}</b></li>
+          {c.flows.map((x) => <li key={x.d + x.v}><span>{x.v >= 0 ? "Guardou" : "Resgatou"} em {x.d.slice(8, 10)}/{x.d.slice(5, 7)} (do extrato)</span><b>{x.v >= 0 ? "+" : "−"}{brl(Math.abs(x.v))}</b></li>)}
+          <li><span>Rendimento estimado ({curPct.toLocaleString("pt-BR")}% do CDI, bruto)</span><b>+{brl(c.gain)}</b></li>
+          <li className="tot"><span>Estimado hoje{c.net !== null ? " (bruto)" : ""}</span><b>{brl(c.gross)}</b></li>
+          {c.net !== null && <li className="tot"><span>Líquido estimado (IR {Math.round(irRate(Math.floor((Date.now() - (item.since ?? c.at)) / 86_400_000)) * 1000) / 10}%) · conta no patrimônio</span><b>{brl(c.net)}</b></li>}
+        </ul>
+      ) : null}
+      <div className="chk-form">
+        <label>Quanto o app do banco mostra hoje? (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder={est !== null ? fmt(est) : "0,00"} /></label>
+        <Button variant="primary" disabled={!v.trim() || est === null} onClick={confer}>Conferir</Button>
+      </div>
+      {msg && <p className="ls-msg">{msg}</p>}
+      <div className="chk-shows">
+        <span className="mes-line">O app do banco mostra o saldo:</span>
+        <Segmented label="Bruto ou líquido" value={item.shows ?? "bruto"} onChange={setShows}
+          options={[{ id: "bruto", label: "Bruto" }, { id: "liquido", label: "Líquido (com IR)" }]} />
+      </div>
+      {pct !== null && Math.abs(pct * 100 - curPct) > 3 && (
+        <p className="chk-tip">Entre {a.d.slice(8, 10)}/{a.d.slice(5, 7)} e {b.d.slice(8, 10)}/{b.d.slice(5, 7)} o cofrinho rendeu como <b>{fmt(pct * 100, 0)}% do CDI</b> (cadastrado: {curPct.toLocaleString("pt-BR")}%).
+          {item.shows !== "liquido" && pct * 100 < curPct ? " Se o app mostra o valor já sem IR, escolha \"Líquido\" acima." : ""}
+          <Button variant="link" size="sm" onClick={() => onCheck({ ...item, cdiPct: Math.round(pct * 1000) / 10 })}>usar {fmt(pct * 100, 0)}%</Button></p>
+      )}
+      {pct !== null && Math.abs(pct * 100 - curPct) <= 3 && <p className="mes-line">Entre as duas últimas conferências rendeu como {fmt(pct * 100, 0)}% do CDI: bate com o cadastrado.</p>}
+      {strange && (
+        <div className="chk-tip warn-tip">
+          <p>Diferença grande na última conferência ({gap > 0 ? "+" : "−"}{brl(Math.abs(gap))}): não dá para ser só a taxa. Deve haver um depósito ou resgate que não está ligado a este cofrinho
+            (guardou ou resgatou direto no app, pagou algo com a caixinha...).</p>
+          {loose.length > 0 && <ul>{loose.map((g) => <li key={g.id}>{g.d.slice(8, 10)}/{g.d.slice(5, 7)} {g.desc.slice(0, 40)} {brl(g.v)} <span className="ls-soft">sem destino: ligue no Mês</span></li>)}</ul>}
+        </div>
+      )}
+      {checks.length > 0 && (
+        <details className="chk-hist"><summary>Conferências ({checks.length})</summary>
+          <ul>{[...checks].reverse().map((x) => <li key={x.d}><span>{x.d.slice(8, 10)}/{x.d.slice(5, 7)}/{x.d.slice(2, 4)}</span><span>banco {brl(x.bank)}</span>
+            <span className={Math.abs(x.bank - x.est) < 1 ? "pos" : "warn"}>{x.bank - x.est >= 0 ? "+" : "−"}{brl(Math.abs(x.bank - x.est))}</span></li>)}</ul>
+        </details>
+      )}
+    </div>
   );
 }

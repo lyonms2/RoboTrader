@@ -14,7 +14,7 @@ import { ask, askText } from "./Dialog";
 // prices = produtos salvos: historico de precos (com o mercado), tamanho da embalagem e os dias em que foi comprado
 // store/stores = mercado de hoje e os mercados ja usados
 type Item = { id: string; name: string; qty?: string; price?: number; done?: boolean };
-type PriceRec = { v: number; d: string; s?: string };
+type PriceRec = { v: number; d: string; s?: string; sz?: number; u?: "kg" | "l" | "un" }; // sz/u: tamanho da embalagem desta compra (ex.: arroz 5 kg ou 1 kg)
 type Product = { name: string; hist: PriceRec[]; size?: number; unit?: "kg" | "l" | "un"; buys?: string[]; group?: string; aliases?: string[] };
 // group: grupo escolhido pelo dono para comparar (so dentro dele); aliases: textos de nota fiscal ligados a este produto
 type ListDoc = { items: Item[]; freq: Record<string, number>; prices: Record<string, Product>; store?: string; stores?: string[] };
@@ -57,24 +57,41 @@ const sizeLabel = (p: Product) => (p.size ? (p.unit === "kg" ? (p.size < 1 ? `${
 // Preco por kg/litro/unidade (so com o tamanho da embalagem informado)
 const perUnit = (p: Product, v: number) => (p.size ? v / p.size : null);
 const perLabel = (p: Product) => (p.unit === "l" ? "/l" : p.unit === "un" ? "/un" : "/kg");
+type Sz = { size: number; unit: "kg" | "l" | "un" };
+const perLab = (u: Sz["unit"]) => (u === "l" ? "/l" : u === "un" ? "/un" : "/kg");
+const szLabel = (z: Sz) => sizeLabel({ name: "", hist: [], size: z.size, unit: z.unit });
+// tamanho de um preco: o da compra (sz) ou, sem ele, o tamanho padrao do produto
+export const recSize = (p: Product | undefined, h: { sz?: number; u?: Sz["unit"] }): Sz | null =>
+  (h.sz ? { size: h.sz, unit: h.u ?? p?.unit ?? "un" } : p?.size ? { size: p.size, unit: p.unit ?? "un" } : null);
+// valores para comparar: por kg/l/un quando todos os precos tem tamanho na mesma unidade; senao o preco cheio
+export function compVals(p: Product | undefined, hist: PriceRec[]) {
+  const sz = hist.map((h) => recSize(p, h));
+  const ok = hist.length > 0 && sz.every((z) => z) && sz.every((z) => z!.unit === sz[0]!.unit);
+  return ok ? { vals: hist.map((h, i) => h.v / sz[i]!.size), per: true as const, unit: sz[0]!.unit } : { vals: hist.map((h) => h.v), per: false as const, unit: null };
+}
 
 // Novo preco x historico do produto (sem contar o registro de hoje): menor, barato, na media ou caro
-export function verdict(prod: Product | undefined, v: number, today: string) {
+// size: tamanho do preco novo (sem ele, o tamanho padrao do produto). Com tamanhos, compara por kg/l/un (arroz de 5 kg x de 1 kg)
+export function verdict(prod: Product | undefined, v: number, today: string, size?: Sz | null) {
   const prev = (prod?.hist ?? []).filter((h) => h.d !== today).slice(-10);
   if (!prev.length || !(v > 0)) return null;
-  const vals = prev.map((h) => h.v);
-  const avg = vals.reduce((t, x) => t + x, 0) / vals.length;
+  const c = compVals(prod, prev);
+  const z = size === undefined ? recSize(prod, {}) : size;
+  const per = c.per && !!z && z.unit === c.unit;
+  const vals = per ? c.vals : prev.map((h) => h.v);
+  const x = per ? v / z!.size : v;
+  const avg = vals.reduce((t, y) => t + y, 0) / vals.length;
   const min = Math.min(...vals);
-  const diff = v / avg - 1;
-  const tag = v < min - 0.005 ? { cls: "good", t: "menor preço" } : diff <= -0.03 ? { cls: "good", t: "barato" }
+  const diff = x / avg - 1;
+  const tag = x < min - 0.005 ? { cls: "good", t: "menor preço" } : diff <= -0.03 ? { cls: "good", t: "barato" }
     : diff >= 0.08 ? { cls: "bad", t: `caro (+${fmt(diff * 100, 0)}%)` } : { cls: "", t: "na média" };
-  return { ...tag, avg, min, last: prev[prev.length - 1] };
+  return { ...tag, avg, min, x, per: per ? perLab(z!.unit) : "", last: prev[prev.length - 1] };
 }
 // Hora de estocar: item que voce compra sempre, no menor preco da sua historia (e pelo menos 5% abaixo da media)
 export function stockUp(prod: Product | undefined, v: number, freq: number, today: string) {
   const vd = verdict(prod, v, today);
   const often = freq >= 3 || (prod?.buys?.length ?? 0) >= 2;
-  return !!vd && often && v <= vd.min + 0.005 && v <= vd.avg * 0.95;
+  return !!vd && often && vd.x <= vd.min + 0.005 && vd.x <= vd.avg * 0.95;
 }
 // De quantos em quantos dias voce compra o produto e quando seria a proxima (precisa de 2 compras ou mais)
 export function cadence(prod: Product | undefined) {
@@ -95,7 +112,11 @@ export function personalInflation(prices: Record<string, Product>, monthsBack: n
   for (const p of Object.values(prices)) {
     const old = [...p.hist].reverse().find((h) => h.d <= cut);
     const now = p.hist[p.hist.length - 1];
-    if (old && now && now.d >= recent && old.v > 0) ch.push(now.v / old.v - 1);
+    if (!old || !now || now.d < recent || !(old.v > 0)) continue;
+    // compara por kg/l quando os dois precos tem tamanho (mesmo produto comprado em pacotes diferentes)
+    const a = recSize(p, old), b = recSize(p, now);
+    const per = a && b && a.unit === b.unit;
+    ch.push((per ? now.v / b!.size : now.v) / (per ? old.v / a!.size : old.v) - 1);
   }
   return ch.length ? { pct: ch.reduce((t, x) => t + x, 0) / ch.length, n: ch.length } : null;
 }
@@ -145,7 +166,7 @@ const byDate = (h: PriceRec[]) => [...h].sort((a, b) => a.d.localeCompare(b.d));
 export function addRec(prices: Prices, name: string, rec: PriceRec, opt?: { alias?: string; buy?: boolean }) {
   const k = key(name);
   const p = prices[k] ?? { name: cap(name), hist: [] };
-  const hist = p.hist.filter((h) => !(h.d === rec.d && (h.s ?? "") === (rec.s ?? "")));
+  const hist = p.hist.filter((h) => !(h.d === rec.d && (h.s ?? "") === (rec.s ?? "") && (h.sz ?? 0) === (rec.sz ?? 0)));
   const al = opt?.alias && opt.alias !== k && !(p.aliases ?? []).includes(opt.alias) ? { aliases: [...(p.aliases ?? []), opt.alias] } : {};
   const buys = opt?.buy ? { buys: [...new Set([...(p.buys ?? []), rec.d])].sort().slice(-12) } : {};
   return { ...prices, [k]: { ...p, ...al, ...buys, hist: byDate([...hist, rec]).slice(-60) } };
@@ -184,8 +205,7 @@ export function matchNota(desc: string, prices: Prices): { exact?: string; sug?:
   let best: string | undefined, score = 1;
   for (const [pk, p] of Object.entries(prices)) {
     const ps = p.size ? { size: p.size, unit: p.unit ?? "un" } : sizeOf(p.name);
-    if (!sameSize(ds, ps)) continue;
-    const sc = words(pk).filter((x) => w.includes(x)).length;
+    const sc = words(pk).filter((x) => w.includes(x)).length + (ds && ps && sameSize(ds, ps) ? 0.5 : 0);
     if (sc > score) { best = pk; score = sc; }
   }
   return best ? { sug: best } : {};
@@ -260,9 +280,9 @@ export default function ShoppingList({ months, setup, ipca12m }: { months: Recor
     input.current?.focus();
   };
   const update = (id: string, patch: Partial<Item>) => save({ ...data, items: data.items.map((x) => (x.id === id ? { ...x, ...patch } : x)) });
-  const saveNota = async (rows: { name: string; price: number; alias: string }[], date: string, store: string | undefined) => {
+  const saveNota = async (rows: { name: string; price: number; alias: string; size: Sz | null }[], date: string, store: string | undefined) => {
     const d0 = latest.current;
-    const prices = rows.reduce((pr, r) => addRec(pr, r.name, { v: r.price, d: date, ...(store ? { s: store } : {}) }, { alias: r.alias, buy: true }), d0.prices);
+    const prices = rows.reduce((pr, r) => addRec(pr, r.name, { v: r.price, d: date, ...(store ? { s: store } : {}), ...(r.size ? { sz: r.size.size, u: r.size.unit } : {}) }, { alias: r.alias, buy: true }), d0.prices);
     const stores = store ? [...new Set([...(d0.stores ?? []), store])] : d0.stores;
     await save({ ...d0, prices, stores });
   };
@@ -537,17 +557,19 @@ function Products({ prices, freq, stores, today, open, setOpen, ops }: {
   const groups = [...new Set(shown.map(([, p]) => p.group).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b));
   const cheapest = (g: string) => {
     const mem = all.filter(([, p]) => p.group === g && p.hist.length);
-    if (mem.length < 2 || !mem.every(([, p]) => p.size)) return null;
-    return [...mem].sort((a, b) => last(a[1]).v / a[1].size! - last(b[1]).v / b[1].size!)[0][0];
+    const per = mem.map(([k, p]) => ({ k, z: recSize(p, last(p)), v: last(p).v }));
+    if (mem.length < 2 || !per.every((x) => x.z) || !per.every((x) => x.z!.unit === per[0].z!.unit)) return null;
+    return [...per].sort((a, b) => a.v / a.z!.size - b.v / b.z!.size)[0].k;
   };
   const row = ([k, p]: [string, Product], best?: string | null) => {
     const l = last(p);
     // ultimo preco x os anteriores (o proprio registro nao entra na conta)
-    const vd = l && p.hist.length > 1 ? verdict({ ...p, hist: p.hist.slice(0, -1) }, l.v, "") : null;
+    const lz = l ? recSize(p, l) : null;
+    const vd = l && p.hist.length > 1 ? verdict({ ...p, hist: p.hist.slice(0, -1) }, l.v, "", lz) : null;
     return (
       <ListRow key={k} onClick={() => setOpen(k)} chevron={false}
         title={<>{p.name}{p.size ? <span className="ls-soft"> · {sizeLabel(p)}</span> : null}{best === k && <Badge tone="pos">mais barata</Badge>}</>}
-        sub={l ? `${dm(l.d)}${l.s ? ` · ${l.s}` : ""}${p.size ? ` · ${brl(l.v / p.size)}${perLabel(p)}` : ""}${p.hist.length > 1 ? ` · ${p.hist.length} preços` : ""}` : "sem preço"}
+        sub={l ? `${dm(l.d)}${l.s ? ` · ${l.s}` : ""}${lz ? ` · ${l.sz ? `${szLabel(lz)} · ` : ""}${brl(l.v / lz.size)}${perLab(lz.unit)}` : ""}${p.hist.length > 1 ? ` · ${p.hist.length} preços` : ""}` : "sem preço"}
         value={l ? <span className="prod-v"><b>{brl(l.v)}</b>{vd && vd.cls && <small className={vd.cls === "good" ? "pos" : "neg"}>{vd.t}</small>}</span> : undefined} />
     );
   };
@@ -606,21 +628,28 @@ function NewPrice({ prices, stores, today, fixed, onSave }: {
   const [v, setV] = useState("");
   const [d, setD] = useState(today);
   const [s, setS] = useState("");
+  const [zt, setZt] = useState("");
   const prev = prices[key(name)];
-  const vd = prev && num(v) > 0 ? verdict(prev, num(v), today) : null;
-  const ok = name.trim() && num(v) > 0 && d;
+  const z = zt.trim() ? parseSize(zt) : null;
+  const vd = prev && num(v) > 0 ? verdict(prev, num(v), today, z ?? recSize(prev, {})) : null;
+  const ok = name.trim() && num(v) > 0 && d && (!zt.trim() || z);
   return (
-    <form className="pay-form" onSubmit={async (e) => { e.preventDefault(); if (ok) await onSave(name.trim(), { v: Math.round(num(v) * 100) / 100, d, ...(s.trim() ? { s: cap(s.trim()) } : {}) }); }}>
+    <form className="pay-form" onSubmit={async (e) => { e.preventDefault(); if (ok) await onSave(name.trim(), { v: Math.round(num(v) * 100) / 100, d, ...(s.trim() ? { s: cap(s.trim()) } : {}), ...(z ? { sz: z.size, u: z.unit } : {}) }); }}>
       {!fixed && <label>Produto<input value={name} onChange={(e) => setName(e.target.value)} list="prod-names" placeholder="Ex.: Café 500 g" autoFocus /></label>}
       <datalist id="prod-names">{Object.values(prices).map((p) => <option key={p.name} value={p.name} />)}</datalist>
       <div className="pay-row">
         <label>Preço (R$)<input value={v} inputMode="decimal" onChange={(e) => setV(e.target.value)} placeholder="0,00" /></label>
         <label>Data<input type="date" value={d} onChange={(e) => setD(e.target.value)} /></label>
       </div>
-      <label>Mercado (opcional)<input value={s} onChange={(e) => setS(e.target.value)} list="prod-stores" placeholder="onde comprou" /></label>
+      <div className="pay-row">
+        <label>Mercado (opcional)<input value={s} onChange={(e) => setS(e.target.value)} list="prod-stores" placeholder="onde comprou" /></label>
+        <label>Tamanho desta compra<input value={zt} onChange={(e) => setZt(e.target.value)} placeholder={prev?.size ? sizeLabel(prev) : "ex.: 5 kg, 1 l"} aria-invalid={!!zt.trim() && !z} /></label>
+      </div>
       <datalist id="prod-stores">{stores.map((x) => <option key={x} value={x} />)}</datalist>
+      {zt.trim() && !z && <p className="mes-line warn">Tamanho não entendido. Use 500 g, 5 kg, 900 ml, 2 l ou 12 un.</p>}
+      {z && num(v) > 0 && <p className="mes-line">Sai a {brl(num(v) / z.size)}{perLab(z.unit)}.</p>}
       {!fixed && name.trim() && <p className="mes-line">{prev ? <>Vai para o produto salvo <b>{prev.name}</b> ({prev.hist.length} preços).</> : "Produto novo."}</p>}
-      {vd && <p className="mes-line"><span className={`shop-tag ${vd.cls}`}>{vd.t}</span> média {brl(vd.avg)} · menor {brl(vd.min)}</p>}
+      {vd && <p className="mes-line"><span className={`shop-tag ${vd.cls}`}>{vd.t}</span> média {brl(vd.avg)}{vd.per} · menor {brl(vd.min)}{vd.per}</p>}
       <Button type="submit" variant="primary" block disabled={!ok}>Salvar preço</Button>
     </form>
   );
@@ -634,17 +663,22 @@ function ProductSheet({ k, p, prices, stores, today, ops, onClose, onOpen }: {
   const [size, setSize] = useState(sizeLabel(p));
   const [group, setGroup] = useState(p.group ?? "");
   const [edit, setEdit] = useState<number | null>(null);
-  const [ev, setEv] = useState({ v: "", d: "", s: "" });
+  const [ev, setEv] = useState({ v: "", d: "", s: "", z: "" });
   const [moving, setMoving] = useState<number | null>(null);
   const [mergeTo, setMergeTo] = useState("");
   const [adding, setAdding] = useState(false);
   const others = Object.entries(prices).filter(([o]) => o !== k).sort((a, b) => a[1].name.localeCompare(b[1].name));
   const groups = [...new Set(Object.values(prices).map((x) => x.group).filter(Boolean) as string[])].sort();
-  const vals = p.hist.map((h) => h.v);
+  // com tamanho em todos os precos, o resumo, o grafico e o "mais barato em" sao por kg/l/un
+  const cv = compVals(p, p.hist);
+  const vals = cv.vals;
+  const pl = cv.per ? perLab(cv.unit) : "";
   const l = p.hist[p.hist.length - 1];
+  const lz = l ? recSize(p, l) : null;
   const st: Record<string, number> = {};
-  for (const h of p.hist) if (h.s) st[h.s] = h.v;
+  p.hist.forEach((h, i) => { if (h.s) st[h.s] = vals[i]; });
   const byStore = Object.entries(st).sort((a, b) => a[1] - b[1]);
+  const evZ = ev.z.trim() ? parseSize(ev.z) : null;
   const sizeOk = !size.trim() || parseSize(size);
   const dirty = name.trim() !== p.name || (size.trim() ? sizeLabel(p) !== size.trim() : !!p.size) || group.trim() !== (p.group ?? "");
   const saveInfo = async () => {
@@ -663,7 +697,7 @@ function ProductSheet({ k, p, prices, stores, today, ops, onClose, onOpen }: {
       <div className="prod-info">
         <label>Nome<input value={name} onChange={(e) => setName(e.target.value)} /></label>
         <div className="pay-row">
-          <label>Tamanho<input value={size} onChange={(e) => setSize(e.target.value)} placeholder="ex.: 500 g, 1 l, 12 un" aria-invalid={!sizeOk} /></label>
+          <label>Tamanho padrão<input value={size} onChange={(e) => setSize(e.target.value)} placeholder="ex.: 500 g, 1 l, 12 un" aria-invalid={!sizeOk} /></label>
           <label>Grupo para comparar<input value={group} onChange={(e) => setGroup(e.target.value)} list="prod-groups" placeholder="ex.: Café 500 g" /></label>
         </div>
         <datalist id="prod-groups">{groups.map((g) => <option key={g} value={g} />)}</datalist>
@@ -673,15 +707,16 @@ function ProductSheet({ k, p, prices, stores, today, ops, onClose, onOpen }: {
 
       {l && (
         <div className="prod-sum">
-          <div><span>Último</span><b>{brl(l.v)}</b><small>{dm(l.d)}{l.s ? ` · ${l.s}` : ""}</small></div>
-          <div><span>Menor</span><b className="pos">{brl(Math.min(...vals))}</b></div>
-          <div><span>Média</span><b>{brl(vals.reduce((t, x) => t + x, 0) / vals.length)}</b></div>
-          <div><span>Maior</span><b className="neg">{brl(Math.max(...vals))}</b></div>
-          {p.size && <div><span>Por {p.unit === "un" ? "unidade" : p.unit === "l" ? "litro" : "kg"}</span><b>{brl(l.v / p.size)}</b></div>}
-          <div className="prod-spark"><Spark hist={p.hist} /></div>
+          <div><span>Último{lz ? ` (${szLabel(lz)})` : ""}</span><b>{brl(l.v)}</b><small>{dm(l.d)}{l.s ? ` · ${l.s}` : ""}</small></div>
+          {lz && <div><span>Último por {lz.unit === "un" ? "unidade" : lz.unit === "l" ? "litro" : "kg"}</span><b>{brl(l.v / lz.size)}</b></div>}
+          <div><span>Menor{pl}</span><b className="pos">{brl(Math.min(...vals))}</b></div>
+          <div><span>Média{pl}</span><b>{brl(vals.reduce((t, x) => t + x, 0) / vals.length)}</b></div>
+          <div><span>Maior{pl}</span><b className="neg">{brl(Math.max(...vals))}</b></div>
+          <div className="prod-spark"><Spark hist={p.hist.map((h, i) => ({ ...h, v: vals[i] }))} /></div>
         </div>
       )}
-      {byStore.length > 1 && <p className="mes-line">Mais barato em: {byStore.map(([s, v], i) => <span key={s} className={i === 0 ? "pos" : ""}>{i > 0 ? " · " : ""}{s} {brl(v)}</span>)}</p>}
+      {byStore.length > 1 && <p className="mes-line">Mais barato em: {byStore.map(([s, v], i) => <span key={s} className={i === 0 ? "pos" : ""}>{i > 0 ? " · " : ""}{s} {brl(v)}{pl}</span>)}</p>}
+      {!cv.per && p.hist.length > 1 && p.hist.some((h) => h.sz) && <p className="mes-line">Informe o tamanho de todos os preços (ou o tamanho padrão acima) para comparar por kg/litro.</p>}
 
       <div className="prod-hist-head"><b>Histórico de preços</b>
         <Button variant="link" size="sm" icon={<Plus size={14} aria-hidden="true" />} onClick={() => setAdding(!adding)}>{adding ? "fechar" : "preço"}</Button></div>
@@ -691,10 +726,12 @@ function ProductSheet({ k, p, prices, stores, today, ops, onClose, onOpen }: {
           {rows.map(({ h, i }) => (
             <div key={`${h.d}-${h.s ?? ""}-${i}`} className="prod-rec">
               {edit === i ? (
-                <form className="prod-rec-edit" onSubmit={async (e) => { e.preventDefault(); if (!(num(ev.v) > 0) || !ev.d) return; await ops.editRec(k, i, { v: Math.round(num(ev.v) * 100) / 100, d: ev.d, ...(ev.s.trim() ? { s: cap(ev.s.trim()) } : {}) }); setEdit(null); }}>
+                <form className="prod-rec-edit" onSubmit={async (e) => { e.preventDefault(); if (!(num(ev.v) > 0) || !ev.d || (ev.z.trim() && !evZ)) return; await ops.editRec(k, i, { v: Math.round(num(ev.v) * 100) / 100, d: ev.d, ...(ev.s.trim() ? { s: cap(ev.s.trim()) } : {}), ...(evZ ? { sz: evZ.size, u: evZ.unit } : {}) }); setEdit(null); }}>
                   <input value={ev.v} inputMode="decimal" onChange={(e) => setEv({ ...ev, v: e.target.value })} aria-label="Preço" />
                   <input type="date" value={ev.d} onChange={(e) => setEv({ ...ev, d: e.target.value })} aria-label="Data" />
                   <input value={ev.s} onChange={(e) => setEv({ ...ev, s: e.target.value })} list="prod-stores" placeholder="mercado" aria-label="Mercado" />
+                  <input value={ev.z} onChange={(e) => setEv({ ...ev, z: e.target.value })} placeholder={p.size ? `tamanho (${sizeLabel(p)})` : "tamanho (ex.: 5 kg)"} aria-label="Tamanho desta compra" aria-invalid={!!ev.z.trim() && !evZ} />
+                  {evZ && num(ev.v) > 0 && <span className="mes-line">{brl(num(ev.v) / evZ.size)}{perLab(evZ.unit)}</span>}
                   <datalist id="prod-stores">{stores.map((x) => <option key={x} value={x} />)}</datalist>
                   <Button type="submit" variant="primary" size="sm">Salvar</Button>
                   <Button variant="ghost" size="sm" onClick={() => setEdit(null)}>Cancelar</Button>
@@ -717,11 +754,12 @@ function ProductSheet({ k, p, prices, stores, today, ops, onClose, onOpen }: {
               ) : (
                 <>
                   <span className="prod-rec-d">{dm(h.d)}/{h.d.slice(2, 4)}</span>
-                  <span className="prod-rec-s">{h.s ?? <span className="ls-soft">sem mercado</span>}</span>
+                  <span className="prod-rec-s">{h.s ?? <span className="ls-soft">sem mercado</span>}
+                    {(() => { const z = recSize(p, h); return z ? <small className="prod-rec-z">{h.sz ? szLabel(z) : `${szLabel(z)} (padrão)`} · {brl(h.v / z.size)}{perLab(z.unit)}</small> : null; })()}</span>
                   <b className="prod-rec-v">{brl(h.v)}</b>
                   <span className="prod-rec-acts">
                     <Button variant="icon" size="sm" aria-label={`Alterar o preço de ${dm(h.d)}`} icon={<Pencil size={14} aria-hidden="true" />}
-                      onClick={() => { setMoving(null); setEv({ v: fmt(h.v), d: h.d, s: h.s ?? "" }); setEdit(i); }} />
+                      onClick={() => { setMoving(null); setEv({ v: fmt(h.v), d: h.d, s: h.s ?? "", z: h.sz ? szLabel({ size: h.sz, unit: h.u ?? p.unit ?? "un" }) : "" }); setEdit(i); }} />
                     <Button variant="icon" size="sm" aria-label={`Mover o preço de ${dm(h.d)} para outro produto`} icon={<ArrowRightLeft size={14} aria-hidden="true" />}
                       onClick={() => { setEdit(null); setMoving(i); }} />
                     <Button variant="icon" size="sm" aria-label={`Apagar o preço de ${dm(h.d)}`} icon={<Trash2 size={14} aria-hidden="true" />}
@@ -770,7 +808,7 @@ function ProductSheet({ k, p, prices, stores, today, ops, onClose, onOpen }: {
 type NotaRow = { on: boolean; target: string; name: string; sug?: string; it: NotaItem }; // target "" = produto novo com "name"
 function NotaImport({ prices, stores, setup, months, onSave }: {
   prices: Prices; stores: string[]; setup: GastosSetup; months: Record<string, MonthDoc>;
-  onSave: (rows: { name: string; price: number; alias: string }[], date: string, store: string | undefined) => Promise<void>;
+  onSave: (rows: { name: string; price: number; alias: string; size: Sz | null }[], date: string, store: string | undefined) => Promise<void>;
 }) {
   const [text, setText] = useState("");
   const [res, setRes] = useState<ReturnType<typeof parseNota> | null>(null);
@@ -783,7 +821,10 @@ function NotaImport({ prices, stores, setup, months, onSave }: {
     const r = parseNota(text);
     setRes(r); setDone("");
     // nome do mercado: um que voce ja usa com o mesmo comeco, ou o da nota
-    const known = r.store ? stores.find((x) => key(r.store!).includes(key(x)) || key(x).includes(key(r.store!).split(" ")[0])) : undefined;
+    // a 1a palavra que identifica o mercado (pula "mercado", "supermercado"... que muitos tem no nome)
+    const GENERIC = ["mercado", "supermercado", "super", "supermercados", "mercados", "atacado", "atacadao", "comercial", "comercio", "loja", "lojas", "rede", "cia", "cooperativa", "ltda", "eireli", "epp"];
+    const id = r.store ? key(r.store).split(/\s+/).find((x) => x.length > 2 && !GENERIC.includes(x)) : undefined;
+    const known = r.store ? stores.find((x) => key(r.store!).includes(key(x)) || (!!id && key(x).split(/\s+/).includes(id))) : undefined;
     setStore(known ?? (r.store ? nice(r.store).split(" ").slice(0, 2).join(" ") : ""));
     if (r.date) setDate(r.date);
     setRows(r.items.map((it) => { const m = matchNota(it.desc, prices); return { on: true, target: m.exact ?? "", name: nice(it.desc), sug: m.sug, it }; }));
@@ -791,7 +832,8 @@ function NotaImport({ prices, stores, setup, months, onSave }: {
   const set = (i: number, p: Partial<NotaRow>) => setRows(rows.map((y, j) => (j === i ? { ...y, ...p } : y)));
   const save = async () => {
     const list = rows.filter((x) => x.on && x.it.unitPrice > 0 && (x.target || x.name.trim()))
-      .map((x) => ({ name: x.target ? prices[x.target].name : x.name.trim(), price: x.it.unitPrice, alias: key(x.it.desc) }));
+      .map((x) => ({ name: x.target ? prices[x.target].name : x.name.trim(), price: x.it.unitPrice, alias: key(x.it.desc),
+        size: x.it.unit === "KG" ? { size: 1, unit: "kg" as const } : sizeOf(x.it.desc) }));
     await onSave(list, date, store.trim() ? cap(store.trim()) : undefined);
     setDone(`${list.length} preços salvos${store.trim() ? ` (${cap(store.trim())}, ${dm(date)})` : ""}.`);
     setText(""); setRes(null); setRows([]);

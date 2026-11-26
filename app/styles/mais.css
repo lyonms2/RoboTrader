@@ -114,3 +114,8 @@
 .nota-sug { font-size: var(--fs-xs); color: var(--text-3); display: flex; align-items: center; gap: 4px; flex-basis: 100%; }
 .nota-head { margin-top: var(--s-2); }
 .nota-head label { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-xs); color: var(--text-3); }
+
+/* tamanho de cada preco (o mesmo produto em pacotes diferentes) */
+.prod-rec-s { display: flex; flex-direction: column; white-space: normal; }
+.prod-rec-z { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prod-rec-edit .mes-line { flex-basis: 100%; }

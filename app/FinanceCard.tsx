@@ -15,6 +15,8 @@ import { BalanceEq, FinBar } from "./OverviewBlocks";
 export { NetWorthBlock } from "./OverviewBlocks";
 import ExportData from "./ExportData";
 import ShoppingList from "./ShoppingList";
+import Allocation from "./Allocation";
+import { useShowCrypto } from "./cryptoPref";
 import { Badge, Button, Card as UiCard, EmptyState, Fold, InfoTip, List, ListRow, Money, Progress, Section, Segmented, Sheet, Stat, Stats } from "./ui";
 import { Bitcoin, CalendarClock, CreditCard, House, Landmark, PiggyBank, Plus, RefreshCw, UserRound } from "lucide-react";
 // membro: dados em users/{uid}/ (o dono exporta tambem as operacoes manuais)
@@ -79,6 +81,20 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
     }
     window.scrollTo({ top: 0 });
   };
+  // atalho "Alocacao alvo" (Mais): abre Investimentos e desce ate o bloco
+  useEffect(() => {
+    const go = () => {
+      try { localStorage.removeItem("gotoAlloc"); } catch { /* sem armazenamento */ }
+      setSubState("invest");
+      // a tela de Investimentos pode ainda estar carregando: tenta por ate ~3 s
+      let n = 0;
+      const tryScroll = () => { const el = document.getElementById("alocacao"); if (el) el.scrollIntoView({ block: "start" }); else if (n++ < 20) setTimeout(tryScroll, 150); };
+      setTimeout(tryScroll, 200);
+    };
+    try { if (localStorage.getItem("gotoAlloc")) { localStorage.removeItem("gotoAlloc"); go(); } } catch { /* sem armazenamento */ }
+    window.addEventListener("goto-alloc", go);
+    return () => window.removeEventListener("goto-alloc", go);
+  }, []);
   const [entry, setEntry] = useState<{ type: EntryType; id: string | null } | null>(null); // folha de cadastro/alteracao aberta
   // "loans" (aviso de parcela atrasada na Visao geral) abre direto em Emprestimos
   const [cardsEntry, setCardsEntry] = useState<CardsEntry>({ type: "compra", id: null });
@@ -114,6 +130,11 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
     if (it.kind === "bem") setBemEdit(undefined); else setInvEdit(undefined);
     await save(list, it.kind === "acao" || it.kind === "tesouro");
   };
+  // alocacao alvo: grava sem esperar o banco (a tela muda na hora)
+  const saveTarget = async (t: NonNullable<AppConfig["target"]>) => {
+    guardWrite();
+    void setDoc(doc(db(), P("config/main")), { target: JSON.parse(JSON.stringify(t)) }, { merge: true }).catch((e) => tell(`Não salvou o alvo: ${String(e)}`));
+  };
   // conferir cofrinho: grava sem fechar a folha
   const saveItem = (it: FinItem) => save(items.map((x) => (x.id === it.id ? it : x)), false);
   const remove = async (it: FinItem) => {
@@ -137,12 +158,13 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
 
   // so o Patrimonio tem partes; Mes e Lista de compras sao uma tela so
   // Tem / Deve / Liquido igual ao Inicio (com a cripto); a conta completa no "i"
+  const showCrypto = useShowCrypto();
   const tem = s.total + debt.recv;
   const nav = view !== "patrimonio" ? null : (<>
     <div className="pat-head">
       <div className="pat-title"><h1>Patrimônio</h1>
         <InfoTip label="Como é calculado"><b>O que você tem − o que deve</b>
-          <BalanceEq contas={contas} investido={investido} crypto={crypto} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} people={debt.total - debt.cards - debt.loans} />
+          <BalanceEq contas={contas} investido={investido} crypto={showCrypto ? crypto : undefined} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} people={debt.total - debt.cards - debt.loans} />
           {s.bens > 0 && <span className="home-tip-line">Sem os bens: {brl(tem - debt.total - s.bens)}</span>}</InfoTip></div>
       <div className="pat-bal">
         <div><span>Tem</span><Money value={tem} size="md" /></div>
@@ -159,7 +181,8 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
   if (sub === "cards" || sub === "loans" || sub === "recv") return <>{nav}<CardsLoans key={sub} part={sub} months={months} setup={setup} invest={items} entry={cardsEntry} setEntry={setCardsEntry} />{entrySheet}</>;
   if (sub === "invest") return (
     <>{nav}<InvestPart items={items} rows={rows} fin={fin} months={months} reserve={s.reserve} reserveMonths={s.reserveMonths}
-      setup={setup} onQuotes={onQuotes} onCheck={saveItem} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} />{entrySheet}</>
+      setup={setup} onQuotes={onQuotes} onCheck={saveItem}
+      alloc={<Allocation byGroup={s.byGroup} reserve={s.reserve} monthlySpend={spend?.value ?? cfg.monthlyCost ?? null} target={cfg.target} showCrypto={showCrypto} onSave={saveTarget} />} edit={invEdit} setEdit={setInvEdit} bemEdit={bemEdit} setBemEdit={setBemEdit} bensTotal={s.bens} onSave={upsert} onRemove={remove} onLanc={() => setSub("lanc")} />{entrySheet}</>
   );
   if (sub === "lanc") return <>{nav}<GastosCard months={months} setup={setup} invest={items} onBens={() => setSub("bens")} onCard={(id) => goEdit("card", id)} onFixo={(id, kind) => setEntry({ type: kind, id })}
     onCardBuy={(id, d) => { setCardsEntry({ type: "compra", id, d }); setSub("cards"); }} />{entrySheet}</>;
@@ -205,9 +228,9 @@ export default function FinanceCard({ cfg, fin, wallet, onChanged, onQuotes, spe
 }
 
 // ---------- sub-aba Investimentos: cadastro, carteira, aportes/resgates e proventos ----------
-function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, onQuotes, onCheck, edit, setEdit, bemEdit, setBemEdit, bensTotal, onSave, onRemove, onLanc }: {
+function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, onQuotes, onCheck, alloc, edit, setEdit, bemEdit, setBemEdit, bensTotal, onSave, onRemove, onLanc }: {
   items: FinItem[]; rows: FinRow[]; fin: FinanceDoc | null; months: Record<string, MonthDoc>;
-  setup: GastosSetup; reserve: number; reserveMonths: number | null; onQuotes?: () => Promise<void>; onCheck: (it: FinItem) => Promise<void>;
+  setup: GastosSetup; reserve: number; reserveMonths: number | null; onQuotes?: () => Promise<void>; onCheck: (it: FinItem) => Promise<void>; alloc: React.ReactNode;
   edit: string | null | undefined; setEdit: (id: string | null | undefined) => void;
   bemEdit: string | null | undefined; setBemEdit: (id: string | null | undefined) => void; bensTotal: number;
   onSave: (it: FinItem) => void; onRemove: (it: FinItem) => void; onLanc: () => void;
@@ -262,6 +285,8 @@ function InvestPart({ items, rows, fin, months, setup, reserve, reserveMonths, o
         <Stat label="Reserva" value={<Money value={reserve} size="md" />} hint={reserveMonths !== null ? `${fmt(reserveMonths, 1)} meses de gastos` : "marque \"reserva\" no investimento"} />
         <Stat label="Guardou em 12 meses" value={moves.length ? <Money value={put - took} size="md" tone="auto" signed /> : "-"} hint={moves.length ? `aplicou ${brl(put)}` : "aportes do extrato"} />
       </Stats>
+
+      {alloc}
 
       <Section title="Sua carteira" action={<span>{brl(total)}</span>}
         info={<>Automático: cotação e proventos, preço do Tesouro (1 vez por dia), CDI, IPCA e dólar (Banco Central). À mão: quantidades, saldo do cofrinho e

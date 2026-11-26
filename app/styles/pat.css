@@ -84,3 +84,76 @@
 .chk-hist summary { cursor: pointer; font-size: var(--fs-sm); color: var(--text-2); }
 .chk-hist ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); }
 .chk-hist li { display: grid; grid-template-columns: 70px 1fr auto; gap: var(--s-2); font-variant-numeric: tabular-nums; }
+
+/* alocacao alvo */
+.alloc-card { display: flex; flex-direction: column; gap: var(--s-4); }
+.alloc-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3); background: linear-gradient(160deg, rgba(110, 168, 255, 0.10), var(--surface) 60%); }
+.alloc-empty-ico { width: 48px; height: 48px; border-radius: 14px; background: var(--info-soft); color: var(--info); display: flex; align-items: center; justify-content: center; }
+.alloc-empty p { margin: 4px 0 0; color: var(--text-3); font-size: var(--fs-sm); }
+.alloc-res { display: flex; flex-direction: column; gap: 6px; padding-bottom: var(--s-3); border-bottom: 1px solid var(--line-soft); }
+.alloc-res-top { display: flex; justify-content: space-between; gap: var(--s-2); font-size: var(--fs-sm); flex-wrap: wrap; }
+.alloc-res-top span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-weight: 600; }
+.alloc-res-top b { font-variant-numeric: tabular-nums; }
+.alloc-res small { font-size: var(--fs-xs); color: var(--text-3); }
+.alloc-main { display: grid; grid-template-columns: 1fr; gap: var(--s-4); align-items: center; }
+.alloc-chart { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.alloc-donut { width: 180px; height: 180px; }
+.alloc-donut circle { transition: stroke-dasharray var(--t-med), stroke-dashoffset var(--t-med); }
+.alloc-donut-v { fill: var(--text); font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.alloc-donut-s { fill: var(--text-3); font-size: 10.5px; }
+.alloc-key { display: flex; gap: var(--s-3); font-size: 11px; color: var(--text-3); }
+.alloc-key span { display: inline-flex; align-items: center; gap: 5px; }
+.alloc-key .ring { width: 12px; height: 12px; border-radius: 50%; border: 3px solid var(--text-3); box-sizing: border-box; }
+.alloc-key .ring.in { border-width: 4px; border-color: var(--text-2); }
+.alloc-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.alloc-row-top { display: flex; justify-content: space-between; gap: var(--s-2); font-size: var(--fs-sm); flex-wrap: wrap; }
+.alloc-row-top > span:first-child { font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.alloc-row-pct { color: var(--text-3); font-size: var(--fs-xs); }
+.alloc-row-pct b { color: var(--text); font-variant-numeric: tabular-nums; }
+.alloc-bar { position: relative; height: 10px; border-radius: var(--r-pill); background: var(--line); margin-top: 6px; }
+.alloc-bar .fill { position: absolute; top: 0; bottom: 0; left: 0; width: calc(var(--now) * 100%); border-radius: inherit; background: var(--c); transition: width var(--t-med); }
+.alloc-bar .mark { position: absolute; top: -4px; bottom: -4px; left: calc(var(--tg) * 100%); width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 2px var(--surface); }
+.alloc-row-foot { display: flex; justify-content: space-between; gap: var(--s-2); margin-top: 4px; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.alloc-row-foot .pos { color: var(--pos); font-weight: 600; }
+.alloc-ap { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-3); border-top: 1px solid var(--line-soft); }
+label.alloc-ap-in { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-sm); font-weight: 700; color: var(--text); margin: 0; }
+.alloc-ap-in > span { display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface-2); }
+.alloc-ap-in > span:focus-within { border-color: var(--accent); }
+.alloc-ap-in em { font-style: normal; color: var(--text-3); font-weight: 600; }
+.alloc-ap-in input { flex: 1; min-width: 0; max-width: none; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 20px; font-weight: 800; outline: none; padding: 0; font-variant-numeric: tabular-nums; }
+.alloc-ap-out { display: flex; flex-wrap: wrap; gap: 8px; }
+.alloc-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: var(--r-pill); background: var(--surface-2); border: 1px solid var(--line); font-size: var(--fs-sm); }
+.alloc-chip i { width: 10px; height: 10px; border-radius: 50%; background: var(--c, var(--g-reserva)); }
+.alloc-chip.res i { background: var(--g-reserva); }
+.alloc-chip b { font-variant-numeric: tabular-nums; }
+.alloc-form { display: flex; flex-direction: column; gap: var(--s-3); }
+.alloc-form-row { display: grid; grid-template-columns: minmax(0, 1fr) 84px; grid-template-areas: "name pct" "range range"; gap: 6px var(--s-2); align-items: center; }
+.alloc-form-name { grid-area: name; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: var(--fs-sm); }
+.alloc-form-name small { color: var(--text-3); font-weight: 400; margin-left: 4px; }
+.alloc-form-row input[type="range"] { grid-area: range; width: 100%; accent-color: var(--c); max-width: none; padding: 0; height: 28px; background: transparent; border: 0; }
+.alloc-form-pct { grid-area: pct; display: flex; align-items: center; gap: 4px; justify-content: flex-end; font-size: var(--fs-sm); color: var(--text-3); }
+.alloc-form-pct input { width: 56px; text-align: right; min-height: 36px; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+.alloc-sum { display: flex; align-items: center; gap: var(--s-2); padding: 10px 14px; border-radius: var(--r-md); background: var(--warn-soft); font-size: var(--fs-md); }
+.alloc-sum b { font-variant-numeric: tabular-nums; }
+.alloc-sum.ok { background: var(--pos-soft); }
+.alloc-sum .ui-badge { margin-left: auto; }
+.alloc-form-res label { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-xs); color: var(--text-3); font-weight: 600; }
+.alloc-form-res input { max-width: 120px; min-height: 40px; }
+.alloc-form-acts { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: flex-end; }
+@media (min-width: 700px) { .alloc-main { grid-template-columns: 200px minmax(0, 1fr); } }
+
+/* "voce usa cripto?" no Inicio e a chave em Minha conta */
+.home-ask { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); border-color: rgba(247, 147, 26, 0.35); }
+.home-ask-ico { width: 44px; height: 44px; border-radius: 14px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; flex: none; }
+.home-ask-txt { flex: 1 1 200px; display: flex; flex-direction: column; gap: 2px; }
+.home-ask-txt span { font-size: var(--fs-sm); color: var(--text-3); }
+.home-ask-acts { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+label.acc-switch { flex-direction: row; align-items: center; gap: var(--s-3); cursor: pointer; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); color: var(--text); font-size: var(--fs-md); }
+.acc-switch input { appearance: none; -webkit-appearance: none; width: 44px; height: 26px; border-radius: 13px; background: var(--line-strong); position: relative; flex: none; cursor: pointer; transition: background var(--t-fast); margin: 0; padding: 0; border: 0; max-width: none; }
+.acc-switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform var(--t-fast); }
+.acc-switch input:checked { background: var(--accent); }
+.acc-switch input:checked::after { transform: translateX(18px); }
+.acc-switch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.acc-switch span { display: flex; flex-direction: column; gap: 2px; }
+.acc-switch small { font-size: var(--fs-xs); color: var(--text-3); }
+#alocacao { scroll-margin-top: calc(var(--topbar-h, 61px) + 64px); }

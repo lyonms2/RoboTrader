@@ -241,3 +241,23 @@ export function financeSummary(items: FinItem[], f: FinanceDoc | null, wallet: W
 // Titulos do Tesouro para o formulario: "tipo|vencimento"
 export const tesouroOptions = (f: FinanceDoc | null) =>
   (f?.tesouro?.titles ?? []).map((t) => ({ id: `${t.name}|${t.venc}`, label: `${t.name} ${t.venc.slice(6)}`, sort: brToIso(t.venc) }));
+
+// ---------- alocacao alvo (o membro define as %; o site so organiza, nao recomenda) ----------
+// Classes que entram nas %: sem reserva (vem antes, em meses de gasto), conta corrente e bens
+export const ALLOC_GROUPS: FinGroup[] = ["rendafixa", "acoes", "fiis", "cripto", "dolar", "outro"];
+// Proximo aporte: 1) completa a reserva ate a meta; 2) o resto vai para as classes abaixo do alvo, em proporcao ao que falta
+// (rebalanceamento so com aporte, sem vender). Se nada esta abaixo, divide pelas proprias %
+export function planAporte(byGroup: Record<string, number>, pct: Record<string, number>, reserve: { have: number; goal: number | null }, amount: number,
+  groups: FinGroup[] = ALLOC_GROUPS) {
+  const parts: Record<string, number> = {};
+  const toReserve = reserve.goal !== null ? Math.min(amount, Math.max(0, reserve.goal - reserve.have)) : 0;
+  const rest = Math.max(0, amount - toReserve);
+  const cur = groups.reduce((s, g) => s + Math.max(0, byGroup[g] ?? 0), 0);
+  const total = cur + rest;
+  const need = Object.fromEntries(groups.map((g) => [g, Math.max(0, (pct[g] ?? 0) * total - Math.max(0, byGroup[g] ?? 0))]));
+  const sum = groups.reduce((s, g) => s + need[g], 0);
+  for (const g of groups) parts[g] = sum > 1e-9 ? (rest * need[g]) / sum : rest * (pct[g] ?? 0);
+  // depois do aporte, quanto cada classe fica (para a rosca de dentro)
+  const after = Object.fromEntries(groups.map((g) => [g, Math.max(0, byGroup[g] ?? 0) + parts[g]]));
+  return { toReserve, rest, parts, after, total };
+}

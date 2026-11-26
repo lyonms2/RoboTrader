@@ -84,7 +84,7 @@ export function MembersAdmin({ onClose, onSupport }: { onClose: () => void; onSu
 }
 
 // Minha conta (membro): privacidade e apagar os dados
-export function MyAccount({ user, subUntil, onClose }: { user: User; subUntil: number | null; onClose: () => void }) {
+export function MyAccount({ user, subUntil, onClose, crypto, onCrypto }: { user: User; subUntil: number | null; onClose: () => void; crypto: boolean; onCrypto: (v: boolean) => void }) {
   const [until, setUntil] = useState<number | null>(null);
   useEffect(() => {
     try { return onSnapshot(doc(db(), "support", user.uid), (s) => setUntil(s.exists() ? (s.data() as { until: number }).until : null), () => undefined); }
@@ -116,6 +116,11 @@ export function MyAccount({ user, subUntil, onClose }: { user: User; subUntil: n
       <p className="small">{subUntil === null ? "Sem data de vencimento registrada."
         : subStatus(subUntil).s === "atrasado" ? <>Venceu em <b className="warn">{fmtBR(subUntil)}</b>. Renove com o SeuBitico para continuar usando.</>
         : <>Paga até <b>{fmtBR(subUntil)}</b>. Para renovar, fale com o SeuBitico.</>}</p>
+      <h3>Criptomoedas</h3>
+      <label className="acc-switch">
+        <input type="checkbox" role="switch" checked={crypto} onChange={(e) => onCrypto(e.target.checked)} />
+        <span><b>Uso criptomoedas</b><small>{crypto ? "Carteira, cotações e categorias de cripto aparecem no site." : "Desligado: o site esconde carteira, cotações, categorias e ajuda de cripto."}</small></span>
+      </label>
       <h3>Suporte</h3>
       {active
         ? <p className="small"><b className="warn">Suporte liberado</b> até {new Date(until!).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. O SeuBitico pode ver seus dados, sem alterar nada.

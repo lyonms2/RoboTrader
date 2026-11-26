@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState, type ReactNode } from "react";
-import { ArrowDownLeft, Bot, CalendarClock, CheckCircle2, ChevronRight, Coins, CreditCard, Lightbulb, ListChecks, PiggyBank, Plus, Repeat, TrendingDown, TrendingUp, TriangleAlert, Wallet, X } from "lucide-react";
+import { ArrowDownLeft, Bitcoin, Bot, CalendarClock, CheckCircle2, ChevronRight, Coins, CreditCard, Lightbulb, ListChecks, PiggyBank, Plus, Repeat, TrendingDown, TrendingUp, TriangleAlert, Wallet, X } from "lucide-react";
 import { allocOf } from "@/lib/positions";
 import { allocationBlocks, walletNotices } from "@/lib/allocation";
 import { walletAddresses, walletKey } from "@/lib/addresses";
@@ -8,6 +8,7 @@ import { DEFAULT_PARAMS, decide } from "@/lib/strategy";
 import { SYMBOLS, type AppConfig, type LatestDoc, type FichaDoc, type LighterSyncDoc, type WalletDoc } from "@/lib/types";
 import { HomeHero, MoneyMix, NetWorthBlock, NextPayments, type Ctx } from "../OverviewBlocks";
 import { Button, Card, EmptyState, List, ListRow, Section, Stat, Stats } from "../ui";
+import { useShowCrypto } from "../cryptoPref";
 import type { Sub as FinSub } from "../FinanceCard";
 import { reviewCount, saveSetup, upcoming, budgetAlerts } from "../gastosShared";
 import { buildAlerts } from "@/lib/alerts";
@@ -21,11 +22,13 @@ import { TabId, ago, fmt, fmtPx, fmtQty, openPnl, ordered, pnlClass, priceOf, si
 // Visao geral: patrimonio, o que fazer hoje, alocacao e posicoes do robo
 export type Money = Ctx & { nwHist: NetWorthDoc[] };
 // Visao geral: patrimonio, o que fazer hoje, o mes e os proximos pagamentos, evolucao e, depois, o robo e a cripto
-export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, onTab, money, onFin, onLaunch }: {
-  member?: boolean; cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null;
+export function Overview({ member, askCrypto, cfg, latest, prices, wallet, fichas, sync, onTab, money, onFin, onLaunch }: {
+  member?: boolean; askCrypto?: (v: boolean) => void; // membro que ainda nao disse se usa cripto: cartao no topo
+  cfg: AppConfig; latest: LatestDoc[]; prices: Prices; wallet: WalletDoc | null; fichas: FichaDoc | null;
   sync: LighterSyncDoc | null; onTab: (t: TabId) => void; money: Money; onFin: (s: FinSub | "loans" | "recv", open?: string) => void; onLaunch?: () => void;
 }) {
   const params = { ...DEFAULT_PARAMS, reentry: cfg.reentry };
+  const showCrypto = useShowCrypto();
   const [allTodo, setAllTodo] = useState(false);
   // Posicoes do robo e lucro aberto
   let open = 0;
@@ -159,6 +162,17 @@ export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, on
 
   return (
     <div className="home">
+      {askCrypto && (
+        <Card className="home-ask">
+          <span className="home-ask-ico" aria-hidden="true"><Bitcoin size={22} /></span>
+          <div className="home-ask-txt"><b>Você usa criptomoedas?</b>
+            <span>Se não usa, o site esconde carteira, cotações e categorias de cripto. Dá para mudar depois em Minha conta.</span></div>
+          <div className="home-ask-acts">
+            <Button variant="primary" size="sm" onClick={() => askCrypto(true)}>Sim, uso</Button>
+            <Button size="sm" onClick={() => askCrypto(false)}>Não, esconder</Button>
+          </div>
+        </Card>
+      )}
       {hasMoney ? (
         <HomeHero {...money} start={money.cfg.nwStart ?? null} onPat={() => onFin("bens")} onMes={toMes} />
       ) : (
@@ -196,9 +210,9 @@ export function Overview({ member, cfg, latest, prices, wallet, fichas, sync, on
       {hasMoney && <NetWorthBlock {...money} />}
       {hasMoney && <MoneyMix {...money} />}
 
-      <Section title="Cripto" action={<Button variant="link" size="sm" onClick={() => onTab("carteira")}>ver cripto <ChevronRight size={14} aria-hidden="true" /></Button>}>
+      {showCrypto && <Section title="Cripto" action={<Button variant="link" size="sm" onClick={() => onTab("carteira")}>ver cripto <ChevronRight size={14} aria-hidden="true" /></Button>}>
         {cryptoStats}
-      </Section>
+      </Section>}
 
       {!member && <details className="more-block">
         <summary>Alocação e posições do robô</summary>

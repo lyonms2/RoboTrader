@@ -21,6 +21,7 @@ export { guardWrite, saveMonth, saveSetup, monthSnapshot, upcoming, reviewCount,
 
 
 import Note from "./Note";
+import { CRYPTO_CATS, useShowCrypto } from "./cryptoPref";
 const fmt = (v: number, d = 2) => v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const brl = (v: number, d = 2) => `R$\u00a0${fmt(v, d)}`;
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
@@ -754,7 +755,8 @@ export function CatSelect({ value, onChange, dir, gastoOnly }: { value: string; 
   const r = mine.filter((c) => c.tipo === "receita").map((c) => c.name);
   const gastos = [...CATS_GASTO.filter((c) => c !== "Outros"), ...g];
   const entradas = [...CATS_RECEITA.filter((c) => c !== "Outras entradas"), ...r];
-  const neutros = only === "out" ? NEUTRO_OUT : only === "in" ? NEUTRO_IN : CATS_NEUTRO.filter((c) => c !== CARD_PAY_CAT);
+  const showCrypto = useShowCrypto();
+  const neutros = (only === "out" ? NEUTRO_OUT : only === "in" ? NEUTRO_IN : CATS_NEUTRO.filter((c) => c !== CARD_PAY_CAT)).filter((c) => showCrypto || !CRYPTO_CATS.includes(c));
   const shown = new Set([...(only !== "in" ? [...gastos, ...(gastoOnly ? [] : [CARD_PAY_CAT])] : []), ...(only !== "out" ? entradas : []), ...(gastoOnly ? [] : neutros)]);
   // a categoria atual aparece sempre (mesmo se for do outro sentido)
   const extra = value && !GENERIC_CATS.includes(value) && !shown.has(value);

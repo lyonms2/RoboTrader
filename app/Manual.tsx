@@ -167,6 +167,13 @@ const TOPICS: { group: string; items: Topic[] }[] = [
       "Conferindo duas vezes (com alguns dias entre elas), o site calcula quanto do CDI rendeu de verdade e sugere \"usar X%\". Se o app mostra o saldo já sem IR, escolha \"Líquido\".",
       "Diferença grande quase sempre é um movimento que não está ligado ao cofrinho: ligue o lançamento no Mês (categoria Investimento, com o destino).",
     ], tips: ["O Início lembra de conferir quando passa de 30 dias da última conferência."] },
+    { title: "Alocação alvo: organizar os aportes", steps: [
+      "Em Patrimônio → Investimentos (ou Mais → Alocação alvo), toque em \"Definir alvo\" e escolha a % de cada classe: renda fixa, ações, FIIs... A soma precisa dar 100%.",
+      "\"Preencher com a carteira de hoje\" copia as % atuais como ponto de partida; ajuste do seu jeito. O site não sugere números.",
+      "A reserva de emergência vem antes e fica fora das %: escolha a meta em meses de gasto.",
+      "Na rosca, o anel de fora é o alvo e o de dentro é a carteira. Cada classe mostra quanto falta (ou quanto passou) do alvo.",
+      "Em \"Quanto vai investir agora?\", digite o valor: o site mostra quanto vai para a reserva e para cada classe abaixo do alvo, sem vender nada.",
+    ], tips: ["É organização da sua própria divisão, não recomendação de investimento. Nada é lançado: é só a conta."] },
     { title: "Comparar seus investimentos com o CDI", steps: [
       "Em Patrimônio → Investimentos, toque no Tesouro ou na ação.",
       "Informe o preço médio e a data da compra e salve.",
@@ -200,6 +207,10 @@ const TOPICS: { group: string; items: Topic[] }[] = [
     ] },
   ] },
   { group: "Sua conta", items: [
+    { title: "Esconder a parte de cripto", member: true, steps: [
+      "Não usa criptomoedas? Em \"Minha conta\" (botão com a sua inicial, no topo), desligue \"Uso criptomoedas\".",
+      "O site esconde a carteira, as cotações, as categorias de compra e venda de cripto e esta parte da Ajuda. Dá para ligar de novo quando quiser.",
+    ] },
     { title: "Exportar meus dados (backup)", steps: [
       "Em Patrimônio → Contas, no fim da página (\"Seus dados\"), ou em \"Minha conta\" (membros).",
       "\"Exportar tudo\" baixa um arquivo com tudo o que você lançou: guarde como backup.",
@@ -228,9 +239,9 @@ const TOPICS: { group: string; items: Topic[] }[] = [
 // busca sem acento e sem maiuscula
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-export default function Manual({ member, robo = true }: { member: boolean; robo?: boolean }) {
+export default function Manual({ member, robo = true, crypto = true }: { member: boolean; robo?: boolean; crypto?: boolean }) {
   const [q, setQ] = useState("");
-  const groups = useMemo(() => TOPICS.map((g) => ({ ...g, items: g.items.filter((t) => (!t.owner || !member) && (!t.member || member) && (!t.robo || robo)) })).filter((g) => g.items.length), [member, robo]);
+  const groups = useMemo(() => TOPICS.map((g) => ({ ...g, items: g.items.filter((t) => (!t.owner || !member) && (!t.member || member) && (!t.robo || robo)) })).filter((g) => g.items.length && (crypto || g.group !== "Cripto")), [member, robo, crypto]);
   const words = norm(q).split(/\s+/).filter(Boolean);
   const hit = (t: Topic) => { const txt = norm([t.title, ...t.steps, ...(t.tips ?? [])].join(" ")); return words.every((w) => txt.includes(w)); };
   const found = words.length ? groups.map((g) => ({ ...g, items: g.items.filter(hit) })).filter((g) => g.items.length) : groups;

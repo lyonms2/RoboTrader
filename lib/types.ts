@@ -23,6 +23,9 @@ export type AppConfig = {
   finance?: FinItem[];
   monthlyCost?: number; // gasto mensal em R$ (para dizer quantos meses a reserva cobre)
   nwStart?: string; // AAAA-MM-DD: grafico da evolucao do patrimonio comeca neste dia (dias antes ficam guardados, so nao aparecem)
+  crypto?: boolean; // membro: usa criptomoedas? (undefined = ainda nao respondeu; false = esconde toda a parte de cripto)
+  // alocacao alvo definida pelo membro: % por classe (somam 100, fracoes 0-1) e a meta da reserva em meses de gasto (fora das %)
+  target?: { pct: Record<string, number>; reserveMonths?: number };
 };
 
 // Investimento fora da cripto. Valores em R$

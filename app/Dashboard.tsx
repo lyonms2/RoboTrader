@@ -1,6 +1,7 @@
 "use client";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
-import { collection, doc, documentId, getDoc, getDocs, limitToLast, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { collection, doc, documentId, getDoc, getDocs, limitToLast, onSnapshot, orderBy, query, setDoc, where } from "firebase/firestore";
+import { ask } from "./Dialog";
 import { useEffect, useMemo, useState } from "react";
 import { auth, db, firebaseConfigured } from "@/lib/firebaseClient";
 import { P, memberBase, setDataBase, setReadOnly } from "@/lib/paths";
@@ -18,8 +19,9 @@ import ScrollHints from "./ScrollHints";
 import Shell, { type MoreItem, type NavId } from "./Shell";
 import LaunchSheet from "./LaunchSheet";
 import type { FinView } from "./FinanceCard";
-import { ArrowLeftRight, Bitcoin, Bot, CircleHelp, RefreshCw, Settings, ShoppingCart, UserRound, Users } from "lucide-react";
+import { ArrowLeftRight, Bitcoin, Bot, CircleHelp, RefreshCw, Settings, ShoppingCart, Target, UserRound, Users } from "lucide-react";
 import { Button, Skeleton } from "./ui";
+import { ShowCrypto } from "./cryptoPref";
 import { CRYPTO_TABS, Modal, TabId, ago, fmt, priceOf } from "./dash/util";
 import { Overview } from "./dash/Overview";
 import { AssetCard, Performance } from "./dash/Robo";
@@ -141,6 +143,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const member = role === "member" || !!support;
   // Robo e tokens: so o dono (membro pagante ve so financas e a propria carteira). No suporte, o dono continua vendo
   const canRobo = !member || !!support;
+  // membro que disse "nao uso cripto": esconde carteira, cotacoes, categorias e ajuda de cripto (o dono sempre ve)
+  const showCrypto = !member || cfg.crypto !== false;
   // a autorizacao expira sozinha
   useEffect(() => {
     if (!support) return;
@@ -157,6 +161,8 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
     ro.observe(h);
     return () => ro.disconnect();
   }, [user, role]);
+  // quem nao usa cripto nao fica preso numa tela de cripto (ex.: a aba lembrada no navegador)
+  useEffect(() => { if (!showCrypto && CRYPTO_TABS.includes(tab)) setTabState("geral"); }, [showCrypto, tab]);
   // Tokens agora fica junto do Robo; membro nao tem Operacoes manuais: cai no Robo (estudo)
   useEffect(() => {
     if (tab === "tokens" || (member && tab === "operacoes")) setTabState(canRobo ? "sinais" : "carteira");
@@ -279,7 +285,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   // Posicao efetiva: lancamentos manuais + conta da Lighter (quando a importacao automatica esta ligada)
   const px = Object.fromEntries(SYMBOLS.map((s) => [s, priceOf(s, latest, prices)?.price ?? 0]));
   const eff = effectiveConfig(cfg, sync, wallet, px);
-  const walletOk = !!wallet && wallet.address === walletKey(walletAddresses(cfg));
+  const walletOk = showCrypto && !!wallet && wallet.address === walletKey(walletAddresses(cfg));
   // calculos de financas so quando os dados mudam (o preco do cripto atualiza a tela a cada 30 s)
   const spend = useMemo(() => avgMonthly(months), [months, gSetup]);
   setCustomCats(gSetup.customCats);
@@ -320,16 +326,29 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   const inCrypto = CRYPTO_TABS.includes(tab);
   const updatedAt = Math.max(0, ...latest.map((l) => l.updatedAt), wallet?.at ?? 0, fichas?.at ?? 0);
   const active: NavId = tab === "geral" ? "inicio" : tab === "financas" && finView !== "compras" ? finView : "mais";
-  const visibleCrypto = cryptoSubs.filter((x) => !member || x.id === "carteira" || (x.id === "sinais" && canRobo));
+  const visibleCrypto = !showCrypto ? [] : cryptoSubs.filter((x) => !member || x.id === "carteira" || (x.id === "sinais" && canRobo));
   const icon = { carteira: <Bitcoin size={18} />, sinais: <Bot size={18} />, operacoes: <ArrowLeftRight size={18} /> } as const;
   const more: MoreItem[] = [
     ...visibleCrypto.map((x) => ({ id: x.id, label: x.id === "carteira" ? "Cripto: carteira" : x.label, icon: icon[x.id], active: tab === x.id, onClick: () => setTab(x.id) })),
+    { id: "alocacao", label: "Alocação alvo", icon: <Target size={18} />, onClick: () => {
+      try { localStorage.setItem("finSub", "invest"); localStorage.setItem("gotoAlloc", "1"); } catch { /* sem armazenamento */ }
+      goFin("patrimonio"); window.dispatchEvent(new Event("goto-alloc"));
+    } },
     { id: "compras", label: "Lista de compras", icon: <ShoppingCart size={18} />, active: tab === "financas" && finView === "compras", onClick: () => goFin("compras") },
     { id: "ajuda", label: "Ajuda", icon: <CircleHelp size={18} />, active: tab === "ajuda", onClick: () => setTab("ajuda") },
     ...(role === "owner" && !demo && !support ? [{ id: "membros", label: "Membros", icon: <Users size={18} />, onClick: () => setShowAdmin(true) }] : []),
     ...(member && !support ? [{ id: "conta", label: "Minha conta", icon: <UserRound size={18} />, onClick: () => setShowAccount(true) }] : []),
   ];
   const who = (demo ? "Demo" : user.displayName || user.email || "?").trim();
+  const setCrypto = async (v: boolean) => {
+    if (!v && walletOk && wallet && wallet.total > 0.5
+      && !(await ask(`Você tem carteiras cripto cadastradas (cerca de US$ ${Math.round(wallet.total).toLocaleString("pt-BR")}). Esconder a parte de cripto também tira esse valor do patrimônio. Continuar?`))) return;
+    setCfg((c) => ({ ...c, crypto: v }));
+    if (!v && CRYPTO_TABS.includes(tab)) setTab("geral");
+    if (demo) return;
+    try { await setDoc(doc(db(), P("config/main")), { crypto: v }, { merge: true }); }
+    catch (e) { setError(`Não salvou a escolha de cripto: ${String(e)}`); }
+  };
   const accountItems = [
     ...(role === "owner" && !demo && !support ? [{ label: "Membros", onClick: () => setShowAdmin(true) }] : []),
     ...(member && !support ? [{ label: "Minha conta", onClick: () => setShowAccount(true) }] : []),
@@ -351,7 +370,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
   </>;
 
   return (
-    <>
+    <ShowCrypto.Provider value={showCrypto}>
       <Shell active={active} more={more} banners={banners}
         onNav={(id) => (id === "inicio" ? setTab("geral") : goFin(id))}
         onLaunch={support ? undefined : () => setLaunch(true)}
@@ -359,7 +378,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         account={{ initial: who.slice(0, 1).toUpperCase(), label: `Conta de ${who}`, items: accountItems }}
         onSignOut={() => (demo ? undefined : signOut(auth()))}>
         {tab === "geral" && (
-          <Overview member={member} cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} sync={cfg.lighter?.enabled ? sync : null} onTab={setTab}
+          <Overview member={member} askCrypto={member && !support && cfg.crypto === undefined ? setCrypto : undefined} cfg={eff} latest={latest} prices={prices} wallet={wallet} fichas={fichas} sync={cfg.lighter?.enabled ? sync : null} onTab={setTab}
             money={{ cfg, fin: finance, wallet: walletOk ? wallet : null, spend, debt, months, setup: gSetup, nwHist }}
             onFin={(s: FinSub | "loans" | "recv", open?: string) => { try { localStorage.setItem("finSub", s); if (open) localStorage.setItem("invOpen", open); } catch { /* sem armazenamento */ } goFin(s === "lanc" ? "mes" : s === "compras" ? "compras" : "patrimonio"); }}
             onLaunch={support ? undefined : () => setLaunch(true)} />
@@ -398,7 +417,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
             <div id="fichas"><FichasCard fichas={fichas} /></div>
           </>
         )}
-        {tab === "ajuda" && <Manual member={member} robo={canRobo} />}
+        {tab === "ajuda" && <Manual member={member} robo={canRobo} crypto={showCrypto} />}
         {tab === "financas" && <FinanceCard view={finView} onView={goFin} cfg={cfg} fin={finance} wallet={walletOk ? wallet : null} spend={spend} debt={debt} months={months} setup={gSetup}
           onChanged={() => { refreshFinance().then((p) => p.length && setError(p.join("; "))); }}
           onQuotes={support ? undefined : async () => { const p = await refreshFinance(); if (p.length) setError(p.join("; ")); else setNotice(`Cotações atualizadas às ${new Date().toLocaleTimeString("pt-BR")}.`); }} />}
@@ -421,7 +440,7 @@ export default function Dashboard({ demo }: { demo?: Demo }) {
         </Modal>
       )}
       {showAdmin && <Modal onClose={() => setShowAdmin(false)}><MembersAdmin onClose={() => setShowAdmin(false)} onSupport={enterSupport} /></Modal>}
-      {showAccount && user && <Modal onClose={() => setShowAccount(false)}><MyAccount user={user} subUntil={until} onClose={() => setShowAccount(false)} /></Modal>}
-    </>
+      {showAccount && user && <Modal onClose={() => setShowAccount(false)}><MyAccount user={user} subUntil={until} onClose={() => setShowAccount(false)} crypto={showCrypto} onCrypto={setCrypto} /></Modal>}
+    </ShowCrypto.Provider>
   );
 }

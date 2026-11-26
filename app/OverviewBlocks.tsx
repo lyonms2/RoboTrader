@@ -11,6 +11,7 @@ import { accountBalance, investFlows, monthLabel, type GastosSetup, type MonthDo
 import { netWorth, type NetWorthDoc } from "@/lib/patrimonio";
 import { guardWrite, monthSnapshot, upcoming } from "./gastosShared";
 import NetWorthChart from "./NetWorthChart";
+import { useShowCrypto } from "./cryptoPref";
 import { ChevronRight } from "lucide-react";
 import { Badge, Button, Card, InfoTip, Money, Section, Stat, Stats } from "./ui";
 
@@ -90,6 +91,7 @@ export type Ctx = {
 export function HomeHero({ cfg, fin, wallet, spend, debt, months, setup, nwHist = [], start = null, onPat, onMes }: Ctx & {
   nwHist?: NetWorthDoc[]; start?: string | null; onPat: () => void; onMes: () => void;
 }) {
+  const showCrypto = useShowCrypto();
   const items = cfg.finance ?? [];
   const acct = accountBalance(months, setup);
   const s = financeSummary(items, fin, wallet, spend?.value ?? cfg.monthlyCost, acct?.value, investFlows(months));
@@ -117,7 +119,7 @@ export function HomeHero({ cfg, fin, wallet, spend, debt, months, setup, nwHist 
           <InfoTip label="Como é calculado">
             <b>O que você tem − o que deve</b>
             <BalanceEq contas={s.byGroup.conta} investido={s.total - s.byGroup.cripto - s.byGroup.dolar - s.byGroup.conta - s.bens}
-              crypto={s.byGroup.cripto + s.byGroup.dolar} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} people={debt.people ?? debt.total - debt.cards - debt.loans} />
+              crypto={showCrypto ? s.byGroup.cripto + s.byGroup.dolar : undefined} bens={s.bens} recv={debt.recv} cards={debt.cards} loans={debt.loans} people={debt.people ?? debt.total - debt.cards - debt.loans} />
             {s.bens > 0 && <span className="home-tip-line">Sem os bens: {brl(liquido - s.bens)}</span>}
             {s.usd && wallet ? <span className="home-tip-line">~US$ {fmt(bruto / s.usd, 0)} no total</span> : null}
             {indic.length > 0 && <span className="home-tip-line">{indic.join(" · ")}</span>}
